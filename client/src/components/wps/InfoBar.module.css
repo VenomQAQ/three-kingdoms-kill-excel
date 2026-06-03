@@ -1,0 +1,29 @@
+.bar {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 12px;
+  background: #fafafa;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 11px;
+  color: #555;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.sep {
+  color: #d0d0d0;
+  margin: 0 4px;
+}
+
+.highlight {
+  color: #e67e22;
+}
+
+.ok {
+  color: #217346;
+}
+
+.err {
+  color: #c0392b;
+}

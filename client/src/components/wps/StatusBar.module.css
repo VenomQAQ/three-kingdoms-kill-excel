@@ -1,0 +1,64 @@
+.bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 24px;
+  background: #f0f0f0;
+  color: #444;
+  padding: 0 12px;
+  font-size: 11px;
+  border-top: 1px solid #d4d4d4;
+}
+
+.left {
+  opacity: 0.95;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dotOn,
+.dotOff {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dotOn {
+  background: #217346;
+}
+
+.dotOff {
+  background: #ccc;
+}
+
+.zoomWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid #ddd;
+}
+
+.zoomBtn {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  cursor: default;
+  color: #666;
+}
+
+.zoomVal {
+  min-width: 36px;
+  text-align: center;
+}

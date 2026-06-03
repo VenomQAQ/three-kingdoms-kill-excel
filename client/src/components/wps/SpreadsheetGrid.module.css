@@ -1,0 +1,206 @@
+.wrap {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  grid-template-rows: 22px 1fr;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.corner {
+  background: #f2f2f2;
+  border-right: 1px solid #d4d4d4;
+  border-bottom: 1px solid #d4d4d4;
+}
+
+.colHeaders {
+  display: flex;
+  background: #f2f2f2;
+  border-bottom: 1px solid #d4d4d4;
+  overflow: hidden;
+  padding-left: 40px;
+}
+
+.colHeader {
+  min-width: 88px;
+  width: 88px;
+  text-align: center;
+  line-height: 22px;
+  border-right: 1px solid #d4d4d4;
+  color: #555;
+  flex-shrink: 0;
+}
+
+.body {
+  overflow: auto;
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  min-height: 22px;
+}
+
+.rowHeader {
+  width: 40px;
+  min-width: 40px;
+  text-align: center;
+  line-height: 22px;
+  background: #f2f2f2;
+  border-right: 1px solid #d4d4d4;
+  border-bottom: 1px solid #e8e8e8;
+  color: #555;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.cell {
+  min-width: 88px;
+  width: 88px;
+  padding: 0 6px;
+  line-height: 22px;
+  border-right: 1px solid #e8e8e8;
+  border-bottom: 1px solid #e8e8e8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+  cursor: cell;
+}
+
+.cell:hover {
+  background: #f8f8f8;
+}
+
+.selected {
+  outline: 2px solid #217346;
+  outline-offset: -2px;
+  z-index: 2;
+  position: relative;
+}
+
+.selected::after {
+  content: '';
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 6px;
+  height: 6px;
+  background: #217346;
+  border: 1px solid #fff;
+}
+
+.headerCell {
+  font-weight: 600;
+  background: #f2f2f2;
+  text-align: center;
+}
+
+.myRow {
+  background: #e8f5ee;
+}
+
+.turnRow {
+  background: #fff9e6;
+  outline: 1px solid #f0c040;
+}
+
+.ready {
+  color: #217346;
+  font-weight: 600;
+}
+
+.playing {
+  color: #c0392b;
+  font-weight: 600;
+}
+
+.waiting {
+  color: #217346;
+}
+
+.virtualTag {
+  color: #888;
+  font-size: 10px;
+}
+
+.numeric {
+  text-align: center;
+}
+
+.hintRow {
+  padding: 8px 48px;
+  color: #888;
+  font-size: 11px;
+  border-top: 1px solid #eee;
+}
+
+.roleLord {
+  color: #c00000;
+  font-weight: 600;
+}
+
+.roleNormal {
+  color: #333;
+}
+
+.turnMark {
+  color: #c00000;
+  font-weight: 600;
+}
+
+.linkCell {
+  color: #0563c1;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.handCell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 2px 4px;
+  min-height: 22px;
+  line-height: 20px;
+}
+
+.cardChip {
+  padding: 0 6px;
+  border: 1px solid #c8e0d4;
+  background: #f0faf4;
+  border-radius: 2px;
+  font-size: 10px;
+  color: #217346;
+  cursor: pointer;
+}
+
+.cardChipPlayable:hover {
+  background: #217346;
+  color: #fff;
+  border-color: #217346;
+}
+
+.cardChipSelected {
+  background: #217346;
+  color: #fff;
+  border-color: #1a5c38;
+}
+
+.opAreaTitle {
+  font-weight: 600;
+  background: #f2f2f2;
+}
+
+.logCell {
+  white-space: pre-wrap;
+  line-height: 1.5;
+  min-height: 22px;
+  height: auto;
+  padding: 4px 8px;
+  color: #333;
+  text-align: left;
+}

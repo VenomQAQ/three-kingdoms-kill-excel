@@ -1,0 +1,49 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #fff;
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.error {
+  background: #fff3cd;
+  color: #856404;
+  padding: 4px 12px;
+  font-size: 11px;
+  border-bottom: 1px solid #ffc107;
+  cursor: pointer;
+}
+
+.sandboxInput {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 4px 12px;
+  background: #f9f9f9;
+  border-bottom: 1px solid #e8e8e8;
+  font-size: 11px;
+}
+
+.sandboxInput label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sandboxInput input {
+  border: 1px solid #ccc;
+  padding: 2px 8px;
+  width: 120px;
+  border-radius: 2px;
+}
+
+.sandboxHint {
+  color: #888;
+}

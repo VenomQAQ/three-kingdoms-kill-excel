@@ -1,0 +1,37 @@
+.bar {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  border-bottom: 1px solid #d4d4d4;
+  background: #fff;
+}
+
+.nameBox {
+  width: 80px;
+  padding: 0 8px;
+  border-right: 1px solid #d4d4d4;
+  line-height: 24px;
+  text-align: center;
+  color: #333;
+  flex-shrink: 0;
+}
+
+.fx {
+  width: 28px;
+  text-align: center;
+  color: #217346;
+  font-style: italic;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.input {
+  flex: 1;
+  height: 100%;
+  padding: 0 8px;
+  background: transparent;
+}
+
+.input::placeholder {
+  color: #aaa;
+}
