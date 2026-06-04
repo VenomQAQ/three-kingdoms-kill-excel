@@ -37,7 +37,8 @@
   gap: 6px;
 }
 
-.sandboxInput input {
+.sandboxInput input,
+.sandboxSelect {
   border: 1px solid #ccc;
   padding: 2px 8px;
   width: 120px;

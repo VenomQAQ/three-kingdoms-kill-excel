@@ -37,7 +37,22 @@ interface AppState {
   sandboxRemoveLastVirtual: () => void;
   sandboxSwitchActor: (playerId: string) => void;
   sandboxStart: () => void;
-  sandboxPlayCard: (card: string) => void;
+  sandboxPlayCard: (card: string, handIndex?: number) => void;
+  sandboxConfirmPlay: (promptId: string, choiceId: string) => void;
+  sandboxSelectTargets: (promptId: string, targetIds: string[]) => void;
+  sandboxSubmitResponse: (promptId: string, choiceId: string) => void;
+  sandboxUseSkill: (skillId: string) => void;
+  sandboxRendeGive: (
+    targetId: string,
+    cards: string[],
+    handIndices?: number[],
+  ) => void;
+  sandboxRendeFinish: () => void;
+  sandboxZhihengConfirm: (handIndices: number[]) => void;
+  sandboxModifyJudge: (promptId: string, handIndex: number) => void;
+  sandboxSkipModifyJudge: (promptId: string) => void;
+  sandboxDiscardCards: (promptId: string, handIndices: number[]) => void;
+  sandboxSelectZoneCard: (promptId: string, choiceId: string) => void;
   sandboxEndTurn: () => void;
   sendChat: (content: string) => void;
   clearError: () => void;
@@ -211,8 +226,52 @@ export const useAppStore = create<AppState>((set, get) => ({
     get().socket?.emit('sandbox:start');
   },
 
-  sandboxPlayCard: (card) => {
-    get().socket?.emit('sandbox:playCard', { card });
+  sandboxPlayCard: (card, handIndex) => {
+    get().socket?.emit('sandbox:playCard', { card, handIndex });
+  },
+
+  sandboxConfirmPlay: (promptId, choiceId) => {
+    get().socket?.emit('sandbox:confirmPlay', { promptId, choiceId });
+  },
+
+  sandboxSelectTargets: (promptId, targetIds) => {
+    get().socket?.emit('sandbox:selectTargets', { promptId, targetIds });
+  },
+
+  sandboxSubmitResponse: (promptId, choiceId) => {
+    get().socket?.emit('sandbox:submitResponse', { promptId, choiceId });
+  },
+
+  sandboxUseSkill: (skillId) => {
+    get().socket?.emit('sandbox:useSkill', { skillId });
+  },
+
+  sandboxRendeGive: (targetId, cards, handIndices) => {
+    get().socket?.emit('sandbox:rendeGive', { targetId, cards, handIndices });
+  },
+
+  sandboxRendeFinish: () => {
+    get().socket?.emit('sandbox:rendeFinish');
+  },
+
+  sandboxZhihengConfirm: (handIndices) => {
+    get().socket?.emit('sandbox:zhihengConfirm', { handIndices });
+  },
+
+  sandboxModifyJudge: (promptId, handIndex) => {
+    get().socket?.emit('sandbox:modifyJudge', { promptId, handIndex });
+  },
+
+  sandboxSkipModifyJudge: (promptId) => {
+    get().socket?.emit('sandbox:skipModifyJudge', { promptId });
+  },
+
+  sandboxDiscardCards: (promptId, handIndices) => {
+    get().socket?.emit('sandbox:discardCards', { promptId, handIndices });
+  },
+
+  sandboxSelectZoneCard: (promptId, choiceId) => {
+    get().socket?.emit('sandbox:selectZoneCard', { promptId, choiceId });
   },
 
   sandboxEndTurn: () => {

@@ -310,49 +310,66 @@ effects:
           params: { amount: 1, source: self, damageType: normal }
 ```
 
-### 4.6 技能 Handler 注册机制
+### 4.6 三层引擎与零武将分支（当前方向）
 
-```typescript
-// 配置加载后注册
-@Injectable()
-class CardRegistry {
-  private handlers = new Map<string, EffectHandler>();
-
-  register(cardId: string, handler: EffectHandler) { ... }
-
-  // 纯配置可解析的走 GenericEffectRunner
-  // 复杂交互（界反间、界离间）走 DedicatedHandler
-  resolve(cardId: string): EffectHandler { ... }
-}
-```
-
-**分层策略：**
-
-| 层级 | 适用 | 示例 |
-|------|------|------|
-| L1 纯配置 | 效果 = 原语组合 | 【桃】、【决斗】大部分流程 |
-| L2 配置 + Hook | 配置为主，少量代码补逻辑 | 【杀】响应链、【无懈可击】嵌套 |
-| L3 专用 Handler | 多步交互 UI | 界周瑜·反间、界貂蝉·离间、观星 |
-
-约 **70%** 锦囊和基本牌可走 L1/L2；**界武将** 约一半需 L3。
-
-### 4.7 事件总线与响应链
+> **完整设计**见 [engine-core-design.md](./engine-core-design.md)。代码入口：`SangokushiEngine`（`packages/engine/src/core/`）。
 
 ```
-Player A 使用【杀】目标 B
-  → EventBus.emit(BEFORE_CARD_USED)
-  → 询问：无懈可击？（仅锦囊，杀跳过）
-  → 询问：B 是否出【闪】？（可触发龙胆等转化）
-  → 若无闪：damage(B, 1)
-  → EventBus.emit(DAMAGE) → 奸雄、反馈、刚烈...
-  → EventBus.emit(CARD_USED)
+GameState（纯数据） + TurnPhaseFSM（回合） + ResolutionStack（LIFO）
+        ↑                              ↓
+        └──────── RuleManager ─────────┘
+              ↑ 配置加载 ConfigRuleLoader
+              ├─ EffectExecutor（原子效果，~15 个 action）
+              ├─ ConditionRegistry（谓词，禁止 eval）
+              └─ InteractionRegistry（交互模式名，非武将 id）
 ```
 
-`ResponseChain` 管理：
+**不为每个武将写 `if (skillId)`**。扩展方式：
 
-- 超时（默认 15s，可房间配置）
-- 优先级（无懈 > 闪 > 杀响应南蛮）
-- LIFO 结算栈
+| 方式 | 何时用 |
+|------|--------|
+| `effects: [{ action: 'draw', ... }]` | 单步/可组合原子 |
+| `conditions: [{ predicate: 'hpAtMost', params: { n: 2 } }]` | 触发条件 |
+| `handler: 'stealHands'` | 多步 UI（突袭、反间等），**一个 Handler 服务多个将** |
+
+约 **70%** 牌/技能仅配置 + 原子；**~6–10 个交互 Handler** 覆盖剩余多步技能。
+
+### 4.7 结算堆栈与 Pre / On / Post
+
+```
+Player A 使用【杀】→ push UseCardEvent
+  → pre:  无懈（可 push 子事件，栈顶先结算）
+  → on:   目标出【闪】
+  → execute: 未响应 → push DamageEvent
+  → post: 奸雄、反馈、遗计…
+```
+
+- **ResolutionStack**：LIFO，嵌套响应、濒死插入（`MAX_DEPTH = 255`）
+- **TargetQueue**：FIFO，万箭/南蛮逆时针逐目标
+- **EventResolver.resolve**：统一 `pre → on → execute → post`
+
+遗留 `GameEngine` 仍存在于 `packages/engine/src/engine/`；**新逻辑只加在 `SangokushiEngine` 管线**，测试房已通过 `GameService` 挂载引擎实例。
+
+### 4.10 Prompt 类型（UI 暂停点）
+
+引擎通过 `GamePrompt` 暂停流水线，由客户端 `GamePromptModal` 渲染：
+
+| type | 场景 |
+|------|------|
+| `play_card_confirm` | 确认打出 |
+| `select_targets` | 选目标角色 |
+| `response` | 出闪/杀响应 |
+| `select_zone_card` | 过河拆桥/顺手牵羊选区域牌 |
+| `discard_cards` | 弃牌阶段 |
+| `modify_judge` | 鬼才改判 |
+| `use_skill` | 发动/取消技能、仁德/制衡等多步技能 |
+
+### 4.11 选区域牌规则（过河拆桥 / 顺手牵羊）
+
+- 可选目标**手牌区**与**装备区**（判定区后续扩展）
+- 对手手牌：**不展示牌面**，显示「手牌 N」，列表顺序**随机打乱**（`id` 仍映射真实下标）
+- 装备：**明牌**展示装备名
+- 支持取消（`choiceId: cancel`），关闭弹窗
 
 ### 4.8 配置目录建议
 
@@ -423,11 +440,11 @@ interface GameState {
 
 | 阶段 | 内容 |
 |------|------|
-| M1 | 房间 + 聊天 + WPS 壳 UI + 空表格 |
-| M2 | GameEngine 骨架：回合流程、杀闪桃、距离 |
-| M3 | 标准锦囊全套 + 装备 |
-| M4 | 界限突破 30 将（优先高频将） |
-| M5 | 断线重连、观战、战绩 |
+| M1 | 房间 + 聊天 + WPS 壳 UI + 空表格 | ✅ |
+| M2 | `@tk/engine` + 测试房完整交互（杀闪、伤害栈、选区域牌、受伤后技能） | ✅ |
+| M3 | 标准锦囊全套 + 装备 + AOE TargetQueue | 🚧 |
+| M4 | 界限突破 30 将（优先高频将） | 🚧 |
+| M5 | 正式房间对局、断线重连、观战、战绩 | 🔲 |
 
 ---
 
@@ -437,8 +454,8 @@ interface GameState {
 three-kingdoms-kill/
 ├── docs/                 # 本文档
 ├── packages/
-│   ├── card-config/      # YAML + Schema
-│   └── shared/           # 前后端共享类型
+│   ├── engine/           # @tk/engine — SangokushiEngine
+│   └── shared/           # @tk/shared — 前后端共享类型
 ├── client/               # React WPS UI
 ├── server/               # NestJS
 ├── docker-compose.yml

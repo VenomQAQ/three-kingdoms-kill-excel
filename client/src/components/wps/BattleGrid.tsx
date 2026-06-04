@@ -1,9 +1,16 @@
 import { Room, RoomPlayer } from '@tk/shared';
+import type { HandCardPick } from '../../types/hand';
+import { isHandSelected } from '../../types/hand';
 import styles from './SpreadsheetGrid.module.css';
 import { COL_LABELS } from '../../data/decoy';
 
 const HEADERS = ['用户', '角色名', '技能', '血量', '手牌', '装备区', '判定区', '回合状态'];
-const COL_WIDTHS = [92, 120, 68, 44, 210, 132, 100, 92];
+const COL_WIDTHS = [minContentLogWidth(), 120, 68, 44, 210, 132, 100, 92];
+
+/** 操作区日志列：保证长句可读 */
+function minContentLogWidth(): number {
+  return 480;
+}
 const ROWS_PER_PLAYER = 2;
 
 interface BattleGridProps {
@@ -11,10 +18,11 @@ interface BattleGridProps {
   playerId: string | null;
   actingPlayerId: string | null;
   selectedCell: string;
-  selectedCard: string | null;
+  selectedHand: HandCardPick | null;
   onSelectCell: (ref: string) => void;
-  onSelectCard: (card: string) => void;
-  onPlayCard: (card: string) => void;
+  onSelectHand: (card: string, index: number) => void;
+  onPlayCard: (card: string, handIndex?: number) => void;
+  onViewSkills: (player: RoomPlayer) => void;
 }
 
 export function BattleGrid({
@@ -22,16 +30,22 @@ export function BattleGrid({
   playerId,
   actingPlayerId,
   selectedCell,
-  selectedCard,
+  selectedHand,
   onSelectCell,
-  onSelectCard,
+  onSelectHand,
   onPlayCard,
+  onViewSkills,
 }: BattleGridProps) {
   const cols = COL_LABELS.slice(0, HEADERS.length);
   const acting = actingPlayerId ?? playerId;
   const turnPlayer =
     room.sandbox != null ? room.players[room.sandbox.turnIndex] : null;
-  const canOperate = turnPlayer != null && acting === turnPlayer.id;
+  const gamePrompt = room.sandbox?.prompt;
+  const turnPhase = room.sandbox?.turnPhase;
+  const isMyTurn = turnPlayer != null && acting === turnPlayer.id;
+  const canPlayCards =
+    isMyTurn && (turnPhase === 'play' || !turnPhase) && !gamePrompt;
+  const canSelectHand = isMyTurn;
 
   const playerStartRow = 2;
   const operationRow = playerStartRow + room.players.length * ROWS_PER_PLAYER + 1;
@@ -112,7 +126,15 @@ export function BattleGrid({
                 key={ref}
                 className={`${base} ${styles.linkCell}`}
                 style={{ minWidth: w, width: w }}
-                onClick={() => onSelectCell(ref)}
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewSkills(player);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') onViewSkills(player);
+                }}
               >
                 点击查看
               </div>
@@ -149,20 +171,24 @@ export function BattleGrid({
                         key={`${card}-${hi}`}
                         type="button"
                         className={`${styles.cardChip} ${
-                          selectedCard === card ? styles.cardChipSelected : ''
-                        } ${canOperate ? styles.cardChipPlayable : ''}`}
+                          isHandSelected(selectedHand, card, hi)
+                            ? styles.cardChipSelected
+                            : ''
+                        } ${canSelectHand ? styles.cardChipPlayable : ''}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onSelectCard(card);
+                          if (canSelectHand) onSelectHand(card, hi);
                         }}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
-                          if (canOperate) onPlayCard(card);
+                          if (canPlayCards) onPlayCard(card, hi);
                         }}
                         title={
-                          canOperate
+                          canPlayCards
                             ? `单击选中，双击打出【${card}】`
-                            : '请切换到当前回合角色'
+                            : canSelectHand
+                              ? '当前阶段不能打出（须出牌阶段且无弹窗）'
+                              : '请切换到当前回合角色'
                         }
                       >
                         {card}
@@ -295,20 +321,30 @@ export function BattleGrid({
         {/* 操作日志 */}
         {logs.map((line, i) => {
           const rowNum = logStartRow + i;
+          const logRef = `A${rowNum}`;
           return (
-            <div key={rowNum} className={styles.row}>
+            <div key={rowNum} className={`${styles.row} ${styles.logRow}`}>
               <div className={styles.rowHeader}>{rowNum}</div>
-              {cols.map((col, ci) => {
+              <div
+                className={`${styles.cell} ${styles.logCell} ${logRef === selectedCell ? styles.selected : ''}`}
+                style={{ minWidth: COL_WIDTHS[0], flex: '1 1 480px' }}
+                onClick={() => onSelectCell(logRef)}
+              >
+                {line}
+              </div>
+              {cols.slice(1).map((col, ci) => {
                 const ref = `${col}${rowNum}`;
                 return (
                   <div
                     key={ref}
-                    className={`${styles.cell} ${ci === 0 ? styles.logCell : ''} ${ref === selectedCell ? styles.selected : ''}`}
-                    style={{ minWidth: COL_WIDTHS[ci], width: COL_WIDTHS[ci] }}
+                    className={`${styles.cell} ${ref === selectedCell ? styles.selected : ''}`}
+                    style={{
+                      minWidth: COL_WIDTHS[ci + 1],
+                      width: COL_WIDTHS[ci + 1],
+                      flex: `0 0 ${COL_WIDTHS[ci + 1]}px`,
+                    }}
                     onClick={() => onSelectCell(ref)}
-                  >
-                    {ci === 0 ? line : ''}
-                  </div>
+                  />
                 );
               })}
             </div>

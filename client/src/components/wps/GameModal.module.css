@@ -1,0 +1,210 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.panel,
+.panelWide {
+  background: #fff;
+  border: 1px solid #b4b4b4;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  max-height: 85vh;
+  overflow: auto;
+  font-size: 13px;
+}
+
+.panel {
+  width: 420px;
+  max-width: 100%;
+}
+
+.panelWide {
+  width: min(640px, 96vw);
+  max-width: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #d4d4d4;
+  background: linear-gradient(180deg, #f8f8f8, #ececec);
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.closeBtn {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.body {
+  padding: 12px 14px 16px;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 6px 10px;
+  margin: 0 0 12px;
+}
+
+.meta dt {
+  color: #666;
+  margin: 0;
+}
+
+.meta dd {
+  margin: 0;
+}
+
+.section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed #ddd;
+}
+
+.section h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #333;
+}
+
+.skillList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skillList li {
+  margin-bottom: 10px;
+}
+
+.skillList p {
+  margin: 4px 0 0;
+  color: #444;
+  line-height: 1.5;
+}
+
+.muted {
+  color: #888;
+  font-size: 12px;
+}
+
+.message {
+  margin: 0 0 8px;
+  font-weight: 500;
+  color: #c00;
+}
+
+.phaseTag {
+  font-size: 12px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+
+.targetList {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.targetList li {
+  margin-bottom: 6px;
+}
+
+.targetOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 2px;
+}
+
+.targetOption:hover {
+  background: #f0f7ff;
+}
+
+.targetOption input {
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.primary,
+.secondary {
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid #7f7f7f;
+  border-radius: 2px;
+}
+
+.primary {
+  background: linear-gradient(180deg, #fff, #e8e8e8);
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondary {
+  background: #f5f5f5;
+}
+
+.panelWide select,
+.select {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+}
+
+.fieldLabel {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.cardPickList {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 2px;
+}
+
+.cardPickList li {
+  border-bottom: 1px solid #eee;
+}
+
+.cardPickList li:last-child {
+  border-bottom: none;
+}

@@ -1,0 +1,416 @@
+import { CharacterRegistry } from '../registry/character-registry';
+import type { EnginePlayerState, GamePrompt } from '../types/game';
+import type { GameState } from '../state/game-state';
+import { DeckPile } from '../engine/deck-pile';
+import { TurnPhaseMachine } from '../fsm/turn-phase-machine';
+import {
+  applyJudgeEffect,
+  collectModifyJudgePlayers,
+  describeJudgeResult,
+  type PendingJudge,
+} from '../engine/judge-runner';
+import { createCardInstance, formatCardInstance } from '../engine/card-instance';
+import { cardNameFromHandEntry } from '../engine/card-label';
+import { nextPromptId } from '../utils/prompt-id';
+import { characterSkillsForPrompt, playerHasSkill } from '../engine/timing-runner';
+
+export interface TurnRunnerHost {
+  getState(): GameState;
+  getDeck(): DeckPile;
+  getFsm(): TurnPhaseMachine;
+  log(message: string): void;
+  setPrompt(prompt: GamePrompt | null): void;
+  getPendingJudge(): PendingJudge | null;
+  setPendingJudge(p: PendingJudge | null): void;
+}
+
+/**
+ * 回合宏观流程：判定 → 摸牌 → 出牌 → 弃牌 → 下一角色。
+ * 与武将无关，延时锦囊判定复用 judge-runner。
+ */
+export class TurnRunner {
+  private judgeQueue: { playerId: string; cardName: string }[] = [];
+
+  constructor(private readonly host: TurnRunnerHost) {}
+
+  currentPlayer(): EnginePlayerState | undefined {
+    const s = this.host.getState();
+    return s.players[s.turn.index];
+  }
+
+  beginTurn(): void {
+    const cur = this.currentPlayer();
+    if (!cur) return;
+    cur.shaUsedCount = 0;
+    cur.skillUseCount = {};
+    this.host.getFsm().set('judge');
+    this.host.getState().turn.phase = 'judge';
+    this.host.setPrompt(null);
+    this.host.log(`—— ${cur.generalName} 的回合开始`);
+    this.processJudgePhase();
+  }
+
+  private processJudgePhase(): void {
+    const cur = this.currentPlayer();
+    if (!cur) return;
+
+    this.judgeQueue = cur.judgeCards.map((name) => ({
+      playerId: cur.id,
+      cardName: cardNameFromHandEntry(name),
+    }));
+
+    if (this.judgeQueue.length === 0) {
+      this.advanceToDraw();
+      return;
+    }
+
+    this.host.getState().turn.phase = 'judge';
+    this.resolveNextJudge();
+  }
+
+  private resolveNextJudge(): void {
+    const item = this.judgeQueue.shift();
+    if (!item) {
+      this.advanceToDraw();
+      return;
+    }
+    const player = this.host.getState().players.find((p) => p.id === item.playerId);
+    if (!player) {
+      this.resolveNextJudge();
+      return;
+    }
+
+    const drawn = this.host.getDeck().drawOne();
+    const result = createCardInstance(
+      drawn ? cardNameFromHandEntry(drawn) : '杀',
+    );
+    this.host.log(describeJudgeResult(player, item.cardName, result));
+
+    const modifyQueue = collectModifyJudgePlayers(
+      player,
+      this.host.getState().players,
+    );
+    this.host.setPendingJudge({
+      targetPlayerId: player.id,
+      judgeCardName: item.cardName,
+      result,
+      modifyQueue,
+      modifyIndex: 0,
+      modified: false,
+    });
+
+    if (modifyQueue.length > 0) {
+      this.offerModifyJudge();
+      return;
+    }
+
+    this.finishJudgeResolution();
+  }
+
+  private offerModifyJudge(): void {
+    const pending = this.host.getPendingJudge();
+    if (!pending) return;
+
+    while (pending.modifyIndex < pending.modifyQueue.length) {
+      const modifierId = pending.modifyQueue[pending.modifyIndex]!;
+      const modifier = this.host.getState().players.find((p) => p.id === modifierId);
+      if (!modifier || modifier.hp <= 0 || modifier.handCards.length === 0) {
+        pending.modifyIndex += 1;
+        continue;
+      }
+
+      const target = this.host
+        .getState()
+        .players.find((p) => p.id === pending.targetPlayerId);
+      const modSkill = CharacterRegistry.resolve(modifier.generalName)?.skills.find(
+        (s) => s.effects?.some((e) => e.action === 'modifyJudge'),
+      );
+      const skillLabel = modSkill?.name ?? '改判';
+      this.host.setPrompt({
+        id: nextPromptId(),
+        type: 'modify_judge',
+        playerId: modifier.id,
+        judgeTargetId: pending.targetPlayerId,
+        judgeCardName: pending.judgeCardName,
+        judgeResult: formatCardInstance(pending.result),
+        skillId: modSkill?.id,
+        skillName: skillLabel,
+        characterSkills: characterSkillsForPrompt(modifier),
+        message: `${target?.generalName ?? '角色'} 的判定【${pending.judgeCardName}】为 ${formatCardInstance(pending.result)}，是否发动【${skillLabel}】？`,
+        options: [{ id: 'skip', label: '不改判' }],
+      });
+      return;
+    }
+
+    this.finishJudgeResolution();
+  }
+
+  submitModifyJudge(
+    modifierId: string,
+    promptId: string,
+    handIndex: number,
+  ): { ok: boolean; error?: string } {
+    const state = this.host.getState();
+    const prompt = state.prompt;
+    if (!prompt || prompt.id !== promptId) {
+      return { ok: false, error: '提示已失效' };
+    }
+    if (prompt.type !== 'modify_judge') {
+      return { ok: false, error: '当前不是改判阶段' };
+    }
+    if (prompt.playerId !== modifierId) {
+      return { ok: false, error: '不是你改判' };
+    }
+    const pending = this.host.getPendingJudge();
+    if (!pending) return { ok: false, error: '无待处理判定' };
+
+    const modifier = state.players.find((p) => p.id === modifierId);
+    if (!modifier) return { ok: false, error: '角色不存在' };
+    if (handIndex < 0 || handIndex >= modifier.handCards.length) {
+      return { ok: false, error: '选手牌无效' };
+    }
+
+    const cardEntry = modifier.handCards[handIndex]!;
+    modifier.handCards.splice(handIndex, 1);
+    const replacement = createCardInstance(cardNameFromHandEntry(cardEntry));
+    this.host.getDeck().discardCard(cardEntry);
+
+    pending.result = replacement;
+    pending.modified = true;
+    const modSkill = CharacterRegistry.resolve(modifier.generalName)?.skills.find(
+      (s) => s.effects?.some((e) => e.action === 'modifyJudge'),
+    );
+    this.host.log(
+      `${modifier.generalName} 发动【${modSkill?.name ?? '改判'}】，以 ${formatCardInstance(replacement)} 代替判定结果`,
+    );
+    this.host.setPrompt(null);
+    this.finishJudgeResolution();
+    return { ok: true };
+  }
+
+  skipModifyJudge(modifierId: string, promptId: string): { ok: boolean; error?: string } {
+    const state = this.host.getState();
+    const prompt = state.prompt;
+    if (!prompt || prompt.id !== promptId) {
+      return { ok: false, error: '提示已失效' };
+    }
+    if (prompt.type !== 'modify_judge') {
+      return { ok: false, error: '当前不是改判阶段' };
+    }
+    if (prompt.playerId !== modifierId) {
+      return { ok: false, error: '不是你改判' };
+    }
+    const pending = this.host.getPendingJudge();
+    if (!pending) return { ok: false, error: '无待处理判定' };
+
+    pending.modifyIndex += 1;
+    this.host.setPrompt(null);
+    this.offerModifyJudge();
+    return { ok: true };
+  }
+
+  private finishJudgeResolution(): void {
+    const pending = this.host.getPendingJudge();
+    if (!pending) return;
+
+    const player = this.host
+      .getState()
+      .players.find((p) => p.id === pending.targetPlayerId);
+    if (!player) {
+      this.host.setPendingJudge(null);
+      this.resolveNextJudge();
+      return;
+    }
+
+    const idx = player.judgeCards.findIndex(
+      (c) => cardNameFromHandEntry(c) === pending.judgeCardName,
+    );
+    if (idx >= 0) player.judgeCards.splice(idx, 1);
+
+    const effect = applyJudgeEffect(
+      player,
+      pending.judgeCardName,
+      pending.result,
+    );
+    if (effect.skipPlay) {
+      player.skillUseCount['_skip_play'] = 1;
+      this.host.log(
+        `【${pending.judgeCardName}】生效，${player.generalName} 跳过出牌阶段`,
+      );
+    }
+    if (effect.skipDraw) {
+      player.skillUseCount['_skip_draw'] = 1;
+      this.host.log(
+        `【${pending.judgeCardName}】生效，${player.generalName} 跳过摸牌阶段`,
+      );
+    }
+    if (effect.lightningDamage) {
+      this.host.log('【闪电】生效');
+      player.hp = Math.max(0, player.hp - effect.lightningDamage);
+      this.host.log(
+        `${player.generalName} 受到 ${effect.lightningDamage} 点雷电伤害（${player.hp}/${player.maxHp}）`,
+      );
+    }
+
+    this.host.setPendingJudge(null);
+    this.host.setPrompt(null);
+    this.resolveNextJudge();
+  }
+
+  advanceToDraw(): void {
+    const cur = this.currentPlayer();
+    if (!cur) return;
+
+    this.host.getState().turn.phase = 'before_draw';
+    this.host.getFsm().set('before_draw');
+
+    if (cur.skillUseCount['_skip_draw']) {
+      delete cur.skillUseCount['_skip_draw'];
+      this.host.log(`${cur.generalName} 跳过摸牌阶段`);
+      this.advanceToPlay();
+      return;
+    }
+
+    this.host.getState().turn.phase = 'draw';
+    this.host.getFsm().set('draw');
+    const drawCount = 2 + (playerHasSkill(cur, 'yingzi') ? 1 : 0);
+    const drawn = this.host.getDeck().drawMany(drawCount);
+    cur.handCards.push(...drawn);
+    this.host.log(
+      `${cur.generalName} 摸牌阶段：摸 ${drawn.length} 张（牌堆余 ${this.host.getDeck().remaining()}，手牌 ${cur.handCards.length} 张）`,
+    );
+    this.advanceToPlay();
+  }
+
+  advanceToPlay(): void {
+    const cur = this.currentPlayer();
+    if (!cur) return;
+
+    if (cur.skillUseCount['_skip_play']) {
+      delete cur.skillUseCount['_skip_play'];
+      this.host.log(`${cur.generalName} 跳过出牌阶段`);
+      this.advanceToEnd();
+      return;
+    }
+
+    this.host.getState().turn.phase = 'play';
+    this.host.getFsm().set('play');
+    this.host.setPrompt(null);
+    this.host.log(
+      `—— ${cur.generalName} 出牌阶段：可选择出牌、发动技能或结束回合`,
+    );
+  }
+
+  advanceToEnd(): void {
+    void this.enterDiscardPhase();
+  }
+
+  endPlayPhase(playerId: string): { ok: boolean; error?: string } {
+    const cur = this.currentPlayer();
+    if (!cur || cur.id !== playerId) {
+      return { ok: false, error: '不是你的回合' };
+    }
+    if (this.host.getState().turn.phase !== 'play') {
+      return { ok: false, error: '当前不是出牌阶段' };
+    }
+    this.host.log(`${cur.generalName} 结束出牌阶段`);
+    return this.enterDiscardPhase();
+  }
+
+  enterDiscardPhase(): { ok: boolean; error?: string } {
+    const cur = this.currentPlayer();
+    if (!cur) return { ok: false, error: '状态错误' };
+
+    const limit = this.getHandLimit(cur);
+    const excess = cur.handCards.length - limit;
+    if (excess <= 0) {
+      this.finishTurnAfterDiscard();
+      return { ok: true };
+    }
+
+    this.host.getState().turn.phase = 'discard';
+    this.host.getFsm().set('discard');
+    this.host.setPrompt({
+      id: nextPromptId(),
+      type: 'discard_cards',
+      playerId: cur.id,
+      message: `弃牌阶段：手牌 ${cur.handCards.length} 张，当前体力 ${limit}，请弃置 ${excess} 张牌`,
+      discardCount: excess,
+      discardHandIndices: cur.handCards.map((_, i) => i),
+      options: [{ id: 'confirm_discard', label: '确认弃牌' }],
+    });
+    return { ok: true };
+  }
+
+  submitDiscard(
+    playerId: string,
+    promptId: string,
+    handIndices: number[],
+  ): { ok: boolean; error?: string } {
+    const state = this.host.getState();
+    const prompt = state.prompt;
+    if (!prompt || prompt.id !== promptId) {
+      return { ok: false, error: '提示已失效' };
+    }
+    if (prompt.type !== 'discard_cards') {
+      return { ok: false, error: '当前不是弃牌阶段' };
+    }
+    if (prompt.playerId !== playerId) {
+      return { ok: false, error: '不是你弃牌' };
+    }
+
+    const cur = this.currentPlayer();
+    if (!cur) return { ok: false, error: '状态错误' };
+
+    const handLimit = this.getHandLimit(cur);
+    const need = prompt.discardCount ?? 0;
+    if (handIndices.length !== need) {
+      return { ok: false, error: `请选择 ${need} 张牌弃置` };
+    }
+
+    const sorted = [...handIndices].sort((a, b) => b - a);
+    const discarded: string[] = [];
+    for (const idx of sorted) {
+      if (idx < 0 || idx >= cur.handCards.length) {
+        return { ok: false, error: '选手牌无效' };
+      }
+      const entry = cur.handCards[idx]!;
+      cur.handCards.splice(idx, 1);
+      this.host.getDeck().discardCard(entry);
+      discarded.push(entry);
+    }
+
+    this.host.log(
+      `${cur.generalName} 弃牌阶段：弃置 ${discarded.join('、')}（手牌 ${cur.handCards.length}/${handLimit}）`,
+    );
+    this.host.setPrompt(null);
+    this.finishTurnAfterDiscard();
+    return { ok: true };
+  }
+
+  private getHandLimit(player: EnginePlayerState): number {
+    if (playerHasSkill(player, 'yingzi')) return player.maxHp;
+    return Math.max(0, player.hp);
+  }
+
+  private finishTurnAfterDiscard(): void {
+    const s = this.host.getState();
+    const prev = s.turn.index;
+    s.turn.index = (prev + 1) % s.players.length;
+    if (s.turn.index === 0) s.turn.round += 1;
+    this.host.getFsm().set('judge');
+    s.turn.phase = 'judge';
+    this.host.setPrompt(null);
+    this.beginTurn();
+  }
+
+  dealOpeningHands(count = 4): void {
+    for (const p of this.host.getState().players) {
+      if (p.hp <= 0) continue;
+      const need = Math.max(0, count - p.handCards.length);
+      if (need > 0) {
+        p.handCards.push(...this.host.getDeck().drawMany(need));
+      }
+    }
+  }
+}

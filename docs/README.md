@@ -9,6 +9,8 @@
 | 文档 | 说明 |
 |------|------|
 | [architecture.md](./architecture.md) | 项目架构设计、技术选型（含 NestJS 评估）、卡牌引擎设计 |
+| [engine-core-design.md](./engine-core-design.md) | 配置驱动引擎三层架构、结算堆栈、Rule 模型 |
+| [engine-implementation.md](./engine-implementation.md) | `@tk/engine` 包结构、已实现能力与迁移状态 |
 | [gameplay.md](./gameplay.md) | 身份局玩法规则、阶段流程、胜负条件 |
 | [ui-disguise.md](./ui-disguise.md) | WPS Excel 伪装 UI 设计规范 |
 | [development.md](./development.md) | 本地开发、API、组件与测试房说明 |
@@ -34,15 +36,20 @@
 
 1. **WPS Excel 伪装界面** — 标题栏、Ribbon、公式栏、网格、Sheet 标签与 WPS 表格一致
 2. **房间制在线对战** — 8 位随机房间号，最多 10 人，房间列表 Sheet 实时展示
-3. **模拟测试房** — 固定房间 `70755712`，支持虚拟角色与单连接多控回合演练
+3. **模拟测试房** — 固定房间 `70755712`，支持虚拟角色与单连接多控完整对局演练
 4. **对局战场表格** — 开局后展示用户/武将/手牌/装备/判定/操作日志等列（见 [ui-disguise.md](./ui-disguise.md)）
-5. **配置化卡牌系统（规划中）** — 武将/牌面/技能 YAML 驱动，见 [architecture.md](./architecture.md)
+5. **配置化卡牌引擎** — `packages/engine` 中 `SangokushiEngine` + `ConfigRuleLoader`，见 [engine-core-design.md](./engine-core-design.md)
 
-## 实现进度（M1）
+## 实现进度
 
 | 能力 | 状态 |
 |------|------|
 | NestJS + Socket.IO 房间/聊天 | ✅ |
 | WPS 外壳 + 房间列表 + 战场表格 UI | ✅ |
-| 测试房回合模拟（出牌/结束回合/切换角色） | ✅ |
-| 完整三国杀规则引擎 | 🚧 M2 |
+| `@tk/engine` 包（SangokushiEngine） | ✅ |
+| 测试房：回合 FSM、杀闪桃、伤害栈、受伤后技能 | ✅ |
+| 测试房：过河拆桥/顺手牵羊选区域牌（手牌匿名） | ✅ |
+| 测试房：弹窗交互、自动切控、断线重连 | ✅ |
+| AOE TargetQueue 完整接线 | 🚧 |
+| 30 将技能全量接线 | 🚧 |
+| 正式房间对局（非 sandbox） | 🔲 |

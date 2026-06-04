@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
+import { SangokushiEngine } from '@tk/engine';
 import { v4 as uuidv4 } from 'uuid';
 import {
   MAX_ROOM_PLAYERS,
@@ -8,6 +9,7 @@ import {
   SANDBOX_ROOM_CODE,
   SandboxGameState,
 } from '@tk/shared';
+import { GameService } from '../game/game.service';
 
 const CODE_MIN = 10_000_000;
 const CODE_MAX = 99_999_999;
@@ -18,6 +20,8 @@ export class RoomService implements OnModuleInit {
   private readonly roomsById = new Map<string, Room>();
   private readonly roomIdByCode = new Map<string, string>();
   private readonly playerRoom = new Map<string, string>();
+
+  constructor(private readonly gameService: GameService) {}
 
   onModuleInit() {
     this.ensureSandboxRoom();
@@ -170,25 +174,49 @@ export class RoomService implements OnModuleInit {
 
   joinSandboxRoom(playerId: string, nickname: string): Room {
     const room = this.ensureSandboxRoom();
+    const trimmedNick = nickname.trim() || '玩家';
+
     const existing = room.players.find((p) => p.id === playerId);
     if (existing) {
       existing.connected = true;
-      existing.nickname = nickname.trim() || existing.nickname;
+      existing.nickname = trimmedNick || existing.nickname;
       this.playerRoom.set(playerId, room.id);
+      this.actingPlayerBySocket.set(playerId, playerId);
       return room;
     }
+
+    const rejoin = room.players.find(
+      (p) => !p.isVirtual && p.nickname === trimmedNick && !p.connected,
+    );
+    if (rejoin) {
+      const oldId = rejoin.id;
+      rejoin.id = playerId;
+      rejoin.connected = true;
+      this.playerRoom.delete(oldId);
+      this.playerRoom.set(playerId, room.id);
+      if (room.hostId === oldId) room.hostId = playerId;
+      this.actingPlayerBySocket.set(playerId, playerId);
+      if (room.status === 'playing') {
+        this.gameService.remapSandboxPlayerId(room.id, oldId, playerId);
+        const engine = this.gameService.getSandboxEngine(room.id);
+        if (engine) this.gameService.syncRoomFromEngine(room, engine);
+      }
+      return room;
+    }
+
     if (room.players.length >= room.maxPlayers) {
       throw new RoomError('ROOM_FULL', '房间已满');
     }
     if (!room.hostId) room.hostId = playerId;
     room.players.push({
       id: playerId,
-      nickname: nickname.trim() || `测试员${room.players.length + 1}`,
+      nickname: trimmedNick || `测试员${room.players.length + 1}`,
       ready: true,
       connected: true,
       handCards: [],
     });
     this.playerRoom.set(playerId, room.id);
+    this.actingPlayerBySocket.set(playerId, playerId);
     return room;
   }
 
@@ -262,55 +290,246 @@ export class RoomService implements OnModuleInit {
       throw new RoomError('NOT_ENOUGH_PLAYERS', '请至少添加 1 名角色');
     }
     room.status = 'playing';
+    const sampleGenerals = [
+      '界刘备',
+      '界关羽',
+      '界赵云',
+      '界曹操',
+      '界司马懿',
+      '孙权',
+      '界周瑜',
+      '界吕布',
+    ];
     const sampleEquip = [
-      ['的卢马', '诸葛连弩'],
+      ['的卢', '诸葛连弩'],
       ['仁王盾'],
       [],
       ['青龙偃月刀'],
       [],
     ];
+    let lordAssigned = false;
     room.players.forEach((p, i) => {
       p.seat = i + 1;
-      p.role = i === 0 ? '主公' : '反贼';
+      if (!lordAssigned && !p.isVirtual) {
+        p.role = '主公';
+        lordAssigned = true;
+      } else if (!p.role) {
+        p.role = '反贼';
+      }
       p.maxHp = 4;
-      p.hp = 4;
+      p.hp = p.role === '主公' ? 5 : 4;
       p.equipment = sampleEquip[i % sampleEquip.length] ?? [];
-      p.judgeCards = i === 2 ? ['乐不思蜀'] : i === 4 ? ['闪电'] : [];
+      p.judgeCards = i === 2 ? ['乐不思蜀'] : [];
       if (!p.handCards?.length) {
         p.handCards = ['杀', '闪', '桃', '酒', '过河拆桥'];
       }
-      if (!p.general) p.general = p.nickname;
+      if (!p.general) {
+        p.general = sampleGenerals[i % sampleGenerals.length] ?? p.nickname;
+      }
     });
-    const first = room.players[0];
+    if (!room.players.some((p) => p.role === '主公')) {
+      room.players[0]!.role = '主公';
+      room.players[0]!.hp = 5;
+      room.players[0]!.maxHp = 5;
+    }
+
+    const lordIndex = SangokushiEngine.findLordIndex(room.players);
+    const lord = room.players[lordIndex]!;
     room.sandbox = {
       phase: 'playing',
-      turnIndex: 0,
+      turnIndex: lordIndex,
       round: 1,
-      log: [
-        `【回合一】${first.general ?? first.nickname}的出牌阶段：`,
-        `—— 等待 ${first.nickname} 出牌，点击 E 列手牌或上方「出牌」按钮`,
-      ],
+      turnPhase: 'judge',
+      log: [],
+      prompt: null,
     };
+
+    const engine = this.gameService.createSandboxEngine(room);
+    engine.start();
+    this.gameService.syncRoomFromEngine(room, engine);
     return room;
   }
 
-  sandboxPlayCard(actingPlayerId: string, card: string): Room {
-    const room = this.getRoomByPlayerId(actingPlayerId);
+  private requireSandboxEngine(room: Room): SangokushiEngine {
+    const engine = this.gameService.getSandboxEngine(room.id);
+    if (!engine) {
+      throw new RoomError('ENGINE_MISSING', '对局引擎未初始化');
+    }
+    return engine;
+  }
+
+  sandboxPlayCard(
+    socketPlayerId: string,
+    actingPlayerId: string,
+    card: string,
+    handIndex?: number,
+  ): Room {
+    const room = this.getRoomByPlayerId(socketPlayerId);
     if (!room.isSandbox || room.status !== 'playing' || !room.sandbox) {
       throw new RoomError('NOT_PLAYING', '对局未开始');
     }
-    const current = room.players[room.sandbox.turnIndex];
-    if (current.id !== actingPlayerId) {
-      throw new RoomError('NOT_YOUR_TURN', `当前回合：${current.nickname}`);
-    }
     const trimmed = card.trim();
     if (!trimmed) throw new RoomError('INVALID_CARD', '请输入牌名');
-    if (!current.handCards) current.handCards = [];
-    const idx = current.handCards.indexOf(trimmed);
-    if (idx >= 0) current.handCards.splice(idx, 1);
-    const n = room.sandbox.log.filter((l) => l.match(/^\d+\./)).length + 1;
-    room.sandbox.log.unshift(`${n}. 使用【${trimmed}】`);
-    if (room.sandbox.log.length > 40) room.sandbox.log.length = 40;
+
+    const engine = this.requireSandboxEngine(room);
+    const res = engine.initiatePlayCard(actingPlayerId, trimmed, handIndex);
+    if (!res.ok) throw new RoomError('PLAY_FAILED', res.error ?? '无法出牌');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  async sandboxConfirmPlay(
+    socketPlayerId: string,
+    actingPlayerId: string,
+    promptId: string,
+    choiceId: string,
+  ): Promise<Room> {
+    const room = this.getRoomByPlayerId(socketPlayerId);
+    if (!room.isSandbox || room.status !== 'playing') {
+      throw new RoomError('NOT_PLAYING', '对局未开始');
+    }
+    const engine = this.requireSandboxEngine(room);
+    const res = await engine.submitPromptChoice(actingPlayerId, promptId, choiceId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '操作失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  async sandboxSelectTargets(
+    socketPlayerId: string,
+    actingPlayerId: string,
+    promptId: string,
+    targetIds: string[],
+  ): Promise<Room> {
+    const room = this.getRoomByPlayerId(socketPlayerId);
+    const engine = this.requireSandboxEngine(room);
+    const res = await engine.selectTargets(actingPlayerId, promptId, targetIds);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '选目标失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  async sandboxSubmitResponse(
+    socketPlayerId: string,
+    actingPlayerId: string,
+    promptId: string,
+    choiceId: string,
+  ): Promise<Room> {
+    const room = this.getRoomByPlayerId(socketPlayerId);
+    const engine = this.requireSandboxEngine(room);
+    const res = await engine.submitResponse(actingPlayerId, promptId, choiceId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '响应失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  sandboxUseSkill(
+    socketPlayerId: string,
+    actingPlayerId: string,
+    skillId: string,
+  ): Room {
+    const room = this.getRoomByPlayerId(socketPlayerId);
+    const engine = this.requireSandboxEngine(room);
+    const res = engine.initiateSkill(actingPlayerId, skillId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '技能失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  sandboxRendeGive(
+    socketPlayerId: string,
+    actingPlayerId: string,
+    targetId: string,
+    cards: string[],
+    handIndices?: number[],
+  ): Room {
+    const room = this.getRoomByPlayerId(socketPlayerId);
+    const engine = this.requireSandboxEngine(room);
+    const res = engine.rendeGive(
+      actingPlayerId,
+      targetId,
+      cards.map((c) => c.trim()).filter(Boolean),
+      handIndices,
+    );
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '仁德失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  sandboxRendeFinish(socketPlayerId: string, actingPlayerId: string): Room {
+    const room = this.getRoomByPlayerId(socketPlayerId);
+    const engine = this.requireSandboxEngine(room);
+    const res = engine.rendeFinish(actingPlayerId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '无法结束仁德');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  sandboxZhihengConfirm(
+    socketPlayerId: string,
+    actingPlayerId: string,
+    handIndices: number[],
+  ): Room {
+    const room = this.getRoomByPlayerId(socketPlayerId);
+    const engine = this.requireSandboxEngine(room);
+    const res = engine.zhihengConfirm(actingPlayerId, handIndices);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '制衡失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  sandboxModifyJudge(
+    socketPlayerId: string,
+    actingPlayerId: string,
+    promptId: string,
+    handIndex: number,
+  ): Room {
+    const room = this.getRoomByPlayerId(socketPlayerId);
+    const engine = this.requireSandboxEngine(room);
+    const res = engine.submitModifyJudge(actingPlayerId, promptId, handIndex);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '改判失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  sandboxSkipModifyJudge(
+    socketPlayerId: string,
+    actingPlayerId: string,
+    promptId: string,
+  ): Room {
+    const room = this.getRoomByPlayerId(socketPlayerId);
+    const engine = this.requireSandboxEngine(room);
+    const res = engine.skipModifyJudge(actingPlayerId, promptId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '操作失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  sandboxDiscardCards(
+    socketPlayerId: string,
+    actingPlayerId: string,
+    promptId: string,
+    handIndices: number[],
+  ): Room {
+    const room = this.getRoomByPlayerId(socketPlayerId);
+    const engine = this.requireSandboxEngine(room);
+    const res = engine.submitDiscard(actingPlayerId, promptId, handIndices);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '弃牌失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  sandboxSelectZoneCard(
+    socketPlayerId: string,
+    actingPlayerId: string,
+    promptId: string,
+    choiceId: string,
+  ): Room {
+    const room = this.getRoomByPlayerId(socketPlayerId);
+    const engine = this.requireSandboxEngine(room);
+    const res = engine.submitZoneCard(actingPlayerId, promptId, choiceId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '选牌失败');
+    this.gameService.syncRoomFromEngine(room, engine);
     return room;
   }
 
@@ -330,37 +549,16 @@ export class RoomService implements OnModuleInit {
     return room;
   }
 
-  sandboxEndTurn(actingPlayerId: string): Room {
-    const room = this.getRoomByPlayerId(actingPlayerId);
+  sandboxEndTurn(socketPlayerId: string, actingPlayerId: string): Room {
+    const room = this.getRoomByPlayerId(socketPlayerId);
     if (!room.isSandbox || room.status !== 'playing' || !room.sandbox) {
       throw new RoomError('NOT_PLAYING', '对局未开始');
     }
-    const current = room.players[room.sandbox.turnIndex];
-    if (current.id !== actingPlayerId) {
-      throw new RoomError('NOT_YOUR_TURN', `当前回合：${current.nickname}`);
-    }
-    room.sandbox.log.unshift(`${current.nickname} 结束出牌阶段`);
-    this.advanceSandboxTurn(room);
+    const engine = this.requireSandboxEngine(room);
+    const res = engine.endTurn(actingPlayerId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '无法结束回合');
+    this.gameService.syncRoomFromEngine(room, engine);
     return room;
-  }
-
-  private advanceSandboxTurn(room: Room) {
-    if (!room.sandbox || room.players.length === 0) return;
-    const prev = room.sandbox.turnIndex;
-    room.sandbox.turnIndex = (prev + 1) % room.players.length;
-    if (room.sandbox.turnIndex === 0) {
-      room.sandbox.round += 1;
-    }
-    const next = room.players[room.sandbox.turnIndex];
-    const roundLabel = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'][
-      Math.min(room.sandbox.round - 1, 9)
-    ];
-    room.sandbox.log.unshift(
-      `【回合${roundLabel}】${next.general ?? next.nickname}的出牌阶段：`,
-    );
-    room.sandbox.log.unshift(
-      `—— 等待 ${next.nickname} 出牌`,
-    );
   }
 
   listPublicRooms(): RoomListItem[] {
@@ -420,6 +618,7 @@ export class RoomService implements OnModuleInit {
   }
 
   private deleteRoom(room: Room): void {
+    this.gameService.destroyEngine(room.id);
     this.roomsById.delete(room.id);
     this.roomIdByCode.delete(room.code);
     for (const p of room.players) {

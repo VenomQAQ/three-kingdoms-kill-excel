@@ -11,15 +11,17 @@
 | WPS Excel 外壳 | ✅ | 标题栏、Ribbon「开始」、公式栏、Sheet 标签、状态栏 |
 | 房间列表 Sheet | ✅ | 展示等待中/游戏中房间、人数，点击房间号加入 |
 | 房间 + 聊天 | ✅ | 创建/加入/准备/开局、WebSocket 实时同步 |
-| 模拟测试房 | ✅ | 固定房间号 `70755712`，单连接多角色、回合模拟 |
+| 模拟测试房 | ✅ | 固定房间号 `70755712`，单连接多角色、完整回合与弹窗交互 |
 | 对局战场表格 | ✅ | 开局后切换为 Excel 式战场（用户/武将/手牌/装备/操作区） |
-| 完整卡牌引擎 | 🚧 | 见 [架构文档](./docs/architecture.md) M2 |
+| 配置驱动引擎 `@tk/engine` | ✅ | `SangokushiEngine`：杀闪桃、锦囊、受伤后技能、选区域牌 |
+| 完整身份局（在线多人） | 🚧 | 正式房间对局流程待接 Gateway |
 
 ## 技术栈
 
 - **前端**：React 19 + TypeScript + Vite + Zustand
 - **后端**：NestJS + Socket.IO
 - **共享类型**：`packages/shared`（`@tk/shared`）
+- **规则引擎**：`packages/engine`（`@tk/engine`，配置驱动 `SangokushiEngine`）
 
 ## 快速开始
 
@@ -93,14 +95,22 @@ npm run build
 2. 输入角色名 → **添加角色**（可添加多名虚拟玩家）
 3. **模拟开局** → 界面切换为战场表格
 4. 在操作条 **操控** 下拉框选择当前角色；轮到自己时点击手牌或 **结束回合**
-5. A 出完牌后切换到 B 继续操作，实现单人多控测试
+5. 回合结束后操控会自动切到下一角色；弹窗（响应/选目标/选区域牌等）出现时也会自动切到对应角色
+6. 支持：【杀】/【闪】响应、伤害与【反馈】【奸雄】等受伤后技能、过河拆桥/顺手牵羊选区域牌（手牌匿名+乱序）、弃牌阶段、改判等
+
+### 测试房断线重连
+
+- 刷新页面后再次进入 `70755712`，按**昵称**匹配已断线的真人玩家，不会重复创建「表格用户」
+- 对局进行中重连时，引擎内玩家 id 与 prompt 上下文会同步迁移
 
 ## 项目结构
 
 ```
-├── client/          # React 前端（WPS UI、表格组件）
-├── server/          # NestJS + Socket.IO
-├── packages/shared/ # 前后端共享类型与常量
+├── client/          # React 前端（WPS UI、表格组件、GamePromptModal）
+├── server/          # NestJS + Socket.IO（RoomService + GameService）
+├── packages/
+│   ├── shared/      # 前后端共享类型与 Socket 事件
+│   └── engine/      # SangokushiEngine 配置驱动规则引擎
 └── docs/            # 设计文档
 ```
 
@@ -109,6 +119,8 @@ npm run build
 完整设计见 [docs/README.md](./docs/README.md)：
 
 - [架构设计](./docs/architecture.md)
+- [引擎核心设计](./docs/engine-core-design.md)
+- [引擎实现说明](./docs/engine-implementation.md)
 - [玩法设计](./docs/gameplay.md)
 - [WPS 伪装 UI](./docs/ui-disguise.md)
 - [开发说明](./docs/development.md)

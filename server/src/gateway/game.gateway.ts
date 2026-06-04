@@ -216,13 +216,227 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('sandbox:playCard')
   handleSandboxPlay(
     @ConnectedSocket() client: GameSocket,
-    @MessageBody() payload: { card: string },
+    @MessageBody() payload: { card: string; handIndex?: number },
   ) {
-    const playerId = this.getActingPlayerId(client);
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
     try {
       const room = this.roomService.sandboxPlayCard(
-        playerId,
+        socketId,
+        actingId,
         payload?.card ?? '',
+        payload?.handIndex,
+      );
+      this.server.to(room.id).emit('room:state', room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  @SubscribeMessage('sandbox:confirmPlay')
+  async handleSandboxConfirm(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string; choiceId: string },
+  ) {
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
+    try {
+      const room = await this.roomService.sandboxConfirmPlay(
+        socketId,
+        actingId,
+        payload?.promptId ?? '',
+        payload?.choiceId ?? '',
+      );
+      this.server.to(room.id).emit('room:state', room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  @SubscribeMessage('sandbox:selectTargets')
+  async handleSandboxTargets(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string; targetIds: string[] },
+  ) {
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
+    try {
+      const room = await this.roomService.sandboxSelectTargets(
+        socketId,
+        actingId,
+        payload?.promptId ?? '',
+        payload?.targetIds ?? [],
+      );
+      this.server.to(room.id).emit('room:state', room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  @SubscribeMessage('sandbox:submitResponse')
+  async handleSandboxResponse(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string; choiceId: string },
+  ) {
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
+    try {
+      const room = await this.roomService.sandboxSubmitResponse(
+        socketId,
+        actingId,
+        payload?.promptId ?? '',
+        payload?.choiceId ?? '',
+      );
+      this.server.to(room.id).emit('room:state', room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  @SubscribeMessage('sandbox:useSkill')
+  handleSandboxSkill(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { skillId: string },
+  ) {
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
+    try {
+      const room = this.roomService.sandboxUseSkill(
+        socketId,
+        actingId,
+        payload?.skillId ?? '',
+      );
+      this.server.to(room.id).emit('room:state', room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  @SubscribeMessage('sandbox:rendeGive')
+  handleSandboxRende(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody()
+    payload: { targetId: string; cards: string[]; handIndices?: number[] },
+  ) {
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
+    try {
+      const room = this.roomService.sandboxRendeGive(
+        socketId,
+        actingId,
+        payload?.targetId ?? '',
+        payload?.cards ?? [],
+        payload?.handIndices,
+      );
+      this.server.to(room.id).emit('room:state', room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  @SubscribeMessage('sandbox:rendeFinish')
+  handleSandboxRendeFinish(@ConnectedSocket() client: GameSocket) {
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
+    try {
+      const room = this.roomService.sandboxRendeFinish(socketId, actingId);
+      this.server.to(room.id).emit('room:state', room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  @SubscribeMessage('sandbox:zhihengConfirm')
+  handleSandboxZhiheng(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { handIndices: number[] },
+  ) {
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
+    try {
+      const room = this.roomService.sandboxZhihengConfirm(
+        socketId,
+        actingId,
+        payload?.handIndices ?? [],
+      );
+      this.server.to(room.id).emit('room:state', room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  @SubscribeMessage('sandbox:modifyJudge')
+  handleSandboxModifyJudge(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string; handIndex: number },
+  ) {
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
+    try {
+      const room = this.roomService.sandboxModifyJudge(
+        socketId,
+        actingId,
+        payload?.promptId ?? '',
+        payload?.handIndex ?? -1,
+      );
+      this.server.to(room.id).emit('room:state', room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  @SubscribeMessage('sandbox:skipModifyJudge')
+  handleSandboxSkipModifyJudge(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string },
+  ) {
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
+    try {
+      const room = this.roomService.sandboxSkipModifyJudge(
+        socketId,
+        actingId,
+        payload?.promptId ?? '',
+      );
+      this.server.to(room.id).emit('room:state', room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  @SubscribeMessage('sandbox:discardCards')
+  handleSandboxDiscard(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string; handIndices: number[] },
+  ) {
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
+    try {
+      const room = this.roomService.sandboxDiscardCards(
+        socketId,
+        actingId,
+        payload?.promptId ?? '',
+        payload?.handIndices ?? [],
+      );
+      this.server.to(room.id).emit('room:state', room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  @SubscribeMessage('sandbox:selectZoneCard')
+  handleSandboxSelectZoneCard(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string; choiceId: string },
+  ) {
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
+    try {
+      const room = this.roomService.sandboxSelectZoneCard(
+        socketId,
+        actingId,
+        payload?.promptId ?? '',
+        payload?.choiceId ?? '',
       );
       this.server.to(room.id).emit('room:state', room);
     } catch (err) {
@@ -250,9 +464,10 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('sandbox:endTurn')
   handleSandboxEndTurn(@ConnectedSocket() client: GameSocket) {
-    const playerId = this.getActingPlayerId(client);
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
     try {
-      const room = this.roomService.sandboxEndTurn(playerId);
+      const room = this.roomService.sandboxEndTurn(socketId, actingId);
       this.server.to(room.id).emit('room:state', room);
     } catch (err) {
       this.emitError(client, err);

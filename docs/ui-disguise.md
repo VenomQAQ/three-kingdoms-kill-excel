@@ -109,7 +109,25 @@
 - `Ctrl+Shift+H`：瞬间切到 Sheet1 假表格，暂停渲染游戏动画
 - 再次按下恢复
 
-### 5.4 聊天
+### 5.4 引擎弹窗（GamePromptModal）
+
+对局中有 `room.sandbox.prompt` 时，表格上方弹出 WPS 风格对话框（非全屏遮罩游戏感）：
+
+| 弹窗标题 | 场景 |
+|----------|------|
+| 出牌确认 | 确认/取消打出 |
+| 选择目标 | 杀、决斗、过河拆桥等选角色 |
+| 响应 | 出闪/杀或承受效果 |
+| 选择区域牌 | 过河拆桥/顺手牵羊：手牌显示「手牌 N」（匿名+乱序），装备明牌 |
+| 弃牌阶段 | 选手牌弃置 |
+| 改判 | 鬼才打出一张手牌 |
+| 发动技能 | 反馈/奸雄等是否发动；仁德/制衡多步 |
+
+- 弹窗出现时客户端自动 `switchActor` 到 `prompt.playerId`
+- 回合结束后自动切到当前回合角色
+- 选区域牌弹窗支持**取消**
+
+### 5.5 聊天
 
 - 公式栏输入文字 Enter → 发送到房间
 - 消息显示在公式栏下方窄条或「审阅」侧栏
@@ -132,6 +150,9 @@
   </Grid>
   <SheetTabs active={activeSheet} />
   <StatusBar roomCode={room.code} />
+  {gamePrompt && (
+    <GamePromptModal prompt={gamePrompt} … />  /* 对局弹窗 */
+  )}
 </SpreadsheetShell>
 ```
 

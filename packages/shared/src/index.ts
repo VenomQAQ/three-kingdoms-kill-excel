@@ -25,12 +25,62 @@ export interface RoomPlayer {
   judgeCards?: string[];
 }
 
+export type TurnPhase =
+  | 'judge'
+  | 'before_draw'
+  | 'draw'
+  | 'play'
+  | 'discard'
+  | 'end';
+
+export type PromptType =
+  | 'use_skill'
+  | 'play_card_confirm'
+  | 'select_targets'
+  | 'response'
+  | 'discard_cards'
+  | 'modify_judge'
+  | 'select_zone_card';
+
+export interface PromptSkillInfo {
+  id: string;
+  name: string;
+  description: string;
+  type: string;
+}
+
+export interface GamePrompt {
+  id: string;
+  type: PromptType;
+  playerId: string;
+  cardId?: string;
+  cardName?: string;
+  skillId?: string;
+  skillName?: string;
+  sourcePlayerId?: string;
+  targetPlayerIds?: string[];
+  validTargetIds?: string[];
+  validResponseCards?: string[];
+  discardCount?: number;
+  discardHandIndices?: number[];
+  zoneCardOptions?: { id: string; label: string }[];
+  characterSkills?: PromptSkillInfo[];
+  judgeCardName?: string;
+  judgeResult?: string;
+  judgeTargetId?: string;
+  message: string;
+  options?: { id: string; label: string }[];
+}
+
 export interface SandboxGameState {
   phase: 'lobby' | 'playing';
   turnIndex: number;
   round: number;
+  turnPhase?: TurnPhase;
   /** 最近操作记录（表格中展示） */
   log: string[];
+  /** 等待玩家操作的 UI 提示（由引擎下发） */
+  prompt?: GamePrompt | null;
 }
 
 export interface RoomSettings {
@@ -82,7 +132,22 @@ export interface ClientToServerEvents {
   'sandbox:removePlayer': (payload: { playerId: string }) => void;
   'sandbox:switchActor': (payload: { playerId: string }) => void;
   'sandbox:start': () => void;
-  'sandbox:playCard': (payload: { card: string }) => void;
+  'sandbox:playCard': (payload: { card: string; handIndex?: number }) => void;
+  'sandbox:confirmPlay': (payload: { promptId: string; choiceId: string }) => void;
+  'sandbox:selectTargets': (payload: { promptId: string; targetIds: string[] }) => void;
+  'sandbox:submitResponse': (payload: { promptId: string; choiceId: string }) => void;
+  'sandbox:useSkill': (payload: { skillId: string }) => void;
+  'sandbox:rendeGive': (payload: {
+    targetId: string;
+    cards: string[];
+    handIndices?: number[];
+  }) => void;
+  'sandbox:rendeFinish': () => void;
+  'sandbox:zhihengConfirm': (payload: { handIndices: number[] }) => void;
+  'sandbox:modifyJudge': (payload: { promptId: string; handIndex: number }) => void;
+  'sandbox:skipModifyJudge': (payload: { promptId: string }) => void;
+  'sandbox:discardCards': (payload: { promptId: string; handIndices: number[] }) => void;
+  'sandbox:selectZoneCard': (payload: { promptId: string; choiceId: string }) => void;
   'sandbox:addCard': (payload: { playerId: string; card: string }) => void;
   'sandbox:endTurn': () => void;
   'chat:send': (payload: { content: string }) => void;

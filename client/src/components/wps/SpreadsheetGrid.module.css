@@ -196,11 +196,22 @@
 }
 
 .logCell {
-  white-space: pre-wrap;
-  line-height: 1.5;
-  min-height: 22px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.45;
+  min-height: 28px;
   height: auto;
-  padding: 4px 8px;
+  padding: 6px 10px;
   color: #333;
   text-align: left;
+  font-size: 12px;
+}
+
+.logRow .logCell {
+  flex: 1 1 auto;
+  min-width: 480px;
+  max-width: none;
 }

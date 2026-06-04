@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CharacterRegistry } from '@tk/engine';
+import type { RoomPlayer } from '@tk/shared';
+import type { HandCardPick } from './types/hand';
 import { TitleBar } from './components/wps/TitleBar';
+import { CharacterSkillModal } from './components/wps/CharacterSkillModal';
+import { GamePromptModal } from './components/wps/GamePromptModal';
 import { Ribbon, RibbonAction } from './components/wps/Ribbon';
 import { InfoBar } from './components/wps/InfoBar';
 import { PlayControlBar } from './components/wps/PlayControlBar';
@@ -23,9 +28,10 @@ function App() {
   const [activeSheet, setActiveSheet] = useState<SheetId>('sheet1');
   const [bossMode, setBossMode] = useState(false);
   const [selectedCell, setSelectedCell] = useState('A1');
-  const [selectedCard, setSelectedCard] = useState<string | null>(null);
+  const [selectedHand, setSelectedHand] = useState<HandCardPick | null>(null);
   const [formulaInput, setFormulaInput] = useState('');
   const [sandboxCharName, setSandboxCharName] = useState('');
+  const [skillModalPlayer, setSkillModalPlayer] = useState<RoomPlayer | null>(null);
 
   const {
     connect,
@@ -48,6 +54,17 @@ function App() {
     sandboxSwitchActor,
     sandboxStart,
     sandboxPlayCard,
+    sandboxConfirmPlay,
+    sandboxSelectTargets,
+    sandboxSubmitResponse,
+    sandboxUseSkill,
+    sandboxRendeGive,
+    sandboxRendeFinish,
+    sandboxZhihengConfirm,
+    sandboxModifyJudge,
+    sandboxSkipModifyJudge,
+    sandboxDiscardCards,
+    sandboxSelectZoneCard,
     sandboxEndTurn,
     sendChat,
     chatMessages,
@@ -92,19 +109,117 @@ function App() {
     room?.sandbox != null && isPlaying
       ? room.players[room.sandbox.turnIndex]
       : null;
-  const canOperate =
+  const gamePrompt = room?.sandbox?.prompt ?? null;
+  const turnPhase = room?.sandbox?.turnPhase;
+  const canOperateTurn =
     isPlaying && turnPlayer != null && actingId === turnPlayer.id;
+  const canPlayCards =
+    canOperateTurn && (turnPhase === 'play' || !turnPhase) && !gamePrompt;
+
+  const PHASE_LABEL: Record<string, string> = {
+    judge: '判定阶段',
+    before_draw: '摸牌前',
+    draw: '摸牌阶段',
+    play: '出牌阶段',
+    discard: '弃牌阶段',
+    end: '结束阶段',
+  };
   const isHost = room?.hostId === playerId;
+  const prevTurnIndexRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (gamePrompt && gamePrompt.playerId !== actingId) {
+      sandboxSwitchActor(gamePrompt.playerId);
+    }
+  }, [gamePrompt?.id, gamePrompt?.playerId, actingId, sandboxSwitchActor]);
+
+  /** 回合结束后自动切换操控到当前回合角色 */
+  useEffect(() => {
+    if (!isPlaying || !isSandbox || !room?.sandbox) {
+      prevTurnIndexRef.current = null;
+      return;
+    }
+    const turnIdx = room.sandbox.turnIndex;
+    if (prevTurnIndexRef.current === null) {
+      prevTurnIndexRef.current = turnIdx;
+      return;
+    }
+    if (prevTurnIndexRef.current !== turnIdx) {
+      prevTurnIndexRef.current = turnIdx;
+      const nextPlayer = room.players[turnIdx];
+      if (nextPlayer && actingId !== nextPlayer.id) {
+        sandboxSwitchActor(nextPlayer.id);
+      }
+    }
+  }, [
+    room?.sandbox?.turnIndex,
+    room?.players,
+    isPlaying,
+    isSandbox,
+    actingId,
+    sandboxSwitchActor,
+  ]);
+
+  useEffect(() => {
+    if (gamePrompt) setSelectedHand(null);
+  }, [gamePrompt?.id]);
+
+  const resolveHandIndex = useCallback(
+    (card: string, handIndex?: number) => {
+      const hand = actingPlayer?.handCards ?? [];
+      if (
+        handIndex != null &&
+        handIndex >= 0 &&
+        handIndex < hand.length &&
+        hand[handIndex] === card
+      ) {
+        return handIndex;
+      }
+      if (selectedHand?.name === card) return selectedHand.index;
+      return hand.indexOf(card);
+    },
+    [actingPlayer?.handCards, selectedHand],
+  );
 
   const handlePlayCard = useCallback(
-    (card: string) => {
-      setSelectedCard(card);
-      if (isSandbox && canOperate) {
-        sandboxPlayCard(card);
+    (card: string, handIndex?: number) => {
+      const idx = resolveHandIndex(card, handIndex);
+      if (idx >= 0) setSelectedHand({ name: card, index: idx });
+      if (!isSandbox || !isPlaying) return;
+      if (!canOperateTurn) {
+        useAppStore.setState({ lastError: '请用「操控」下拉框切换到当前回合角色' });
+        return;
       }
+      if (gamePrompt) {
+        useAppStore.setState({ lastError: '请先完成当前弹窗（确认/选目标/响应/仁德/弃牌）' });
+        return;
+      }
+      if (turnPhase && turnPhase !== 'play') {
+        useAppStore.setState({
+          lastError: `当前为${PHASE_LABEL[turnPhase] ?? turnPhase}，须在出牌阶段打出`,
+        });
+        return;
+      }
+      sandboxPlayCard(card, idx >= 0 ? idx : undefined);
     },
-    [isSandbox, canOperate, sandboxPlayCard],
+    [
+      isSandbox,
+      isPlaying,
+      canOperateTurn,
+      gamePrompt,
+      turnPhase,
+      sandboxPlayCard,
+      resolveHandIndex,
+    ],
   );
+
+  const handleSelectHand = useCallback((card: string, index: number) => {
+    setSelectedHand((prev) =>
+      prev?.index === index ? null : { name: card, index },
+    );
+  }, []);
+
+  const sandboxGenerals = useMemo(() => CharacterRegistry.getAll(), []);
 
   const handleRibbonAction = useCallback(
     async (id: string) => {
@@ -119,7 +234,7 @@ function App() {
         case 'leave':
           leaveRoom();
           setActiveSheet('sheet1');
-          setSelectedCard(null);
+          setSelectedHand(null);
           break;
         case 'ready':
           toggleReady();
@@ -129,9 +244,9 @@ function App() {
           else startGame();
           break;
         case 'addChar': {
-          const name =
-            sandboxCharName.trim() || `角色${(room?.players.length ?? 0) + 1}`;
-          sandboxAddPlayer(name, name);
+          const general = sandboxCharName.trim();
+          const name = general || `角色${(room?.players.length ?? 0) + 1}`;
+          sandboxAddPlayer(name, general || name);
           setSandboxCharName('');
           break;
         }
@@ -139,11 +254,11 @@ function App() {
           sandboxRemoveLastVirtual();
           break;
         case 'playCard':
-          if (selectedCard) handlePlayCard(selectedCard);
+          if (selectedHand) handlePlayCard(selectedHand.name, selectedHand.index);
           break;
         case 'endTurn':
           sandboxEndTurn();
-          setSelectedCard(null);
+          setSelectedHand(null);
           break;
         case 'switchNext': {
           if (!room) break;
@@ -169,7 +284,7 @@ function App() {
       sandboxEndTurn,
       sandboxSwitchActor,
       handlePlayCard,
-      selectedCard,
+      selectedHand,
       sandboxCharName,
       room,
       actingId,
@@ -187,13 +302,13 @@ function App() {
           id: 'playCard',
           label: '打出',
           icon: '🃏',
-          disabled: !canOperate || !selectedCard,
+          disabled: !canPlayCards || !selectedHand,
         },
         {
           id: 'endTurn',
           label: '结束回合',
           icon: '⏭',
-          disabled: !canOperate,
+          disabled: !canOperateTurn || !!gamePrompt,
         },
         {
           id: 'switchNext',
@@ -228,7 +343,7 @@ function App() {
       );
     }
     return base;
-  }, [room, isSandbox, isHost, isPlaying, canOperate, selectedCard]);
+  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand]);
 
   const handleFormulaSubmit = useCallback(async () => {
     const raw = formulaInput.trim();
@@ -257,7 +372,7 @@ function App() {
         case 'leave':
           leaveRoom();
           setActiveSheet('sheet1');
-          setSelectedCard(null);
+          setSelectedHand(null);
           break;
         case 'ready':
           toggleReady();
@@ -279,7 +394,7 @@ function App() {
         }
         case 'end':
           sandboxEndTurn();
-          setSelectedCard(null);
+          setSelectedHand(null);
           break;
         default:
           if (room) sendChat(raw);
@@ -346,14 +461,16 @@ function App() {
         <PlayControlBar
           actingPlayer={actingPlayer}
           turnPlayer={turnPlayer ?? undefined}
-          selectedCard={selectedCard}
-          canOperate={canOperate}
+          turnPhase={turnPhase}
+          selectedHand={selectedHand}
+          canOperate={canOperateTurn && !gamePrompt}
           players={room.players}
-          onSelectCard={setSelectedCard}
+          onSelectHand={handleSelectHand}
           onPlayCard={handlePlayCard}
+          onUseSkill={(id) => sandboxUseSkill(id)}
           onEndTurn={() => {
             sandboxEndTurn();
-            setSelectedCard(null);
+            setSelectedHand(null);
           }}
           onSwitchActor={(id) => sandboxSwitchActor(id)}
         />
@@ -361,15 +478,19 @@ function App() {
       {isSandbox && room && !isPlaying && (
         <div className={styles.sandboxInput}>
           <label>
-            新角色名
-            <input
+            添加武将
+            <select
+              className={styles.sandboxSelect}
               value={sandboxCharName}
               onChange={(e) => setSandboxCharName(e.target.value)}
-              placeholder="如：刘备"
-              onKeyDown={(e) =>
-                e.key === 'Enter' && handleRibbonAction('addChar')
-              }
-            />
+            >
+              <option value="">请选择武将</option>
+              {sandboxGenerals.map((ch) => (
+                <option key={ch.id} value={ch.name}>
+                  {ch.name}
+                </option>
+              ))}
+            </select>
           </label>
           <span className={styles.sandboxHint}>
             添加角色后点击「模拟开局」，对局将切换为图 2 式战场表格
@@ -383,9 +504,11 @@ function App() {
         onSubmit={handleFormulaSubmit}
         placeholder={
           isPlaying && isSandbox
-            ? canOperate
-              ? '输入牌名 Enter 出牌 · 或点击上方手牌 · 「结束回合」按钮结束'
-              : `请切换操控到「${turnPlayer?.nickname}」再出牌`
+            ? canPlayCards
+              ? '输入牌名 Enter 出牌 · 或点击「打出选中」确认弹窗 · 「结束回合」结束'
+              : gamePrompt
+                ? '请按弹窗完成操作（响应/选目标/确认）'
+                : `请切换操控到「${turnPlayer?.nickname}」再出牌`
             : room
               ? '聊天或 /ready /start /add 角色名'
               : '/create · /join 房间号 · /sandbox 测试房'
@@ -403,10 +526,11 @@ function App() {
             playerId={playerId}
             actingPlayerId={actingId}
             selectedCell={selectedCell}
-            selectedCard={selectedCard}
+            selectedHand={selectedHand}
             onSelectCell={setSelectedCell}
-            onSelectCard={setSelectedCard}
+            onSelectHand={handleSelectHand}
             onPlayCard={handlePlayCard}
+            onViewSkills={setSkillModalPlayer}
           />
         ) : displaySheet === 'sheet1' ? (
           <RoomListGrid
@@ -433,6 +557,31 @@ function App() {
         playerCount={room?.players.length}
         zoom={100}
       />
+      {skillModalPlayer && (
+        <CharacterSkillModal
+          player={skillModalPlayer}
+          onClose={() => setSkillModalPlayer(null)}
+        />
+      )}
+      {isPlaying && isSandbox && room && gamePrompt && (
+        <GamePromptModal
+          room={room}
+          prompt={gamePrompt}
+          actingPlayer={actingPlayer}
+          onConfirmPlay={(pid, cid) => sandboxConfirmPlay(pid, cid)}
+          onSelectTargets={(pid, ids) => sandboxSelectTargets(pid, ids)}
+          onSubmitResponse={(pid, cid) => sandboxSubmitResponse(pid, cid)}
+          onRendeGive={(tid, cards, indices) =>
+            sandboxRendeGive(tid, cards, indices)
+          }
+          onRendeFinish={() => sandboxRendeFinish()}
+          onZhihengConfirm={(indices) => sandboxZhihengConfirm(indices)}
+          onModifyJudge={(pid, idx) => sandboxModifyJudge(pid, idx)}
+          onSkipModifyJudge={(pid) => sandboxSkipModifyJudge(pid)}
+          onDiscardCards={(pid, indices) => sandboxDiscardCards(pid, indices)}
+          onSelectZoneCard={(pid, choiceId) => sandboxSelectZoneCard(pid, choiceId)}
+        />
+      )}
     </div>
   );
 }
