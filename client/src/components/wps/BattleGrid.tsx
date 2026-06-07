@@ -1,20 +1,20 @@
-import { Room, RoomPlayer } from '@tk/shared';
+import { CardRegistry } from '@tk/engine';
+import { ChatMessage, Room, RoomPlayer } from '@tk/shared';
 import type { HandCardPick } from '../../types/hand';
-import { isHandSelected } from '../../types/hand';
-import styles from './SpreadsheetGrid.module.css';
 import { COL_LABELS } from '../../data/decoy';
+import {
+  formatGeneralName,
+  stripGeneralPrefixInText,
+} from '../../utils/display';
+import styles from './SpreadsheetGrid.module.css';
 
 const HEADERS = ['用户', '角色名', '技能', '血量', '手牌', '装备区', '判定区', '回合状态'];
-const COL_WIDTHS = [minContentLogWidth(), 120, 68, 44, 210, 132, 100, 92];
-
-/** 操作区日志列：保证长句可读 */
-function minContentLogWidth(): number {
-  return 480;
-}
+const COL_WIDTHS = [300, 120, 72, 62, 130, 150, 110, 96];
 const ROWS_PER_PLAYER = 2;
 
 interface BattleGridProps {
   room: Room;
+  chatMessages: ChatMessage[];
   playerId: string | null;
   actingPlayerId: string | null;
   selectedCell: string;
@@ -23,46 +23,57 @@ interface BattleGridProps {
   onSelectHand: (card: string, index: number) => void;
   onPlayCard: (card: string, handIndex?: number) => void;
   onViewSkills: (player: RoomPlayer) => void;
+  onViewCard: (cardName: string) => void;
+}
+
+function formatEquipmentName(name: string): string {
+  const card = CardRegistry.getByName(name);
+  const label = stripGeneralPrefixInText(name);
+  if (!card) return label;
+  if (card.subType === 'horse_plus') return `${label}（+1马）`;
+  if (card.subType === 'horse_minus') return `${label}（-1马）`;
+  return label;
+}
+
+function resolveEquipmentCardName(label: string): string {
+  return label.replace(/\s*[（(][^）)]*[）)]\s*$/, '');
 }
 
 export function BattleGrid({
   room,
+  chatMessages,
   playerId,
   actingPlayerId,
   selectedCell,
-  selectedHand,
   onSelectCell,
-  onSelectHand,
-  onPlayCard,
   onViewSkills,
+  onViewCard,
 }: BattleGridProps) {
   const cols = COL_LABELS.slice(0, HEADERS.length);
   const acting = actingPlayerId ?? playerId;
   const turnPlayer =
     room.sandbox != null ? room.players[room.sandbox.turnIndex] : null;
-  const gamePrompt = room.sandbox?.prompt;
-  const turnPhase = room.sandbox?.turnPhase;
-  const isMyTurn = turnPlayer != null && acting === turnPlayer.id;
-  const canPlayCards =
-    isMyTurn && (turnPhase === 'play' || !turnPhase) && !gamePrompt;
-  const canSelectHand = isMyTurn;
-
   const playerStartRow = 2;
-  const operationRow = playerStartRow + room.players.length * ROWS_PER_PLAYER + 1;
-  const logStartRow = operationRow + 1;
   const logs = room.sandbox?.log ?? [];
-  const totalRows = Math.max(logStartRow + logs.length + 4, 32);
+  const totalRows = Math.max(
+    playerStartRow + room.players.length * ROWS_PER_PLAYER + 18,
+    32,
+  );
 
-  const renderPlayerRow = (player: RoomPlayer, rowNum: number, isDataRow: boolean) => {
+  const renderPlayerRow = (
+    player: RoomPlayer,
+    rowNum: number,
+    isDataRow: boolean,
+  ) => {
     if (!isDataRow) {
       return (
         <div key={`${player.id}-spacer`} className={styles.row}>
           <div className={styles.rowHeader}>{rowNum}</div>
-          {cols.map((col) => (
+          {cols.map((col, index) => (
             <div
               key={`${col}${rowNum}`}
               className={styles.cell}
-              style={{ minWidth: COL_WIDTHS[cols.indexOf(col)], width: COL_WIDTHS[cols.indexOf(col)] }}
+              style={{ minWidth: COL_WIDTHS[index], width: COL_WIDTHS[index] }}
             />
           ))}
         </div>
@@ -72,8 +83,7 @@ export function BattleGrid({
     const isHost = player.id === room.hostId;
     const isTurn = turnPlayer?.id === player.id;
     const isActing = acting === player.id;
-    const showHand = isActing;
-    const handCards = player.handCards ?? [];
+    const handCount = player.handCards?.length ?? 0;
 
     let rowClass = '';
     if (isTurn) rowClass = styles.turnRow;
@@ -82,18 +92,22 @@ export function BattleGrid({
     return (
       <div key={player.id} className={`${styles.row} ${rowClass}`}>
         <div className={styles.rowHeader}>{rowNum}</div>
-        {cols.map((col, ci) => {
+        {cols.map((col, columnIndex) => {
           const ref = `${col}${rowNum}`;
-          const w = COL_WIDTHS[ci];
-          const base = `${styles.cell} ${ref === selectedCell ? styles.selected : ''}`;
+          const width = COL_WIDTHS[columnIndex];
+          const baseClassName = `${styles.cell} ${
+            ref === selectedCell ? styles.selected : ''
+          }`;
 
-          if (ci === 0) {
-            const label = isHost ? `「房主」${player.nickname}` : player.nickname;
+          if (columnIndex === 0) {
+            const label = isHost
+              ? `[房主] ${formatGeneralName(player)}`
+              : formatGeneralName(player);
             return (
               <div
                 key={ref}
-                className={base}
-                style={{ minWidth: w, width: w }}
+                className={baseClassName}
+                style={{ minWidth: width, width }}
                 onClick={() => onSelectCell(ref)}
               >
                 {label}
@@ -101,18 +115,17 @@ export function BattleGrid({
             );
           }
 
-          if (ci === 1) {
-            const general = player.general ?? player.nickname;
+          if (columnIndex === 1) {
             const role = player.role ?? '反贼';
             const isLord = role === '主公';
             return (
               <div
                 key={ref}
-                className={base}
-                style={{ minWidth: w, width: w }}
+                className={baseClassName}
+                style={{ minWidth: width, width }}
                 onClick={() => onSelectCell(ref)}
               >
-                {general}{' '}
+                {formatGeneralName(player)}{' '}
                 <span className={isLord ? styles.roleLord : styles.roleNormal}>
                   【{role}】
                 </span>
@@ -120,20 +133,20 @@ export function BattleGrid({
             );
           }
 
-          if (ci === 2) {
+          if (columnIndex === 2) {
             return (
               <div
                 key={ref}
-                className={`${base} ${styles.linkCell}`}
-                style={{ minWidth: w, width: w }}
+                className={`${baseClassName} ${styles.linkCell}`}
+                style={{ minWidth: width, width }}
                 role="button"
                 tabIndex={0}
-                onClick={(e) => {
-                  e.stopPropagation();
+                onClick={(event) => {
+                  event.stopPropagation();
                   onViewSkills(player);
                 }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') onViewSkills(player);
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') onViewSkills(player);
                 }}
               >
                 点击查看
@@ -141,110 +154,90 @@ export function BattleGrid({
             );
           }
 
-          if (ci === 3) {
-            const hp = player.hp ?? 4;
-            const max = player.maxHp ?? 4;
+          if (columnIndex === 3) {
             return (
               <div
                 key={ref}
-                className={`${base} ${styles.numeric}`}
-                style={{ minWidth: w, width: w }}
+                className={`${baseClassName} ${styles.numeric}`}
+                style={{ minWidth: width, width }}
                 onClick={() => onSelectCell(ref)}
               >
-                {hp}/{max}
+                {player.hp ?? 4}/{player.maxHp ?? 4}
               </div>
             );
           }
 
-          if (ci === 4) {
+          if (columnIndex === 4) {
             return (
               <div
                 key={ref}
-                className={`${base} ${styles.handCell}`}
-                style={{ minWidth: w, width: w }}
+                className={`${baseClassName} ${styles.handCell}`}
+                style={{ minWidth: width, width }}
                 onClick={() => onSelectCell(ref)}
               >
-                {showHand ? (
-                  handCards.length > 0 ? (
-                    handCards.map((card, hi) => (
+                {handCount > 0 ? `${handCount}张` : '—'}
+              </div>
+            );
+          }
+
+          if (columnIndex === 5) {
+            return (
+              <div
+                key={ref}
+                className={baseClassName}
+                style={{ minWidth: width, width }}
+                onClick={() => onSelectCell(ref)}
+              >
+                {(player.equipment?.length ?? 0) > 0 ? (
+                  <div className={styles.inlineList}>
+                    {(player.equipment ?? []).map((name, equipmentIndex) => (
                       <button
-                        key={`${card}-${hi}`}
+                        key={`${ref}-${equipmentIndex}-${name}`}
                         type="button"
-                        className={`${styles.cardChip} ${
-                          isHandSelected(selectedHand, card, hi)
-                            ? styles.cardChipSelected
-                            : ''
-                        } ${canSelectHand ? styles.cardChipPlayable : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (canSelectHand) onSelectHand(card, hi);
+                        className={styles.inlineLink}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onViewCard(resolveEquipmentCardName(name));
                         }}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          if (canPlayCards) onPlayCard(card, hi);
-                        }}
-                        title={
-                          canPlayCards
-                            ? `单击选中，双击打出【${card}】`
-                            : canSelectHand
-                              ? '当前阶段不能打出（须出牌阶段且无弹窗）'
-                              : '请切换到当前回合角色'
-                        }
+                        title={`查看【${formatEquipmentName(name)}】说明`}
                       >
-                        {card}
+                        {formatEquipmentName(name)}
                       </button>
-                    ))
-                  ) : (
-                    '—'
-                  )
+                    ))}
+                  </div>
                 ) : (
-                  `${handCards.length}张`
+                  '—'
                 )}
               </div>
             );
           }
 
-          if (ci === 5) {
-            const eq = (player.equipment ?? []).join('、') || '—';
+          if (columnIndex === 6) {
+            const judgeCards =
+              (player.judgeCards ?? [])
+                .map((card) => stripGeneralPrefixInText(card))
+                .join('、') || '—';
             return (
               <div
                 key={ref}
-                className={base}
-                style={{ minWidth: w, width: w }}
+                className={baseClassName}
+                style={{ minWidth: width, width }}
                 onClick={() => onSelectCell(ref)}
               >
-                {eq}
+                {judgeCards}
               </div>
             );
           }
 
-          if (ci === 6) {
-            const judge = (player.judgeCards ?? []).join('、') || '—';
+          if (columnIndex === 7) {
             return (
               <div
                 key={ref}
-                className={base}
-                style={{ minWidth: w, width: w }}
+                className={baseClassName}
+                style={{ minWidth: width, width }}
                 onClick={() => onSelectCell(ref)}
               >
-                {judge}
-              </div>
-            );
-          }
-
-          if (ci === 7) {
-            return (
-              <div
-                key={ref}
-                className={base}
-                style={{ minWidth: w, width: w }}
-                onClick={() => onSelectCell(ref)}
-              >
-                {isTurn ? (
-                  <span className={styles.turnMark}>←当前回合</span>
-                ) : (
-                  ''
-                )}
+                {isTurn ? <span className={styles.turnMark}>→当前回合</span> : ''}
               </div>
             );
           }
@@ -256,119 +249,116 @@ export function BattleGrid({
   };
 
   return (
-    <div className={styles.wrap}>
-      <div className={styles.corner} />
-      <div className={styles.colHeaders} style={{ paddingLeft: 40 }}>
-        {cols.map((c, i) => (
-          <div
-            key={c}
-            className={styles.colHeader}
-            style={{ minWidth: COL_WIDTHS[i], width: COL_WIDTHS[i] }}
-          >
-            {c}
+    <div className={styles.boardLayout}>
+      <div className={styles.gridPane}>
+        <div className={styles.wrap}>
+          <div className={styles.corner} />
+          <div className={styles.colHeaders}>
+            {cols.map((col, index) => (
+              <div
+                key={col}
+                className={styles.colHeader}
+                style={{ minWidth: COL_WIDTHS[index], width: COL_WIDTHS[index] }}
+              >
+                {col}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className={styles.body}>
-        {/* 表头 */}
-        <div className={styles.row}>
-          <div className={styles.rowHeader}>1</div>
-          {cols.map((col, ci) => {
-            const ref = `${col}1`;
-            return (
-              <div
-                key={ref}
-                className={`${styles.cell} ${styles.headerCell} ${ref === selectedCell ? styles.selected : ''}`}
-                style={{ minWidth: COL_WIDTHS[ci], width: COL_WIDTHS[ci] }}
-                onClick={() => onSelectCell(ref)}
-              >
-                {HEADERS[ci]}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* 玩家区：每人占 2 行 */}
-        {room.players.map((player, idx) => {
-          const dataRow = playerStartRow + idx * ROWS_PER_PLAYER;
-          const spacerRow = dataRow + 1;
-          return (
-            <div key={player.id}>
-              {renderPlayerRow(player, dataRow, true)}
-              {renderPlayerRow(player, spacerRow, false)}
-            </div>
-          );
-        })}
-
-        {/* 操作区标题 */}
-        <div className={styles.row}>
-          <div className={styles.rowHeader}>{operationRow}</div>
-          {cols.map((col, ci) => {
-            const ref = `${col}${operationRow}`;
-            return (
-              <div
-                key={ref}
-                className={`${styles.cell} ${ci === 0 ? styles.opAreaTitle : ''} ${ref === selectedCell ? styles.selected : ''}`}
-                style={{ minWidth: COL_WIDTHS[ci], width: COL_WIDTHS[ci] }}
-                onClick={() => onSelectCell(ref)}
-              >
-                {ci === 0 ? '操作区' : ''}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* 操作日志 */}
-        {logs.map((line, i) => {
-          const rowNum = logStartRow + i;
-          const logRef = `A${rowNum}`;
-          return (
-            <div key={rowNum} className={`${styles.row} ${styles.logRow}`}>
-              <div className={styles.rowHeader}>{rowNum}</div>
-              <div
-                className={`${styles.cell} ${styles.logCell} ${logRef === selectedCell ? styles.selected : ''}`}
-                style={{ minWidth: COL_WIDTHS[0], flex: '1 1 480px' }}
-                onClick={() => onSelectCell(logRef)}
-              >
-                {line}
-              </div>
-              {cols.slice(1).map((col, ci) => {
-                const ref = `${col}${rowNum}`;
+          <div className={styles.body}>
+            <div className={styles.row}>
+              <div className={styles.rowHeader}>1</div>
+              {cols.map((col, index) => {
+                const ref = `${col}1`;
                 return (
                   <div
                     key={ref}
-                    className={`${styles.cell} ${ref === selectedCell ? styles.selected : ''}`}
-                    style={{
-                      minWidth: COL_WIDTHS[ci + 1],
-                      width: COL_WIDTHS[ci + 1],
-                      flex: `0 0 ${COL_WIDTHS[ci + 1]}px`,
-                    }}
+                    className={`${styles.cell} ${styles.headerCell} ${
+                      ref === selectedCell ? styles.selected : ''
+                    }`}
+                    style={{ minWidth: COL_WIDTHS[index], width: COL_WIDTHS[index] }}
                     onClick={() => onSelectCell(ref)}
-                  />
+                  >
+                    {HEADERS[index]}
+                  </div>
                 );
               })}
             </div>
-          );
-        })}
 
-        {/* 填充空行 */}
-        {Array.from({ length: totalRows - logStartRow - logs.length }, (_, i) => {
-          const rowNum = logStartRow + logs.length + i;
-          return (
-            <div key={rowNum} className={styles.row}>
-              <div className={styles.rowHeader}>{rowNum}</div>
-              {cols.map((col, ci) => (
-                <div
-                  key={`${col}${rowNum}`}
-                  className={styles.cell}
-                  style={{ minWidth: COL_WIDTHS[ci], width: COL_WIDTHS[ci] }}
-                  onClick={() => onSelectCell(`${col}${rowNum}`)}
-                />
-              ))}
-            </div>
-          );
-        })}
+            {room.players.map((player, index) => {
+              const dataRow = playerStartRow + index * ROWS_PER_PLAYER;
+              const spacerRow = dataRow + 1;
+              return (
+                <div key={player.id}>
+                  {renderPlayerRow(player, dataRow, true)}
+                  {renderPlayerRow(player, spacerRow, false)}
+                </div>
+              );
+            })}
+
+            {Array.from(
+              {
+                length:
+                  totalRows -
+                  (playerStartRow + room.players.length * ROWS_PER_PLAYER),
+              },
+              (_, index) => {
+                const rowNum =
+                  playerStartRow + room.players.length * ROWS_PER_PLAYER + index;
+                return (
+                  <div key={rowNum} className={styles.row}>
+                    <div className={styles.rowHeader}>{rowNum}</div>
+                    {cols.map((col, columnIndex) => (
+                      <div
+                        key={`${col}${rowNum}`}
+                        className={styles.cell}
+                        style={{
+                          minWidth: COL_WIDTHS[columnIndex],
+                          width: COL_WIDTHS[columnIndex],
+                        }}
+                        onClick={() => onSelectCell(`${col}${rowNum}`)}
+                      />
+                    ))}
+                  </div>
+                );
+              },
+            )}
+          </div>
+        </div>
       </div>
+
+      <aside className={styles.sidePane}>
+        <section className={styles.sidePanel}>
+          <div className={styles.sidePanelTitle}>操作区</div>
+          <div className={styles.logScroll}>
+            {logs.map((line, index) => (
+              <div
+                key={`log-${index}`}
+                className={`${styles.logLine} ${
+                  line.includes('判定') ? styles.judgeLogLine : ''
+                }`}
+              >
+                {line}
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className={styles.sidePanel}>
+          <div className={styles.sidePanelTitle}>聊天区</div>
+          <div className={styles.chatHint}>在上方公式栏输入消息后按 Enter 发送</div>
+          <div className={styles.logScroll}>
+            {chatMessages.length === 0 ? (
+              <div className={styles.emptyPanelLine}>暂无聊天消息</div>
+            ) : (
+              chatMessages.map((message) => (
+                <div key={message.id} className={styles.chatLine}>
+                  <span className={styles.chatName}>{message.nickname}</span>
+                  <span>{message.content}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      </aside>
     </div>
   );
 }

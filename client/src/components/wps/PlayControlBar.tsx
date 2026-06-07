@@ -1,6 +1,8 @@
+import { CardRegistry, CharacterRegistry, GameTiming } from '@tk/engine';
 import { RoomPlayer } from '@tk/shared';
 import type { HandCardPick } from '../../types/hand';
-import { cardNameFromHand, isHandSelected } from '../../types/hand';
+import { isHandSelected } from '../../types/hand';
+import { formatGeneralName, stripGeneralPrefixInText } from '../../utils/display';
 import styles from './PlayControlBar.module.css';
 
 interface PlayControlBarProps {
@@ -26,7 +28,13 @@ const PHASE_LABEL: Record<string, string> = {
   end: '结束阶段',
 };
 
-const QUICK_CARDS = ['杀', '闪', '桃', '酒', '无懈可击'];
+const SUPPORTED_SKILLS = new Set(['rende', 'zhiheng']);
+
+function equipmentSkillLabel(cardName: string): string | null {
+  const card = CardRegistry.getByName(cardName);
+  if (!card || card.type !== 'equipment') return null;
+  return stripGeneralPrefixInText(card.name);
+}
 
 export function PlayControlBar({
   actingPlayer,
@@ -50,6 +58,19 @@ export function PlayControlBar({
         ? '出牌阶段'
         : '等待阶段';
 
+  const currentSkills = (() => {
+    if (!actingPlayer) return [];
+    const character = CharacterRegistry.resolve(
+      actingPlayer.general ?? actingPlayer.nickname,
+    );
+    if (!character) return [];
+    return character.skills.filter((skill) => skill.timings.includes(GameTiming.PHASE_PLAY));
+  })();
+
+  const equipmentSkills = (actingPlayer?.equipment ?? [])
+    .map((name) => equipmentSkillLabel(name))
+    .filter((label): label is string => !!label);
+
   return (
     <div className={styles.bar}>
       <div className={styles.phase}>
@@ -61,12 +82,12 @@ export function PlayControlBar({
         <select
           className={styles.select}
           value={actingPlayer?.id ?? ''}
-          onChange={(e) => onSwitchActor(e.target.value)}
+          onChange={(event) => onSwitchActor(event.target.value)}
         >
-          {players.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nickname}
-              {p.isVirtual ? ' (虚拟)' : ''}
+          {players.map((player) => (
+            <option key={player.id} value={player.id}>
+              {formatGeneralName(player)}
+              {player.isVirtual ? '（虚拟）' : ''}
             </option>
           ))}
         </select>
@@ -75,7 +96,7 @@ export function PlayControlBar({
       <div className={styles.item}>
         <span className={styles.label}>当前回合</span>
         <strong className={styles.turnName}>
-          {turnPlayer?.general ?? turnPlayer?.nickname ?? '—'}
+          {formatGeneralName(turnPlayer) || '—'}
         </strong>
       </div>
       <span className={styles.sep}>|</span>
@@ -84,21 +105,17 @@ export function PlayControlBar({
         {hand.length === 0 ? (
           <span className={styles.empty}>无</span>
         ) : (
-          hand.map((card, i) => (
+          hand.map((card, index) => (
             <button
-              key={`${card}-${i}`}
+              key={`${card}-${index}`}
               type="button"
               className={`${styles.chip} ${
-                isHandSelected(selectedHand, card, i) ? styles.chipOn : ''
+                isHandSelected(selectedHand, card, index) ? styles.chipOn : ''
               }`}
-              onClick={() => onSelectHand(card, i)}
-              onDoubleClick={() => isMyTurn && onPlayCard(card, i)}
+              onClick={() => onSelectHand(card, index)}
+              onDoubleClick={() => isMyTurn && onPlayCard(card, index)}
               disabled={!isMyTurn}
-              title={
-                isMyTurn
-                  ? `单击选中，双击打出 ${card}`
-                  : '非你的回合'
-              }
+              title={isMyTurn ? `单击选中，双击打出 ${card}` : '非当前回合角色'}
             >
               {card}
             </button>
@@ -106,24 +123,34 @@ export function PlayControlBar({
         )}
       </div>
       <span className={styles.sep}>|</span>
-      <div className={styles.quick}>
-        {QUICK_CARDS.map((c) => (
-          <button
-            key={c}
-            type="button"
-            className={styles.quickBtn}
-            disabled={!isMyTurn || !hand.some((h) => cardNameFromHand(h) === c)}
-            onClick={() => {
-              const idx =
-                selectedHand && cardNameFromHand(selectedHand.name) === c
-                  ? selectedHand.index
-                  : hand.findIndex((h) => cardNameFromHand(h) === c);
-              onPlayCard(c, idx >= 0 ? idx : undefined);
-            }}
-          >
-            {c}
-          </button>
-        ))}
+      <div className={styles.skills}>
+        <span className={styles.label}>技能</span>
+        {currentSkills.length || equipmentSkills.length ? (
+          <>
+            {currentSkills.map((skill) => {
+              const isSupported = SUPPORTED_SKILLS.has(skill.id);
+              return (
+                <button
+                  key={skill.id}
+                  type="button"
+                  className={styles.quickBtn}
+                  disabled={!isSupported || !isMyTurn || turnPhase !== 'play'}
+                  onClick={() => isSupported && onUseSkill(skill.id)}
+                  title={stripGeneralPrefixInText(skill.description)}
+                >
+                  {stripGeneralPrefixInText(skill.name)}
+                </button>
+              );
+            })}
+            {equipmentSkills.map((label) => (
+              <span key={label} className={styles.equipSkill} title={`装备技能：${label}`}>
+                {label}
+              </span>
+            ))}
+          </>
+        ) : (
+          <span className={styles.empty}>无</span>
+        )}
       </div>
       <div className={styles.actions}>
         <button
@@ -138,15 +165,6 @@ export function PlayControlBar({
         </button>
         <button
           type="button"
-          className={styles.quickBtn}
-          disabled={!isMyTurn || turnPhase !== 'play'}
-          onClick={() => onUseSkill('rende')}
-          title="界刘备【仁德】"
-        >
-          仁德
-        </button>
-        <button
-          type="button"
           className={styles.endTurn}
           disabled={!isMyTurn}
           onClick={onEndTurn}
@@ -156,7 +174,7 @@ export function PlayControlBar({
       </div>
       {!isMyTurn && actingPlayer && turnPlayer && (
         <span className={styles.hint}>
-          请用下拉框切换到「{turnPlayer.nickname}」再出牌
+          请先把操控切换到“{formatGeneralName(turnPlayer)}”再出牌
         </span>
       )}
     </div>

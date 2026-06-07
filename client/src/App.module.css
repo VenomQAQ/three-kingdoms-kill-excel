@@ -12,6 +12,14 @@
   overflow: hidden;
 }
 
+.mainWithChat {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .error {
   background: #fff3cd;
   color: #856404;

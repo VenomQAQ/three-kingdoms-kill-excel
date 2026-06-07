@@ -1,14 +1,18 @@
-/** 挂在 state.resolution.context.cardPlay 上的用牌结算上下文 */
 export interface CardPlayContext {
   cardId: string;
   sourcePlayerId: string;
   handIndex?: number;
   targetPlayerIds: string[];
+  isAoe?: boolean;
   responseType?: string;
   responsesRequired: number;
   responseCount: number;
   awaitingResponseFrom?: string;
-  /** AOE 未响应造成伤害后，待 reactive 技能处理完再推进下一目标 */
+  wuxieQueue?: string[];
+  awaitingWuxieFrom?: string;
+  wuxiePromptSourcePlayerId?: string;
+  wuxieCancelledTargetIds?: string[];
+  wuxieCancelledAll?: boolean;
   pendingAoeAdvance?: boolean;
 }
 
@@ -28,7 +32,6 @@ export function setCardPlayContext(
   else delete context[CARD_PLAY_CTX_KEY];
 }
 
-/** 过河拆桥 / 顺手牵羊等待选区域牌 */
 export interface PendingZonePick {
   action: 'discard' | 'take';
   sourcePlayerId: string;
@@ -51,7 +54,6 @@ export function setZonePickContext(
   else delete context[ZONE_PICK_CTX_KEY];
 }
 
-/** 受伤后待发动的主动技（奸雄等） */
 export interface PendingReactiveSkill {
   eventId: string;
   playerId: string;

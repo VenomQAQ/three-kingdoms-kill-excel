@@ -1,3 +1,70 @@
+.boardLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38%;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gridPane {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid #d4d4d4;
+}
+
+.sidePane {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(180px, 42%);
+  min-width: 320px;
+  background:
+    linear-gradient(#f3f3f3, #f3f3f3) top / 100% 22px no-repeat,
+    repeating-linear-gradient(
+      to bottom,
+      #fff 0,
+      #fff 27px,
+      #e8e8e8 27px,
+      #e8e8e8 28px
+    );
+  min-height: 0;
+  border-left: 1px solid #d4d4d4;
+}
+
+.sidePanel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-bottom: 1px solid #d4d4d4;
+  background: transparent;
+}
+
+.sidePanelTitle {
+  min-height: 22px;
+  line-height: 22px;
+  padding: 0 12px;
+  font-weight: 600;
+  color: #c00000;
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.sidePanelHint {
+  padding: 10px 12px;
+  color: #888;
+  font-size: 12px;
+}
+
+.chatHint {
+  min-height: 28px;
+  padding: 6px 10px;
+  line-height: 16px;
+  color: #666;
+  font-size: 12px;
+  border-bottom: 1px solid #e8e8e8;
+  background: rgba(255, 255, 255, 0.96);
+}
+
 .wrap {
   display: grid;
   grid-template-columns: 40px 1fr;
@@ -18,7 +85,6 @@
   background: #f2f2f2;
   border-bottom: 1px solid #d4d4d4;
   overflow: hidden;
-  padding-left: 40px;
 }
 
 .colHeader {
@@ -168,6 +234,24 @@
   line-height: 20px;
 }
 
+.inlineList {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-height: 22px;
+}
+
+.inlineLink {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #0563c1;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
 .cardChip {
   padding: 0 6px;
   border: 1px solid #c8e0d4;
@@ -195,23 +279,69 @@
   background: #f2f2f2;
 }
 
-.logCell {
+.logPanel {
+  padding: 0;
+  min-height: 320px;
+  max-height: 420px;
+  overflow: hidden;
+}
+
+.logScroll {
+  height: 100%;
+  overflow-y: auto;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      #fff 0,
+      #fff 27px,
+      #e8e8e8 27px,
+      #e8e8e8 28px
+    );
+}
+
+.emptyPanelLine {
+  min-height: 28px;
+  padding: 6px 10px;
+  color: #999;
+  font-size: 12px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.logLine {
+  min-height: 28px;
+  padding: 6px 10px;
+  line-height: 1.45;
+  color: #333;
+  font-size: 12px;
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
-  overflow: visible;
-  text-overflow: unset;
-  line-height: 1.45;
-  min-height: 28px;
-  height: auto;
-  padding: 6px 10px;
-  color: #333;
-  text-align: left;
-  font-size: 12px;
+  border-bottom: 1px solid #e8e8e8;
 }
 
-.logRow .logCell {
-  flex: 1 1 auto;
-  min-width: 480px;
-  max-width: none;
+.logLine:last-child {
+  border-bottom: none;
+}
+
+.judgeLogLine {
+  color: #c00000;
+  font-weight: 600;
+}
+
+.chatLine {
+  min-height: 28px;
+  padding: 6px 10px;
+  line-height: 1.45;
+  color: #333;
+  font-size: 12px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.chatName {
+  color: #217346;
+  font-weight: 600;
+  margin-right: 6px;
 }

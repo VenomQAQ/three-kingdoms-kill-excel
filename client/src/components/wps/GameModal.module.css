@@ -38,6 +38,12 @@
   background: linear-gradient(180deg, #f8f8f8, #ececec);
 }
 
+.headerMain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .header h2 {
   margin: 0;
   font-size: 15px;
@@ -112,6 +118,11 @@
   color: #c00;
 }
 
+.inlineMeta {
+  margin: 0;
+  font-weight: 600;
+}
+
 .phaseTag {
   font-size: 12px;
   background: #e8f5e9;
@@ -145,6 +156,12 @@
 
 .targetOption input {
   cursor: pointer;
+}
+
+.notice {
+  margin: 0;
+  color: #c0392b;
+  font-weight: 600;
 }
 
 .actions {
@@ -189,6 +206,29 @@
   display: block;
   margin-bottom: 10px;
   font-size: 13px;
+}
+
+.cardChipList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cardChip {
+  padding: 6px 12px;
+  border: 1px solid #b8d4c4;
+  background: #e8f5ee;
+  border-radius: 3px;
+  color: #217346;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.cardChipActive {
+  background: #217346;
+  border-color: #1a5c38;
+  color: #fff;
 }
 
 .cardPickList {

@@ -26,6 +26,11 @@ import { TurnRunner, type TurnRunnerHost } from './turn-runner';
 import { TurnPhaseMachine } from '../fsm/turn-phase-machine';
 import { normalizeHandEntry } from '../engine/card-label';
 import type { PendingJudge } from '../engine/judge-runner';
+import {
+  collectOptionalSkillOffers,
+  runSkillEffects,
+} from '../engine/timing-runner';
+import { GameTiming } from '../types/timing';
 import { RuleManager } from '../rules/rule-manager';
 import { ConfigRuleLoader } from '../rules/config-rule-loader';
 import { DeckPile } from '../engine/deck-pile';
@@ -237,12 +242,12 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
       return { ok: false, error: '提示已失效' };
     }
 
-    if (choiceId === 'cancel' && prompt.type === 'select_zone_card') {
-      this.cardPlay.cancelPlay(this);
-      return Promise.resolve({ ok: true });
-    }
-
-    if (choiceId === 'cancel' && prompt.type === 'play_card_confirm') {
+    if (
+      choiceId === 'cancel' &&
+      (prompt.type === 'select_targets' ||
+        prompt.type === 'select_zone_card' ||
+        prompt.type === 'play_card_confirm')
+    ) {
       this.cardPlay.cancelPlay(this);
       return { ok: true };
     }
@@ -252,6 +257,44 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
     }
 
     if (prompt.type === 'use_skill') {
+      if (prompt.skillId === 'jianyan' && choiceId.startsWith('jianyan:')) {
+        const targetId = prompt.validTargetIds?.[0];
+        if (!targetId) {
+          return { ok: false, error: '荐言缺少目标' };
+        }
+        const res = this.skillPlay.executeJianyan(this, playerId, choiceId, targetId);
+        if (!res.ok) {
+          return Promise.resolve(res);
+        }
+        const cur = this.state.players[this.state.turn.index];
+        this.log(`-- ${cur?.generalName ?? '角色'} 出牌阶段：可继续出牌、发动技能或结束回合`);
+        return Promise.resolve({ ok: true });
+      }
+      if (this.state.turn.phase === 'before_draw') {
+        if (choiceId === 'skip') {
+          this.setPrompt(null);
+          this.turnRunner.advanceToDraw();
+          return { ok: true };
+        }
+        if (choiceId.startsWith('skill:')) {
+          const skillId = choiceId.slice(6);
+          const currentPlayer = this.state.players[this.state.turn.index];
+          if (!currentPlayer || currentPlayer.id !== playerId) {
+            return { ok: false, error: '不是你的回合' };
+          }
+          const offers = collectOptionalSkillOffers(currentPlayer, GameTiming.BEFORE_DRAW);
+          const offer = offers.find((item) => item.skill.id === skillId);
+          if (!offer) {
+            return { ok: false, error: '当前时机不能发动此技能' };
+          }
+          currentPlayer.skillUseCount[skillId] =
+            (currentPlayer.skillUseCount[skillId] ?? 0) + 1;
+          runSkillEffects(currentPlayer, offer.skill, (message) => this.log(message), this.deck);
+          this.setPrompt(null);
+          this.turnRunner.advanceToDraw();
+          return { ok: true };
+        }
+      }
       if (prompt.skillId && choiceId === `${prompt.skillId}:finish`) {
         return Promise.resolve(this.skillPlay.finish(this, playerId));
       }
@@ -491,7 +534,44 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
   }
 
   zhihengConfirm(_sourceId: string, _handIndices: number[]): { ok: boolean; error?: string } {
-    return { ok: false, error: '制衡尚未接入通用技能流程' };
+    const currentPlayer = this.state.players[this.state.turn.index];
+    if (!currentPlayer || currentPlayer.id !== _sourceId) {
+      return { ok: false, error: '不是你的回合' };
+    }
+    if (this.state.prompt?.skillId !== 'zhiheng') {
+      return { ok: false, error: '当前未在制衡流程中' };
+    }
+    if (_handIndices.length === 0) {
+      return { ok: false, error: '请至少选择一张手牌' };
+    }
+
+    const sorted = [..._handIndices].sort((left, right) => right - left);
+    if (new Set(sorted).size !== _handIndices.length) {
+      return { ok: false, error: '不能重复选择同一张手牌' };
+    }
+
+    const discarded: string[] = [];
+    for (const index of sorted) {
+      if (index < 0 || index >= currentPlayer.handCards.length) {
+        return { ok: false, error: '所选手牌无效' };
+      }
+      const card = currentPlayer.handCards[index]!;
+      currentPlayer.handCards.splice(index, 1);
+      this.deck.discardCard(card);
+      discarded.push(card);
+    }
+
+    const drawn = this.deck.drawMany(discarded.length);
+    currentPlayer.handCards.push(...drawn);
+    currentPlayer.skillUseCount.zhiheng =
+      (currentPlayer.skillUseCount.zhiheng ?? 0) + 1;
+
+    this.log(
+      `${currentPlayer.generalName} 发动【制衡】，弃置 ${discarded.join('、')}，摸 ${drawn.length} 张牌`,
+    );
+    this.setPrompt(null);
+    this.log(`-- ${currentPlayer.generalName} 出牌阶段：可继续出牌、发动技能或结束回合`);
+    return { ok: true };
   }
 
   submitModifyJudge(

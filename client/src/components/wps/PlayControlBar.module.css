@@ -53,6 +53,13 @@
   flex-wrap: wrap;
 }
 
+.skills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
 .chip {
   padding: 2px 10px;
   border: 1px solid #b8d4c4;
@@ -93,6 +100,14 @@
   border: 1px solid #ddd;
   background: #fff;
   border-radius: 2px;
+}
+
+.equipSkill {
+  padding: 2px 8px;
+  border: 1px solid #d9c58d;
+  background: #fff7df;
+  border-radius: 2px;
+  color: #7a5b12;
 }
 
 .quickBtn:not(:disabled):hover {

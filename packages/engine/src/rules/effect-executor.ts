@@ -5,6 +5,12 @@ import type { GameState } from '../state/game-state';
 import type { GameEvent } from '../types/event';
 import type { DeckPile } from '../engine/deck-pile';
 import {
+  createCardInstance,
+  formatCardInstance,
+  isBlack,
+  isRed,
+} from '../engine/card-instance';
+import {
   discardOneFromZone,
   equipToSlot,
   takeOneFromZone,
@@ -43,6 +49,9 @@ export class EffectExecutor {
         break;
       case 'discard':
         this.discard(ctx, effect);
+        break;
+      case 'judge':
+        this.judge(ctx, effect);
         break;
       case 'moveCard':
         this.moveCard(ctx, effect);
@@ -112,6 +121,64 @@ export class EffectExecutor {
       for (let i = 0; i < count; i++) {
         if (!discardOneFromZone(t, z, ctx.deck, ctx.log)) break;
       }
+    }
+  }
+
+  private judge(ctx: EffectExecutionContext, effect: EffectDefinition): void {
+    if (effect.params?.placeInJudge) {
+      const targets = ctx.targets.length ? ctx.targets : [ctx.source];
+      const cardName = (ctx.event.payload.cardName as string | undefined) ?? '判定牌';
+      for (const target of targets) {
+        target.judgeCards.push(cardName);
+        ctx.log(`${target.generalName} 的判定区置入【${cardName}】`);
+      }
+      return;
+    }
+
+    const judgeName =
+      (ctx.event.payload.damageCardName as string | undefined) ??
+      (ctx.event.payload.cardName as string | undefined) ??
+      '判定';
+    const result = createCardInstance(judgeName);
+    ctx.log(`${ctx.source.generalName} 判定：${formatCardInstance(result)}`);
+
+    const redAction = effect.params?.onRed as string | undefined;
+    const blackAction = effect.params?.onBlack as string | undefined;
+    const damageSourceId = ctx.event.payload.sourcePlayerId as string | undefined;
+    const damageSource = damageSourceId
+      ? ctx.state.players.find((player) => player.id === damageSourceId)
+      : undefined;
+    const followupTargets = damageSource ? [damageSource] : ctx.targets;
+
+    if (isRed(result) && redAction) {
+      this.runJudgeFollowup(redAction, ctx, followupTargets);
+      return;
+    }
+
+    if (isBlack(result) && blackAction) {
+      this.runJudgeFollowup(blackAction, ctx, followupTargets);
+    }
+  }
+
+  private runJudgeFollowup(
+    action: string,
+    ctx: EffectExecutionContext,
+    targets: EnginePlayerState[],
+  ): void {
+    if (targets.length === 0) return;
+    switch (action) {
+      case 'damage':
+        this.damage(ctx, { action: 'damage', params: { amount: 1 } });
+        break;
+      case 'discard':
+        this.discard(
+          { ...ctx, targets },
+          { action: 'discard', params: { count: 1, zone: 'any' } },
+        );
+        break;
+      default:
+        ctx.log(`[effect] unhandled judge followup: ${action}`);
+        break;
     }
   }
 

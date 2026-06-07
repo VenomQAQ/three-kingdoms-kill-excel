@@ -45,7 +45,7 @@ packages/engine/
 | **ResolutionStack** | LIFO 嵌套结算（伤害、濒死、响应） |
 | **EventResolver** | `pre → on → execute → post`，`TAKE_DAMAGE` 后 `AFTER_DAMAGE` 技能 |
 | **RuleManager** | `ConfigRuleLoader` 注册技能 Rule；受伤后仅询问**受害者** |
-| **CardPlayService** | 读 `CardDefinition` 驱动用牌；`promptResponse` / 即时效果 / 选区域牌 |
+| **CardPlayService** | 读 `CardDefinition` 驱动用牌；`无懈可击` / `promptResponse` / 即时效果 / 选区域牌 |
 | **GamePrompt** | 暂停 UI，客户端 `GamePromptModal` 回传选择 |
 
 ### 杀 → 闪 → 伤害 → 反馈 流程
@@ -57,6 +57,17 @@ CardPlayService.startResolution(杀)
   → EventResolver.execute: 扣血
   → post: RuleManager.emitForPlayersWithSkills(AFTER_DAMAGE, victimId only)
   → prompt use_skill（反馈/奸雄等）
+```
+
+### 锦囊 → 无懈可击 → 后续结算
+
+```
+CardPlayService.startResolution(普通锦囊/延时锦囊/AOE)
+  → collectWuxieQueue()
+  → 逐个询问可响应角色是否打出【无懈可击】
+  → 记录抵消全部目标 / 单个目标
+  → continueResolution()
+  → 进入响应、选区域牌或即时效果
 ```
 
 ## 武将数据（30 将）
@@ -78,9 +89,12 @@ CardPlayService.startResolution(杀)
 | 咆哮（杀无次数限制） | `CardPlayService.canUseShaThisTurn` |
 | 英姿（多摸牌/手牌上限） | `TurnRunner` |
 | 马术 / 义从 | `targeting.distanceBetween` |
-| 仁德 / 制衡 / 鬼才 | `SkillPlayService` + 专用 prompt |
+| 仁德 / 制衡 / 荐言 / 鬼才 | `SkillPlayService` + `TurnRunner` + 专用 prompt |
 | 奸雄 / 反馈 | `RuleManager` + `AFTER_DAMAGE` + `EffectExecutor.moveCard` |
 | 过河拆桥 / 顺手牵羊 | `select_zone_card` prompt + `zone-card-pick.ts` |
+| 无懈可击（按座次逐个询问、可抵消单目标或全部目标） | `CardPlayService` + `card-play-context.ts` |
+| 乐不思蜀 / 兵粮寸断 / 闪电置入判定区 | `EffectExecutor.judge` + `TurnRunner` |
+| 酒后【杀】伤害加成消耗 | `effect-runner` + `CardPlayService.applyShaDamageBuff` |
 | 仁王盾 / 青釭剑 | `shaBlockedByArmor` / `sourceIgnoresArmor` |
 
 ## Prompt 类型
@@ -93,7 +107,7 @@ CardPlayService.startResolution(杀)
 | `select_zone_card` | 过河拆桥、顺手牵羊 |
 | `discard_cards` | 弃牌阶段 |
 | `modify_judge` | 鬼才改判 |
-| `use_skill` | 主动/被动技能询问、仁德给牌等 |
+| `use_skill` | 主动/被动技能询问、仁德给牌、制衡弃牌、荐言声明等 |
 
 ## 选区域牌（zone-card-pick）
 
@@ -101,6 +115,13 @@ CardPlayService.startResolution(杀)
 - `listZoneCards()`：手牌匿名标签 + Fisher-Yates 打乱；装备明牌
 - `choiceId` 格式：`hand:0` / `equipment:1`（真实数组下标，非展示序号）
 - 回调 `host.log` 须用箭头函数绑定，避免 `this.state` 丢失
+
+## 判定与延时锦囊
+
+- `EffectExecutor.judge()` 负责把【乐不思蜀】/【兵粮寸断】/【闪电】等延时锦囊置入判定区
+- `TurnRunner` 在判定阶段按放置顺序执行判定，并移除已结算的判定牌
+- 【鬼才】通过 `modify_judge` prompt 改写当前判定结果
+- 角色配置中的 `judge` 类 effect 已支持按红黑结果触发后续效果
 
 ## 断线重连（服务端）
 
@@ -123,6 +144,7 @@ CardPlayService.startResolution(杀)
 
 - `GamePromptModal`：全部 prompt 类型 UI
 - `CharacterSkillModal`：表格「技能」列点击查看
+- `CardDetailModal`：点击装备区卡牌查看卡牌说明
 - `room.sandbox.prompt` 经 `GameService.syncRoomFromEngine` 同步
 - `prompt.playerId` 与 `turnIndex` 变化时自动 `sandboxSwitchActor`
 

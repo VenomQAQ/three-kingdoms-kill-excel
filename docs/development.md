@@ -64,7 +64,7 @@
 | `sandbox:useSkill` | C→S | 发动技能 `{ skillId }` |
 | `sandbox:rendeGive` | C→S | 仁德给牌 |
 | `sandbox:rendeFinish` | C→S | 结束仁德 |
-| `sandbox:zhihengConfirm` | C→S | 制衡弃牌 |
+| `sandbox:zhihengConfirm` | C→S | 制衡弃牌 `{ handIndices[] }` |
 | `sandbox:modifyJudge` | C→S | 鬼才改判 |
 | `sandbox:skipModifyJudge` | C→S | 不改判 |
 | `sandbox:discardCards` | C→S | 弃牌阶段 `{ promptId, handIndices[] }` |
@@ -85,11 +85,12 @@
 |------|------|------|
 | `TitleBar` | `client/src/components/wps/TitleBar.tsx` | 顶栏文件名、搜索、共享 |
 | `Ribbon` | `Ribbon.tsx` | 选项卡 +「开始」游戏按钮 |
-| `PlayControlBar` | `PlayControlBar.tsx` | 对局出牌条（手牌、技能、结束回合） |
-| `GamePromptModal` | `GamePromptModal.tsx` | 引擎 `prompt` 弹窗（确认出牌/选目标/响应/选区域牌/弃牌/改判/技能） |
-| `CharacterSkillModal` | `CharacterSkillModal.tsx` | 查看角色技能说明 |
+| `PlayControlBar` | `PlayControlBar.tsx` | 对局出牌条（手牌、出牌阶段技能、结束回合） |
+| `GamePromptModal` | `GamePromptModal.tsx` | 引擎 `prompt` 弹窗（确认出牌/选目标/响应/无懈/选区域牌/弃牌/改判/技能） |
+| `CharacterSkillModal` | `CharacterSkillModal.tsx` | 查看角色技能、装备区、判定区说明 |
+| `CardDetailModal` | `CardDetailModal.tsx` | 查看装备牌说明 |
 | `RoomListGrid` | `RoomListGrid.tsx` | 房间列表 Sheet |
-| `BattleGrid` | `BattleGrid.tsx` | 对局战场表格 |
+| `BattleGrid` | `BattleGrid.tsx` | 对局战场表格，右侧含操作区日志与聊天区 |
 | `GameGrid` | `GameGrid.tsx` | 按 `room.status` 切换 Lobby/Battle |
 
 ## 测试房常量
@@ -98,12 +99,19 @@
 - 服务端启动时 `RoomService.ensureSandboxRoom()` 自动创建空壳房间
 - 断线重连：按昵称匹配非虚拟、已断线的玩家，迁移 socket id 与引擎内 player id
 
+## 前端状态与显示约定
+
+- `client/src/utils/display.ts` 统一处理“界”前缀剥离、日志/Prompt 文案净化、房间数据展示态清洗
+- `appStore.connect()` 会复用已有 socket 实例，避免重复创建连接
+- `room:created`、`room:joined`、`room:state` 均先经过 `sanitizeRoom()` 再进入前端状态
+
 ## 本地调试建议
 
 1. 开两个浏览器窗口可测多人房间；测试房可用 **切换角色** 单窗口多控。
 2. 修改 `@tk/shared` / `@tk/engine` 后执行根目录 `npm run build` 再重启 dev。
 3. 老板键 `Ctrl+Shift+H` 用于快速检查假表伪装效果。
-4. 对局中公式栏可直接输入牌名 Enter 出牌；有弹窗时按弹窗操作。
+4. 对局中公式栏可直接输入牌名 Enter 出牌；若输入内容不匹配当前操控角色手牌，则按聊天消息发送。
+5. 战场表格中点击装备名称可查看卡牌说明，点击“技能”列可查看角色技能。
 
 ## 里程碑
 

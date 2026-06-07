@@ -13,7 +13,11 @@ import {
   validResponseCards,
 } from '../engine/effect-runner';
 import { cardNameFromHandEntry } from '../engine/card-label';
-import { applyLockedModifiers, playerHasSkill, type TimingContext } from '../engine/timing-runner';
+import {
+  applyLockedModifiers,
+  playerHasSkill,
+  type TimingContext,
+} from '../engine/timing-runner';
 import {
   getValidTargets,
   needsTargetSelection,
@@ -43,9 +47,6 @@ export interface CardPlayHost {
   drainStack?(): Promise<{ paused: boolean }>;
 }
 
-/**
- * 配置驱动的用牌流程（杀/闪等）：读 CardDefinition.effects，不写 cardId 分支。
- */
 export class CardPlayService {
   initiatePlayCard(
     host: CardPlayHost,
@@ -56,7 +57,7 @@ export class CardPlayService {
     if (host.getState().prompt) {
       return { ok: false, error: '请先处理当前提示' };
     }
-    const source = host.getState().players.find((p) => p.id === sourceId);
+    const source = host.getState().players.find((player) => player.id === sourceId);
     if (!source) return { ok: false, error: '玩家不存在' };
     if (host.getState().turn.phase !== 'play') {
       return { ok: false, error: '当前不是出牌阶段' };
@@ -68,8 +69,8 @@ export class CardPlayService {
       return { ok: false, error: '此牌不能主动打出' };
     }
 
-    const idx = this.resolveHandIndex(source, cardName, handIndex);
-    if (idx < 0) return { ok: false, error: '手牌中没有此牌' };
+    const index = this.resolveHandIndex(source, cardName, handIndex);
+    if (index < 0) return { ok: false, error: '手牌中没有此牌' };
 
     if (!this.canUseShaThisTurn(source, card)) {
       return { ok: false, error: '本回合【杀】已用完' };
@@ -78,8 +79,9 @@ export class CardPlayService {
     setCardPlayContext(host.getState().resolution.context, {
       cardId: card.id,
       sourcePlayerId: sourceId,
-      handIndex: idx,
+      handIndex: index,
       targetPlayerIds: [],
+      isAoe: false,
       responsesRequired: 1,
       responseCount: 0,
     });
@@ -105,18 +107,18 @@ export class CardPlayService {
     promptId: string,
   ): { ok: boolean; error?: string; scheduleAoe?: boolean } {
     const prompt = host.getState().prompt;
-    const ctx = this.requireCardPlay(host);
-    if (!prompt || prompt.id !== promptId || !ctx) {
+    const context = this.requireCardPlay(host);
+    if (!prompt || prompt.id !== promptId || !context) {
       return { ok: false, error: '提示已失效' };
     }
 
-    const card = CardRegistry.getById(ctx.cardId);
-    const source = host.getState().players.find((p) => p.id === sourceId);
+    const card = CardRegistry.getById(context.cardId);
+    const source = host.getState().players.find((player) => player.id === sourceId);
     if (!card || !source) return { ok: false, error: '状态错误' };
 
     if (needsTargetSelection(card)) {
-      const valid = getValidTargets(card, source, host.getState().players);
-      if (valid.length === 0) {
+      const validTargets = getValidTargets(card, source, host.getState().players);
+      if (validTargets.length === 0) {
         this.clearCardPlay(host);
         return { ok: false, error: '没有合法的目标角色' };
       }
@@ -127,8 +129,8 @@ export class CardPlayService {
         playerId: sourceId,
         cardId: card.id,
         cardName: card.name,
-        message: `请选择【${card.name}】的目标（${card.targeting.count?.min ?? 1}～${max} 名）`,
-        validTargetIds: valid.map((t) => t.id),
+        message: `请选择【${card.name}】的目标（${card.targeting.count?.min ?? 1}~${max} 名）`,
+        validTargetIds: validTargets.map((target) => target.id),
       });
       return { ok: true };
     }
@@ -143,49 +145,56 @@ export class CardPlayService {
     targetIds: string[],
   ): { ok: boolean; error?: string; scheduleAoe?: boolean } {
     const prompt = host.getState().prompt;
-    const ctx = this.requireCardPlay(host);
-    if (!prompt || prompt.id !== promptId || !ctx) {
+    const context = this.requireCardPlay(host);
+    if (!prompt || prompt.id !== promptId || !context) {
       return { ok: false, error: '提示已失效' };
     }
     if (prompt.type !== 'select_targets') {
       return { ok: false, error: '当前不是选目标阶段' };
     }
-    const valid = new Set(prompt.validTargetIds ?? []);
-    for (const id of targetIds) {
-      if (!valid.has(id)) return { ok: false, error: '目标不合法' };
+
+    const validTargetIds = new Set(prompt.validTargetIds ?? []);
+    for (const targetId of targetIds) {
+      if (!validTargetIds.has(targetId)) {
+        return { ok: false, error: '目标不合法' };
+      }
     }
-    const card = CardRegistry.getById(ctx.cardId);
+
+    const card = CardRegistry.getById(context.cardId);
     const min = card?.targeting.count?.min ?? 1;
     const max = card?.targeting.count?.max ?? 1;
     if (targetIds.length < min || targetIds.length > max) {
-      return { ok: false, error: `请选择 ${min}${max > min ? `～${max}` : ''} 个目标` };
+      return {
+        ok: false,
+        error: `请选择 ${min}${max > min ? `~${max}` : ''} 个目标`,
+      };
     }
+
     return this.startResolution(host, sourceId, targetIds);
   }
 
-  /** 进入响应或直结；需要响应时设置 prompt 并返回 paused */
   startResolution(
     host: CardPlayHost,
     sourceId: string,
     targetIds: string[],
   ): { ok: boolean; error?: string; paused?: boolean; scheduleAoe?: boolean } {
-    const ctx = this.requireCardPlay(host);
-    if (!ctx) return { ok: false, error: '无进行中的用牌' };
+    const context = this.requireCardPlay(host);
+    if (!context) return { ok: false, error: '无进行中的用牌' };
 
-    const card = CardRegistry.getById(ctx.cardId);
-    const source = host.getState().players.find((p) => p.id === sourceId);
+    const card = CardRegistry.getById(context.cardId);
+    const source = host.getState().players.find((player) => player.id === sourceId);
     if (!card || !source) {
       this.clearCardPlay(host);
       return { ok: false, error: '结算失败' };
     }
 
-    removeCardFromHand(source, card.name, ctx.handIndex);
+    removeCardFromHand(source, card.name, context.handIndex);
     host.getDeck().discardCard(card.name);
     if (card.id === 'sha') source.shaUsedCount += 1;
 
     let targets = targetIds
-      .map((id) => host.getState().players.find((p) => p.id === id))
-      .filter((p): p is EnginePlayerState => !!p);
+      .map((id) => host.getState().players.find((player) => player.id === id))
+      .filter((player): player is EnginePlayerState => !!player);
 
     if (targets.length === 0 && card.targeting.selector === 'self') {
       targets = [source];
@@ -197,65 +206,29 @@ export class CardPlayService {
       targets = getValidTargets(card, source, host.getState().players);
     }
 
-    ctx.targetPlayerIds = targets.map((t) => t.id);
+    context.targetPlayerIds = targets.map((target) => target.id);
     host.log(
-      `${source.generalName} 对 ${targets.map((t) => t.generalName).join('、') || '全场'} 使用【${card.name}】`,
+      `${source.generalName} 对 ${targets.map((target) => target.generalName).join('、') || '全场'} 使用【${card.name}】`,
     );
 
-    const responseType = getResponseTypeFromEffect(card);
-    if (responseType && isAoeCard(card) && targets.length > 0 && host.scheduleAoeTargets) {
-      const sorted = sortAoeTargets(host.getState().players, source, targets);
-      ctx.targetPlayerIds = sorted.map((t) => t.id);
-      ctx.responseType = responseType;
-      ctx.responsesRequired = 1;
-      ctx.responseCount = 0;
-      const timingCtx: TimingContext = { source, card, responsesRequired: 1 };
-      applyLockedModifiers(timingCtx);
-      ctx.responsesRequired = timingCtx.responsesRequired ?? 1;
-      setCardPlayContext(host.getState().resolution.context, ctx);
-      host.setPrompt(null);
-      host.scheduleAoeTargets(source.id, ctx.targetPlayerIds);
-      return { ok: true, scheduleAoe: true };
+    if (this.shouldPromptWuxie(card, context.targetPlayerIds)) {
+      context.wuxieQueue = this.collectWuxieQueue(host, source.id);
+      context.wuxieCancelledTargetIds = [];
+      context.wuxieCancelledAll = false;
+      setCardPlayContext(host.getState().resolution.context, context);
+      return this.promptNextWuxie(host, card, source, context);
     }
 
-    if (responseType && targets.length > 0) {
-      const target = targets[0]!;
-      if (card.id === 'sha' && shaBlockedByArmor(source, target)) {
-        host.log(`【仁王盾】生效，【杀】对 ${target.generalName} 无效`);
-        this.clearCardPlay(host);
-        host.setPrompt(null);
-        return { ok: true };
-      }
-
-      const timingCtx: TimingContext = { source, targets, card, responsesRequired: 1 };
-      applyLockedModifiers(timingCtx);
-      ctx.responsesRequired = timingCtx.responsesRequired ?? 1;
-      ctx.responseType = responseType;
-      ctx.responseCount = 0;
-      ctx.awaitingResponseFrom = target.id;
-      setCardPlayContext(host.getState().resolution.context, ctx);
-      return this.promptResponse(host, card, source, target, ctx);
-    }
-
-    const zonePick = this.getZonePickAction(card);
-    if (zonePick && targets.length > 0) {
-      return this.promptZoneCardPick(host, card, source, targets[0]!, zonePick);
-    }
-
-    this.runImmediateEffects(host, card, source, targets);
-    this.clearCardPlay(host);
-    host.setPrompt(null);
-    return { ok: true };
+    return this.continueResolution(host, card, source, targets, context);
   }
 
-  /** TARGET_RESOLVE 入栈后：对当前目标弹出与【杀】相同的响应 prompt */
   resolveTargetResponse(host: CardPlayHost, targetId: string): void {
-    const ctx = this.requireCardPlay(host);
-    if (!ctx) return;
+    const context = this.requireCardPlay(host);
+    if (!context) return;
 
-    const card = CardRegistry.getById(ctx.cardId);
-    const source = host.getState().players.find((p) => p.id === ctx.sourcePlayerId);
-    const target = host.getState().players.find((p) => p.id === targetId);
+    const card = CardRegistry.getById(context.cardId);
+    const source = host.getState().players.find((player) => player.id === context.sourcePlayerId);
+    const target = host.getState().players.find((player) => player.id === targetId);
     if (!card || !source || !target) return;
 
     if (target.hp <= 0) {
@@ -263,10 +236,10 @@ export class CardPlayService {
       return;
     }
 
-    ctx.awaitingResponseFrom = targetId;
-    ctx.responseCount = 0;
-    setCardPlayContext(host.getState().resolution.context, ctx);
-    this.promptResponse(host, card, source, target, ctx);
+    context.awaitingResponseFrom = targetId;
+    context.responseCount = 0;
+    setCardPlayContext(host.getState().resolution.context, context);
+    this.promptResponse(host, card, source, target, context);
   }
 
   promptResponse(
@@ -274,9 +247,9 @@ export class CardPlayService {
     card: CardDefinition,
     source: EnginePlayerState,
     target: EnginePlayerState,
-    ctx: CardPlayContext,
+    context: CardPlayContext,
   ): { ok: boolean; paused: boolean } {
-    const responseType = ctx.responseType ?? getResponseTypeFromEffect(card);
+    const responseType = context.responseType ?? getResponseTypeFromEffect(card);
     if (!responseType) {
       host.setPrompt(null);
       return { ok: true, paused: false };
@@ -284,8 +257,8 @@ export class CardPlayService {
 
     const validCards = validResponseCards(responseType, target.handCards);
     const label = responseType === 'shan' ? '闪' : '杀';
-    const required = ctx.responsesRequired;
-    const count = ctx.responseCount;
+    const required = context.responsesRequired;
+    const count = context.responseCount;
     const hint =
       required > 1 ? `（需 ${required} 张【${label}】，已 ${count}/${required}）` : '';
 
@@ -297,9 +270,12 @@ export class CardPlayService {
       cardName: card.name,
       message: `${target.generalName}：请打出【${label}】响应【${card.name}】${hint}`,
       validResponseCards: validCards,
-      targetPlayerIds: ctx.targetPlayerIds,
+      targetPlayerIds: context.targetPlayerIds,
       options: [
-        ...validCards.map((c) => ({ id: `card:${c}`, label: `打出【${c}】` })),
+        ...validCards.map((validCard) => ({
+          id: `card:${validCard}`,
+          label: `打出【${validCard}】`,
+        })),
         { id: 'pass', label: '不出（承受效果）' },
       ],
     });
@@ -319,47 +295,59 @@ export class CardPlayService {
     }) => Promise<void>,
   ): Promise<{ ok: boolean; error?: string; paused?: boolean }> {
     const prompt = host.getState().prompt;
-    const ctx = this.requireCardPlay(host);
-    if (!prompt || prompt.id !== promptId || !ctx) {
+    const context = this.requireCardPlay(host);
+    if (!prompt || prompt.id !== promptId || !context) {
       return { ok: false, error: '提示已失效' };
     }
     if (prompt.type !== 'response' || prompt.playerId !== responderId) {
       return { ok: false, error: '当前不能由你响应' };
     }
 
-    const card = CardRegistry.getById(ctx.cardId);
-    const source = host.getState().players.find((p) => p.id === ctx.sourcePlayerId);
-    const target = host.getState().players.find((p) => p.id === responderId);
-    if (!card || !source || !target) {
+    const card = CardRegistry.getById(context.cardId);
+    const source = host.getState().players.find(
+      (player) => player.id === context.sourcePlayerId,
+    );
+    const responder = host.getState().players.find((player) => player.id === responderId);
+    if (!card || !source || !responder) {
       this.clearCardPlay(host);
       host.setPrompt(null);
       return { ok: false, error: '状态错误' };
     }
 
-    const required = ctx.responsesRequired;
+    if (context.awaitingWuxieFrom) {
+      return this.submitWuxieResponse(
+        host,
+        responder,
+        source,
+        card,
+        context,
+        choiceId,
+      );
+    }
 
-    const aoeActive = this.isAoeActive(host);
+    const required = context.responsesRequired;
+    const aoeActive = context.isAoe === true;
 
     if (choiceId.startsWith('card:')) {
       const cardName = choiceId.slice(5);
-      if (!removeCardFromHand(target, cardName)) {
+      if (!removeCardFromHand(responder, cardName)) {
         return { ok: false, error: '手牌中没有此牌' };
       }
       host.getDeck().discardCard(cardName);
-      ctx.responseCount += 1;
+      context.responseCount += 1;
       host.log(
-        `${target.generalName} 打出【${cardName}】（${ctx.responseCount}/${required}）`,
+        `${responder.generalName} 打出【${cardName}】（${context.responseCount}/${required}）`,
       );
-      setCardPlayContext(host.getState().resolution.context, ctx);
-      if (ctx.responseCount < required) {
-        return this.promptResponse(host, card, source, target, ctx);
+      setCardPlayContext(host.getState().resolution.context, context);
+      if (context.responseCount < required) {
+        return this.promptResponse(host, card, source, responder, context);
       }
       host.setPrompt(null);
       if (aoeActive) {
-        host.log(`【${card.name}】对 ${target.generalName} 被抵消`);
+        host.log(`【${card.name}】对 ${responder.generalName} 被抵消`);
         host.completeTargetResolve?.();
         await host.drainStack?.();
-        if (!this.isAoeActive(host)) this.clearCardPlay(host);
+        if (host.getState().resolution.targetQueue == null) this.clearCardPlay(host);
         return { ok: true, paused: host.getState().prompt != null };
       }
       this.clearCardPlay(host);
@@ -368,28 +356,32 @@ export class CardPlayService {
     }
 
     if (choiceId === 'pass') {
-      host.log(`${target.generalName} 未响应【${card.name}】`);
+      host.log(`${responder.generalName} 未响应【${card.name}】`);
       const onFail = getOnFailEffects(card);
-      const damageEffect = onFail.find((e) => e.action === 'damage');
-      const amount = (damageEffect?.params?.amount as number) ?? 1;
+      const damageEffect = onFail.find((effect) => effect.action === 'damage');
+      const amount = this.applyShaDamageBuff(
+        source,
+        card,
+        (damageEffect?.params?.amount as number) ?? 1,
+      );
 
       host.setPrompt(null);
 
       if (aoeActive) {
         await onDamage({
           sourceId: source.id,
-          targetId: target.id,
+          targetId: responder.id,
           amount,
           damageCardName: card.name,
         });
         if (host.getState().prompt) {
-          ctx.pendingAoeAdvance = true;
-          setCardPlayContext(host.getState().resolution.context, ctx);
+          context.pendingAoeAdvance = true;
+          setCardPlayContext(host.getState().resolution.context, context);
           return { ok: true, paused: true };
         }
         host.completeTargetResolve?.();
         await host.drainStack?.();
-        if (!this.isAoeActive(host)) {
+        if (host.getState().resolution.targetQueue == null) {
           this.clearCardPlay(host);
           host.log('锦囊/AOE 响应结算完毕');
         }
@@ -397,14 +389,12 @@ export class CardPlayService {
       }
 
       this.clearCardPlay(host);
-
       await onDamage({
         sourceId: source.id,
-        targetId: target.id,
+        targetId: responder.id,
         amount,
         damageCardName: card.name,
       });
-
       return { ok: true, paused: host.getState().prompt != null };
     }
 
@@ -424,8 +414,8 @@ export class CardPlayService {
     choiceId: string,
   ): { ok: boolean; error?: string } {
     const prompt = host.getState().prompt;
-    const pick = getZonePickContext(host.getState().resolution.context);
-    if (!prompt || prompt.id !== promptId || !pick) {
+    const zonePick = getZonePickContext(host.getState().resolution.context);
+    if (!prompt || prompt.id !== promptId || !zonePick) {
       return { ok: false, error: '提示已失效' };
     }
     if (prompt.type !== 'select_zone_card' || prompt.playerId !== sourceId) {
@@ -435,8 +425,12 @@ export class CardPlayService {
     const parsed = parseZoneCardId(choiceId);
     if (!parsed) return { ok: false, error: '请选择一张牌' };
 
-    const source = host.getState().players.find((p) => p.id === pick.sourcePlayerId);
-    const target = host.getState().players.find((p) => p.id === pick.targetPlayerId);
+    const source = host.getState().players.find(
+      (player) => player.id === zonePick.sourcePlayerId,
+    );
+    const target = host.getState().players.find(
+      (player) => player.id === zonePick.targetPlayerId,
+    );
     if (!source || !target) {
       this.clearCardPlay(host);
       setZonePickContext(host.getState().resolution.context, undefined);
@@ -444,12 +438,14 @@ export class CardPlayService {
       return { ok: false, error: '状态错误' };
     }
 
-    const deck = host.getDeck();
-    const log = (m: string) => host.log(m);
     const ok =
-      pick.action === 'discard'
-        ? discardZoneCard(target, parsed.zone, parsed.index, deck, log)
-        : takeZoneCard(target, source, parsed.zone, parsed.index, log);
+      zonePick.action === 'discard'
+        ? discardZoneCard(target, parsed.zone, parsed.index, host.getDeck(), (message) =>
+            host.log(message),
+          )
+        : takeZoneCard(target, source, parsed.zone, parsed.index, (message) =>
+            host.log(message),
+          );
 
     if (!ok) return { ok: false, error: '所选牌无效' };
 
@@ -459,18 +455,248 @@ export class CardPlayService {
     return { ok: true };
   }
 
-  /** reactive 技能处理完后，推进 AOE 目标队列 */
   async advanceAoeIfPending(host: CardPlayHost): Promise<void> {
-    const ctx = this.requireCardPlay(host);
-    if (!ctx?.pendingAoeAdvance || host.getState().prompt) return;
-    ctx.pendingAoeAdvance = false;
-    setCardPlayContext(host.getState().resolution.context, ctx);
+    const context = this.requireCardPlay(host);
+    if (!context?.pendingAoeAdvance || host.getState().prompt) return;
+    context.pendingAoeAdvance = false;
+    setCardPlayContext(host.getState().resolution.context, context);
     host.completeTargetResolve?.();
     await host.drainStack?.();
-    if (!this.isAoeActive(host)) {
+    if (host.getState().resolution.targetQueue == null) {
       this.clearCardPlay(host);
       host.log('锦囊/AOE 响应结算完毕');
     }
+  }
+
+  private continueResolution(
+    host: CardPlayHost,
+    card: CardDefinition,
+    source: EnginePlayerState,
+    targets: EnginePlayerState[],
+    context: CardPlayContext,
+  ): { ok: boolean; error?: string; paused?: boolean; scheduleAoe?: boolean } {
+    if (context.wuxieCancelledAll) {
+      host.log(`【${card.name}】被【无懈可击】抵消`);
+      this.clearCardPlay(host);
+      host.setPrompt(null);
+      return { ok: true };
+    }
+
+    const cancelledTargets = new Set(context.wuxieCancelledTargetIds ?? []);
+    const finalTargets = targets.filter((target) => !cancelledTargets.has(target.id));
+    context.targetPlayerIds = finalTargets.map((target) => target.id);
+
+    if (finalTargets.length === 0 && targets.length > 0) {
+      host.log(`【${card.name}】的目标全部被【无懈可击】抵消`);
+      this.clearCardPlay(host);
+      host.setPrompt(null);
+      return { ok: true };
+    }
+
+    const responseType = getResponseTypeFromEffect(card);
+    if (
+      responseType &&
+      isAoeCard(card) &&
+      finalTargets.length > 0 &&
+      host.scheduleAoeTargets
+    ) {
+      const sortedTargets = sortAoeTargets(host.getState().players, source, finalTargets);
+      context.targetPlayerIds = sortedTargets.map((target) => target.id);
+      context.responseType = responseType;
+      context.isAoe = true;
+      context.responsesRequired = 1;
+      context.responseCount = 0;
+      const timingContext: TimingContext = { source, card, responsesRequired: 1 };
+      applyLockedModifiers(timingContext);
+      context.responsesRequired = timingContext.responsesRequired ?? 1;
+      setCardPlayContext(host.getState().resolution.context, context);
+      host.setPrompt(null);
+      host.scheduleAoeTargets(source.id, context.targetPlayerIds);
+      return { ok: true, scheduleAoe: true };
+    }
+
+    if (responseType && finalTargets.length > 0) {
+      const target = finalTargets[0]!;
+      if (card.id === 'sha' && shaBlockedByArmor(source, target)) {
+        host.log(`【仁王盾】生效，【杀】对 ${target.generalName} 无效`);
+        this.clearCardPlay(host);
+        host.setPrompt(null);
+        return { ok: true };
+      }
+
+      const timingContext: TimingContext = {
+        source,
+        targets: finalTargets,
+        card,
+        responsesRequired: 1,
+      };
+      applyLockedModifiers(timingContext);
+      context.responsesRequired = timingContext.responsesRequired ?? 1;
+      context.responseType = responseType;
+      context.isAoe = false;
+      context.responseCount = 0;
+      context.awaitingResponseFrom = target.id;
+      setCardPlayContext(host.getState().resolution.context, context);
+      return this.promptResponse(host, card, source, target, context);
+    }
+
+    const zonePickAction = this.getZonePickAction(card);
+    if (zonePickAction && finalTargets.length > 0) {
+      return this.promptZoneCardPick(
+        host,
+        card,
+        source,
+        finalTargets[0]!,
+        zonePickAction,
+      );
+    }
+
+    this.runImmediateEffects(host, card, source, finalTargets);
+    this.clearCardPlay(host);
+    host.setPrompt(null);
+    return { ok: true };
+  }
+
+  private shouldPromptWuxie(card: CardDefinition, targetPlayerIds: string[]): boolean {
+    return card.type === 'trick' && card.name !== '无懈可击' && targetPlayerIds.length > 0;
+  }
+
+  private collectWuxieQueue(host: CardPlayHost, sourcePlayerId: string): string[] {
+    const players = [...host.getState().players].sort((left, right) => left.seat - right.seat);
+    const sourceIndex = players.findIndex((player) => player.id === sourcePlayerId);
+    if (sourceIndex < 0) return [];
+
+    const ordered = [
+      ...players.slice(sourceIndex),
+      ...players.slice(0, sourceIndex),
+    ];
+    return ordered
+      .filter((player) => validResponseCards('wuxie', player.handCards).length > 0)
+      .map((player) => player.id);
+  }
+
+  private promptNextWuxie(
+    host: CardPlayHost,
+    card: CardDefinition,
+    source: EnginePlayerState,
+    context: CardPlayContext,
+  ): { ok: boolean; paused?: boolean; scheduleAoe?: boolean } {
+    const queue = context.wuxieQueue ?? [];
+    while (queue.length > 0) {
+      const responderId = queue.shift()!;
+      const responder = host
+        .getState()
+        .players.find((player) => player.id === responderId);
+      if (!responder || validResponseCards('wuxie', responder.handCards).length === 0) {
+        continue;
+      }
+
+      context.awaitingWuxieFrom = responder.id;
+      context.wuxiePromptSourcePlayerId = source.id;
+      context.wuxieQueue = queue;
+      setCardPlayContext(host.getState().resolution.context, context);
+
+      const options = this.buildWuxieOptions(host, responder.id, context.targetPlayerIds);
+      host.setPrompt({
+        id: nextPromptId(),
+        type: 'response',
+        playerId: responder.id,
+        sourcePlayerId: source.id,
+        cardName: card.name,
+        targetPlayerIds: context.targetPlayerIds,
+        message: `${responder.generalName}：是否对【${card.name}】使用【无懈可击】？`,
+        validResponseCards: ['无懈可击'],
+        options: [...options, { id: 'pass', label: '不出' }],
+      });
+      return { ok: true, paused: true };
+    }
+
+    context.awaitingWuxieFrom = undefined;
+    context.wuxiePromptSourcePlayerId = undefined;
+    setCardPlayContext(host.getState().resolution.context, context);
+    const targets = context.targetPlayerIds
+      .map((id) => host.getState().players.find((player) => player.id === id))
+      .filter((player): player is EnginePlayerState => !!player);
+    return this.continueResolution(host, card, source, targets, context);
+  }
+
+  private buildWuxieOptions(
+    host: CardPlayHost,
+    responderId: string,
+    targetPlayerIds: string[],
+  ): NonNullable<GamePrompt['options']> {
+    const targets = targetPlayerIds
+      .map((id) => host.getState().players.find((player) => player.id === id))
+      .filter((player): player is EnginePlayerState => !!player);
+
+    const options: NonNullable<GamePrompt['options']> = [];
+    if (targets.length > 1) {
+      options.push({
+        id: 'wuxie:all',
+        label: '打出【无懈可击】给所有目标',
+      });
+    }
+    for (const target of targets) {
+      options.push({
+        id: `wuxie:${target.id}`,
+        label: `打出【无懈可击】给 ${target.generalName}`,
+      });
+    }
+    if (targets.length === 1 && targets[0]?.id === responderId) {
+      options[0] = {
+        id: `wuxie:${targets[0].id}`,
+        label: `打出【无懈可击】给自己`,
+      };
+    }
+    return options;
+  }
+
+  private submitWuxieResponse(
+    host: CardPlayHost,
+    responder: EnginePlayerState,
+    source: EnginePlayerState,
+    card: CardDefinition,
+    context: CardPlayContext,
+    choiceId: string,
+  ): { ok: boolean; error?: string; paused?: boolean; scheduleAoe?: boolean } {
+    if (choiceId === 'pass') {
+      host.log(`${responder.generalName} 未打出【无懈可击】`);
+      context.awaitingWuxieFrom = undefined;
+      setCardPlayContext(host.getState().resolution.context, context);
+      host.setPrompt(null);
+      return this.promptNextWuxie(host, card, source, context);
+    }
+
+    if (!choiceId.startsWith('wuxie:')) {
+      return { ok: false, error: '无效选择' };
+    }
+    if (!removeCardFromHand(responder, '无懈可击')) {
+      return { ok: false, error: '手牌中没有【无懈可击】' };
+    }
+
+    host.getDeck().discardCard('无懈可击');
+    const targetKey = choiceId.slice('wuxie:'.length);
+    context.awaitingWuxieFrom = undefined;
+
+    if (targetKey === 'all') {
+      context.wuxieCancelledAll = true;
+      host.log(`${responder.generalName} 打出【无懈可击】，抵消【${card.name}】对所有人的效果`);
+    } else {
+      const target = host
+        .getState()
+        .players.find((player) => player.id === targetKey);
+      context.wuxieCancelledTargetIds = [
+        ...(context.wuxieCancelledTargetIds ?? []),
+        targetKey,
+      ];
+      host.log(
+        `${responder.generalName} 打出【无懈可击】，抵消【${card.name}】对 ${target?.generalName ?? '目标'} 的效果`,
+      );
+    }
+
+    setCardPlayContext(host.getState().resolution.context, context);
+    host.setPrompt(null);
+    return this.promptNextWuxie(host, card, source, context);
   }
 
   private runImmediateEffects(
@@ -479,20 +705,35 @@ export class CardPlayService {
     source: EnginePlayerState,
     targets: EnginePlayerState[],
   ): void {
+    if (card.id === 'sha' && source.skillUseCount['_jiu_buff']) {
+      source.skillUseCount['_jiu_buff'] = 0;
+    }
     runCardEffects({
       source,
       targets,
       card,
       deck: host.getDeck(),
-      log: (m) => host.log(m),
+      log: (message) => host.log(message),
     });
+  }
+
+  private applyShaDamageBuff(
+    source: EnginePlayerState,
+    card: CardDefinition,
+    amount: number,
+  ): number {
+    if (card.id !== 'sha') return amount;
+    const bonus = source.skillUseCount['_jiu_buff'] ?? 0;
+    if (bonus <= 0) return amount;
+    delete source.skillUseCount['_jiu_buff'];
+    return amount + bonus;
   }
 
   private canUseShaThisTurn(source: EnginePlayerState, card: CardDefinition): boolean {
     if (card.id !== 'sha') return true;
     const limit = card.defaultUsePerTurn ?? 1;
     if (source.shaUsedCount < limit) return true;
-    const hasCrossbow = source.equipment.some((e) => e.includes('诸葛连弩'));
+    const hasCrossbow = source.equipment.some((equipment) => equipment.includes('诸葛连弩'));
     return hasCrossbow || playerHasSkill(source, 'paoxiao');
   }
 
@@ -510,9 +751,7 @@ export class CardPlayService {
     ) {
       return handIndex;
     }
-    return source.handCards.findIndex(
-      (c) => cardNameFromHandEntry(c) === parsed,
-    );
+    return source.handCards.findIndex((card) => cardNameFromHandEntry(card) === parsed);
   }
 
   private requireCardPlay(host: CardPlayHost): CardPlayContext | undefined {
@@ -523,15 +762,10 @@ export class CardPlayService {
     setCardPlayContext(host.getState().resolution.context, undefined);
   }
 
-  private isAoeActive(host: CardPlayHost): boolean {
-    return host.getState().resolution.targetQueue != null;
-  }
-
-  /** 配置：需玩家选择目标区域内一张牌 */
   private getZonePickAction(card: CardDefinition): 'discard' | 'take' | null {
-    for (const e of card.effects) {
-      if (e.action === 'discard' && e.params?.zone === 'any') return 'discard';
-      if (e.action === 'moveCard' && !e.params?.from) return 'take';
+    for (const effect of card.effects) {
+      if (effect.action === 'discard' && effect.params?.zone === 'any') return 'discard';
+      if (effect.action === 'moveCard' && !effect.params?.from) return 'take';
     }
     return null;
   }
@@ -566,7 +800,10 @@ export class CardPlayService {
       cardName: card.name,
       targetPlayerIds: [target.id],
       message: `【${card.name}】：请选择 ${target.generalName} 区域内一张牌（${verb}）`,
-      zoneCardOptions: options.map((o) => ({ id: o.id, label: o.label })),
+      zoneCardOptions: options.map((option) => ({
+        id: option.id,
+        label: option.label,
+      })),
     });
     return { ok: true, paused: true };
   }

@@ -3,6 +3,7 @@ import { CharacterRegistry } from '@tk/engine';
 import type { RoomPlayer } from '@tk/shared';
 import type { HandCardPick } from './types/hand';
 import { TitleBar } from './components/wps/TitleBar';
+import { CardDetailModal } from './components/wps/CardDetailModal';
 import { CharacterSkillModal } from './components/wps/CharacterSkillModal';
 import { GamePromptModal } from './components/wps/GamePromptModal';
 import { Ribbon, RibbonAction } from './components/wps/Ribbon';
@@ -22,6 +23,7 @@ import {
   SheetId,
 } from './data/decoy';
 import { useAppStore } from './store/appStore';
+import { formatGeneralName } from './utils/display';
 import styles from './App.module.css';
 
 function App() {
@@ -32,6 +34,7 @@ function App() {
   const [formulaInput, setFormulaInput] = useState('');
   const [sandboxCharName, setSandboxCharName] = useState('');
   const [skillModalPlayer, setSkillModalPlayer] = useState<RoomPlayer | null>(null);
+  const [detailCardName, setDetailCardName] = useState<string | null>(null);
 
   const {
     connect,
@@ -400,7 +403,13 @@ function App() {
           if (room) sendChat(raw);
       }
     } else if (isPlaying && isSandbox) {
-      handlePlayCard(raw);
+      const hand = actingPlayer?.handCards ?? [];
+      const matchedIndex = hand.findIndex((card) => card === raw);
+      if (matchedIndex >= 0) {
+        handlePlayCard(raw, matchedIndex);
+      } else if (room) {
+        sendChat(raw);
+      }
     } else if (room) {
       sendChat(raw);
     }
@@ -426,6 +435,7 @@ function App() {
     room,
     isSandbox,
     isPlaying,
+    actingPlayer?.handCards,
   ]);
 
   const showGameSheet = !!room && !bossMode;
@@ -454,8 +464,8 @@ function App() {
         connected={connected}
         roomCode={bossMode ? undefined : room?.code}
         roomStatus={room ? roomStatusLabel : undefined}
-        actingName={actingPlayer?.nickname}
-        turnName={turnPlayer?.general ?? turnPlayer?.nickname}
+        actingName={formatGeneralName(actingPlayer)}
+        turnName={formatGeneralName(turnPlayer)}
       />
       {isPlaying && isSandbox && room && (
         <PlayControlBar
@@ -486,10 +496,10 @@ function App() {
             >
               <option value="">请选择武将</option>
               {sandboxGenerals.map((ch) => (
-                <option key={ch.id} value={ch.name}>
-                  {ch.name}
-                </option>
-              ))}
+              <option key={ch.id} value={ch.name}>
+                  {formatGeneralName({ general: ch.name })}
+              </option>
+            ))}
             </select>
           </label>
           <span className={styles.sandboxHint}>
@@ -519,19 +529,25 @@ function App() {
           {lastError}（点击关闭）
         </div>
       )}
-      <div className={styles.main}>
+      <div
+        className={
+          room && !bossMode && !isPlaying ? styles.mainWithChat : styles.main
+        }
+      >
         {displaySheet === GAME_SHEET_ID && room ? (
           <GameGrid
             room={room}
+            chatMessages={chatMessages}
             playerId={playerId}
             actingPlayerId={actingId}
             selectedCell={selectedCell}
             selectedHand={selectedHand}
             onSelectCell={setSelectedCell}
-            onSelectHand={handleSelectHand}
-            onPlayCard={handlePlayCard}
-            onViewSkills={setSkillModalPlayer}
-          />
+          onSelectHand={handleSelectHand}
+          onPlayCard={handlePlayCard}
+          onViewSkills={setSkillModalPlayer}
+          onViewCard={setDetailCardName}
+        />
         ) : displaySheet === 'sheet1' ? (
           <RoomListGrid
             rooms={roomList}
@@ -563,11 +579,24 @@ function App() {
           onClose={() => setSkillModalPlayer(null)}
         />
       )}
+      {detailCardName && (
+        <CardDetailModal
+          cardName={detailCardName}
+          onClose={() => setDetailCardName(null)}
+        />
+      )}
       {isPlaying && isSandbox && room && gamePrompt && (
         <GamePromptModal
           room={room}
           prompt={gamePrompt}
           actingPlayer={actingPlayer}
+          onClose={
+            gamePrompt.type === 'select_targets' ||
+            gamePrompt.type === 'select_zone_card' ||
+            (gamePrompt.type === 'use_skill' && gamePrompt.skillId === 'zhiheng')
+              ? () => sandboxConfirmPlay(gamePrompt.id, 'cancel')
+              : undefined
+          }
           onConfirmPlay={(pid, cid) => sandboxConfirmPlay(pid, cid)}
           onSelectTargets={(pid, ids) => sandboxSelectTargets(pid, ids)}
           onSubmitResponse={(pid, cid) => sandboxSubmitResponse(pid, cid)}

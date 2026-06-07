@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import styles from './Ribbon.module.css';
 
-export type RibbonTab = 'file' | 'home' | 'insert' | 'page' | 'formula' | 'data' | 'review' | 'view';
+export type RibbonTab =
+  | 'file'
+  | 'home'
+  | 'insert'
+  | 'page'
+  | 'formula'
+  | 'data'
+  | 'review'
+  | 'view';
 
 const TABS: { id: RibbonTab; label: string }[] = [
   { id: 'file', label: '文件' },
@@ -34,14 +42,14 @@ export function Ribbon({ actions, onAction }: RibbonProps) {
   return (
     <div className={styles.wrap}>
       <div className={styles.tabs}>
-        {TABS.map((t) => (
+        {TABS.map((tabItem) => (
           <button
-            key={t.id}
+            key={tabItem.id}
             type="button"
-            className={`${styles.tab} ${tab === t.id ? styles.tabActive : ''}`}
-            onClick={() => setTab(t.id)}
+            className={`${styles.tab} ${tab === tabItem.id ? styles.tabActive : ''}`}
+            onClick={() => setTab(tabItem.id)}
           >
-            {t.label}
+            {tabItem.label}
           </button>
         ))}
       </div>
@@ -59,20 +67,20 @@ export function Ribbon({ actions, onAction }: RibbonProps) {
           </div>
           <div className={styles.groupDivider} />
           <div className={styles.group}>
-            {actions.map((a) => (
+            {actions.map((action) => (
               <button
-                key={a.id}
+                key={action.id}
                 type="button"
-                className={`${styles.actionBtn} ${a.active ? styles.actionActive : ''}`}
-                disabled={a.disabled}
+                className={`${styles.actionBtn} ${action.active ? styles.actionActive : ''}`}
+                disabled={action.disabled}
                 onClick={() => {
-                  a.onClick?.();
-                  onAction(a.id);
+                  action.onClick?.();
+                  onAction(action.id);
                 }}
-                title={a.label}
+                title={action.label}
               >
-                <span className={styles.actionIcon}>{a.icon}</span>
-                <span>{a.label}</span>
+                <span className={styles.actionIcon}>{action.icon}</span>
+                <span>{action.label}</span>
               </button>
             ))}
           </div>
@@ -93,7 +101,7 @@ export function Ribbon({ actions, onAction }: RibbonProps) {
         </div>
       ) : (
         <div className={styles.ribbonPlaceholder}>
-          <span>{TABS.find((t) => t.id === tab)?.label} 功能区（演示）</span>
+          <span>{TABS.find((tabItem) => tabItem.id === tab)?.label} 功能区（演示）</span>
         </div>
       )}
     </div>

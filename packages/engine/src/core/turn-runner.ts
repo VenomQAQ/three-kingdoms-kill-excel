@@ -12,7 +12,12 @@ import {
 import { createCardInstance, formatCardInstance } from '../engine/card-instance';
 import { cardNameFromHandEntry } from '../engine/card-label';
 import { nextPromptId } from '../utils/prompt-id';
-import { characterSkillsForPrompt, playerHasSkill } from '../engine/timing-runner';
+import {
+  characterSkillsForPrompt,
+  collectOptionalSkillOffers,
+  playerHasSkill,
+} from '../engine/timing-runner';
+import { GameTiming } from '../types/timing';
 
 export interface TurnRunnerHost {
   getState(): GameState;
@@ -263,6 +268,24 @@ export class TurnRunner {
 
     this.host.getState().turn.phase = 'before_draw';
     this.host.getFsm().set('before_draw');
+    const offers = collectOptionalSkillOffers(cur, GameTiming.BEFORE_DRAW);
+    if (offers.length > 0) {
+      this.host.setPrompt({
+        id: nextPromptId(),
+        type: 'use_skill',
+        playerId: cur.id,
+        characterSkills: characterSkillsForPrompt(cur),
+        message: '摸牌前：是否发动技能？',
+        options: [
+          ...offers.map((offer) => ({
+            id: `skill:${offer.skill.id}`,
+            label: `发动【${offer.skill.name}】`,
+          })),
+          { id: 'skip', label: '不发动，进入摸牌' },
+        ],
+      });
+      return;
+    }
 
     if (cur.skillUseCount['_skip_draw']) {
       delete cur.skillUseCount['_skip_draw'];

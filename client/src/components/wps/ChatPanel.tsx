@@ -11,15 +11,15 @@ export function ChatPanel({ messages, visible }: ChatPanelProps) {
 
   return (
     <aside className={styles.panel}>
-      <div className={styles.title}>审阅 · 消息</div>
+      <div className={styles.title}>聊天区</div>
       <div className={styles.list}>
         {messages.length === 0 && (
-          <div className={styles.empty}>暂无消息，在公式栏输入后 Enter 发送</div>
+          <div className={styles.empty}>暂无消息，在公式栏输入后按 Enter 发送。</div>
         )}
-        {messages.map((m) => (
-          <div key={m.id} className={styles.msg}>
-            <span className={styles.name}>{m.nickname}</span>
-            <span className={styles.text}>{m.content}</span>
+        {messages.map((message) => (
+          <div key={message.id} className={styles.msg}>
+            <span className={styles.name}>{message.nickname}</span>
+            <span className={styles.text}>{message.content}</span>
           </div>
         ))}
       </div>

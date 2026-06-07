@@ -1,10 +1,12 @@
 import { Room } from '@tk/shared';
+import type { ChatMessage } from '@tk/shared';
 import type { HandCardPick } from '../../types/hand';
 import { BattleGrid } from './BattleGrid';
 import { LobbyGrid } from './LobbyGrid';
 
 interface GameGridProps {
   room: Room;
+  chatMessages: ChatMessage[];
   playerId: string | null;
   actingPlayerId: string | null;
   selectedCell: string;
@@ -13,10 +15,12 @@ interface GameGridProps {
   onSelectHand: (card: string, index: number) => void;
   onPlayCard: (card: string, handIndex?: number) => void;
   onViewSkills: (player: import('@tk/shared').RoomPlayer) => void;
+  onViewCard: (cardName: string) => void;
 }
 
 export function GameGrid({
   room,
+  chatMessages,
   playerId,
   actingPlayerId,
   selectedCell,
@@ -25,11 +29,13 @@ export function GameGrid({
   onSelectHand,
   onPlayCard,
   onViewSkills,
+  onViewCard,
 }: GameGridProps) {
   if (room.status === 'playing') {
     return (
       <BattleGrid
         room={room}
+        chatMessages={chatMessages}
         playerId={playerId}
         actingPlayerId={actingPlayerId}
         selectedCell={selectedCell}
@@ -38,6 +44,7 @@ export function GameGrid({
         onSelectHand={onSelectHand}
         onPlayCard={onPlayCard}
         onViewSkills={onViewSkills}
+        onViewCard={onViewCard}
       />
     );
   }

@@ -10,6 +10,7 @@ import {
 } from '@tk/shared';
 import { create } from 'zustand';
 import { SANDBOX_ROOM_CODE } from '../data/decoy';
+import { sanitizeRoom } from '../utils/display';
 
 type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -79,7 +80,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   connect: () => {
-    if (socketInstance?.connected) return;
+    if (socketInstance) {
+      set({
+        socket: socketInstance,
+        connected: socketInstance.connected,
+      });
+      if (!socketInstance.connected) {
+        socketInstance.connect();
+      }
+      return;
+    }
 
     const socket: GameSocket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
@@ -94,12 +104,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     socket.on('disconnect', () => set({ connected: false }));
 
     socket.on('room:created', (room) =>
-      set({ room, actingPlayerId: get().playerId }),
+      set({ room: sanitizeRoom(room), actingPlayerId: get().playerId }),
     );
     socket.on('room:joined', (room) =>
-      set({ room, actingPlayerId: get().playerId }),
+      set({ room: sanitizeRoom(room), actingPlayerId: get().playerId }),
     );
-    socket.on('room:state', (room) => set({ room }));
+    socket.on('room:state', (room) => set({ room: sanitizeRoom(room) }));
     socket.on('room:error', ({ message }) => set({ lastError: message }));
     socket.on('sandbox:actor', ({ actingPlayerId }) => set({ actingPlayerId }));
     socket.on('chat:message', (msg) =>
@@ -134,7 +144,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           return;
         }
         set({
-          room: ack.room,
+          room: sanitizeRoom(ack.room),
           playerId: ack.playerId,
           actingPlayerId: ack.playerId,
           chatMessages: [],
@@ -164,7 +174,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           return;
         }
         set({
-          room: ack.room,
+          room: sanitizeRoom(ack.room),
           playerId: ack.playerId,
           actingPlayerId: ack.playerId,
           chatMessages: [],
