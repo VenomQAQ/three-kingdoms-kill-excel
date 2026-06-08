@@ -1,5 +1,6 @@
-import { CardRegistry } from '@tk/engine';
+import { CardRegistry, CharacterRegistry } from '@tk/engine';
 import { ChatMessage, Room, RoomPlayer } from '@tk/shared';
+import { useEffect, useRef, useState } from 'react';
 import type { HandCardPick } from '../../types/hand';
 import { COL_LABELS } from '../../data/decoy';
 import {
@@ -9,7 +10,7 @@ import {
 import styles from './SpreadsheetGrid.module.css';
 
 const HEADERS = ['用户', '角色名', '技能', '血量', '手牌', '装备区', '判定区', '回合状态'];
-const COL_WIDTHS = [300, 120, 72, 62, 130, 150, 110, 96];
+const COL_WIDTHS = [180, 100, 72, 62, 80, 150, 110, 96];
 const ROWS_PER_PLAYER = 2;
 
 interface BattleGridProps {
@@ -49,8 +50,25 @@ export function BattleGrid({
   onViewSkills,
   onViewCard,
 }: BattleGridProps) {
+  const [sideCollapsed, setSideCollapsed] = useState(false);
+  const logScrollRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (logScrollRef.current) {
+      logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight;
+    }
+  }, [room.sandbox?.log]);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
+
   const cols = COL_LABELS.slice(0, HEADERS.length);
   const acting = actingPlayerId ?? playerId;
+  const actingPlayer = room.players.find((p) => p.id === acting);
   const turnPlayer =
     room.sandbox != null ? room.players[room.sandbox.turnIndex] : null;
   const playerStartRow = 2;
@@ -249,7 +267,7 @@ export function BattleGrid({
   };
 
   return (
-    <div className={styles.boardLayout}>
+    <div className={`${styles.boardLayout} ${sideCollapsed ? styles.sideCollapsed : ''}`}>
       <div className={styles.gridPane}>
         <div className={styles.wrap}>
           <div className={styles.corner} />
@@ -326,26 +344,69 @@ export function BattleGrid({
         </div>
       </div>
 
-      <aside className={styles.sidePane}>
+      <aside className={`${styles.sidePane} ${sideCollapsed ? styles.collapsed : ''}`}>
         <section className={styles.sidePanel}>
-          <div className={styles.sidePanelTitle}>操作区</div>
-          <div className={styles.logScroll}>
-            {logs.map((line, index) => (
-              <div
-                key={`log-${index}`}
-                className={`${styles.logLine} ${
-                  line.includes('判定') ? styles.judgeLogLine : ''
-                }`}
-              >
-                {line}
-              </div>
-            ))}
+          <div className={styles.sidePanelTitle}>
+            <span>操作区</span>
+            <button
+              type="button"
+              className={styles.collapseBtn}
+              onClick={() => setSideCollapsed(!sideCollapsed)}
+              title={sideCollapsed ? '展开' : '折叠'}
+            >
+              {sideCollapsed ? '▶' : '◀'}
+            </button>
+          </div>
+          <div className={styles.skillsDisplay}>
+            {actingPlayer && (() => {
+              const character = CharacterRegistry.resolve(
+                actingPlayer.general ?? actingPlayer.nickname,
+              );
+              if (!character) return null;
+              return (
+                <div>
+                  <div className={styles.skillsTitle}>
+                    {formatGeneralName(actingPlayer)} 的技能：
+                  </div>
+                  {character.skills.length > 0 ? (
+                    character.skills.map((skill) => (
+                      <div key={skill.id} className={styles.skillItem}>
+                        <div className={styles.skillName}>
+                          {stripGeneralPrefixInText(skill.name)}
+                        </div>
+                        <div className={styles.skillDesc}>
+                          {stripGeneralPrefixInText(skill.description)}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className={styles.skillItem}>暂无技能</div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+          <div className={styles.logScroll} ref={logScrollRef}>
+            {logs.length === 0 ? (
+              <div className={styles.emptyPanelLine}>暂无操作记录</div>
+            ) : (
+              logs.map((line, index) => (
+                <div
+                  key={`log-${index}`}
+                  className={`${styles.logLine} ${
+                    line.includes('判定') ? styles.judgeLogLine : ''
+                  }`}
+                >
+                  {line}
+                </div>
+              ))
+            )}
           </div>
         </section>
         <section className={styles.sidePanel}>
           <div className={styles.sidePanelTitle}>聊天区</div>
           <div className={styles.chatHint}>在上方公式栏输入消息后按 Enter 发送</div>
-          <div className={styles.logScroll}>
+          <div className={styles.logScroll} ref={chatScrollRef}>
             {chatMessages.length === 0 ? (
               <div className={styles.emptyPanelLine}>暂无聊天消息</div>
             ) : (
@@ -359,6 +420,18 @@ export function BattleGrid({
           </div>
         </section>
       </aside>
+      {sideCollapsed && (
+        <div className={styles.collapseToggle}>
+          <button
+            type="button"
+            className={styles.collapseBtnToggle}
+            onClick={() => setSideCollapsed(false)}
+            title="展开"
+          >
+开
+          </button>
+        </div>
+      )}
     </div>
   );
 }

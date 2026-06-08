@@ -2,21 +2,23 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
+  backdrop-filter: blur(2px);
 }
 
 .panel,
 .panelWide {
-  background: #fff;
-  border: 1px solid #b4b4b4;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  background: #ffffff;
+  border: 1px solid #d0d0d0;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1);
   max-height: 85vh;
   overflow: auto;
   font-size: 13px;
+  border-radius: 6px;
 }
 
 .panel {
@@ -33,9 +35,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid #d4d4d4;
-  background: linear-gradient(180deg, #f8f8f8, #ececec);
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e5e5;
+  background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
+  border-radius: 6px 6px 0 0;
 }
 
 .headerMain {
@@ -46,21 +49,31 @@
 
 .header h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
+  color: #262626;
+  letter-spacing: 0.3px;
 }
 
 .closeBtn {
   border: none;
   background: transparent;
-  font-size: 20px;
+  font-size: 22px;
   cursor: pointer;
   line-height: 1;
-  padding: 0 4px;
+  padding: 4px 6px;
+  color: #666666;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.closeBtn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #333333;
 }
 
 .body {
-  padding: 12px 14px 16px;
+  padding: 16px 18px 20px;
 }
 
 .meta {
@@ -71,8 +84,9 @@
 }
 
 .meta dt {
-  color: #666;
+  color: #777777;
   margin: 0;
+  font-size: 13px;
 }
 
 .meta dd {
@@ -80,15 +94,16 @@
 }
 
 .section {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px dashed #ddd;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed #e0e0e0;
 }
 
 .section h3 {
-  margin: 0 0 8px;
-  font-size: 13px;
-  color: #333;
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: #262626;
+  font-weight: 600;
 }
 
 .skillList {
@@ -103,8 +118,8 @@
 
 .skillList p {
   margin: 4px 0 0;
-  color: #444;
-  line-height: 1.5;
+  color: #555555;
+  line-height: 1.6;
 }
 
 .muted {
@@ -125,10 +140,11 @@
 
 .phaseTag {
   font-size: 12px;
-  background: #e8f5e9;
+  background: #e8f5ec;
   color: #2e7d32;
-  padding: 2px 8px;
-  border-radius: 2px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-weight: 500;
 }
 
 .targetList {
@@ -144,14 +160,16 @@
 .targetOption {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
-  padding: 6px 8px;
-  border-radius: 2px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
 }
 
 .targetOption:hover {
   background: #f0f7ff;
+  box-shadow: 0 1px 3px rgba(33, 115, 70, 0.08);
 }
 
 .targetOption input {
@@ -173,15 +191,24 @@
 
 .primary,
 .secondary {
-  padding: 6px 14px;
+  padding: 8px 18px;
   font-size: 13px;
   cursor: pointer;
-  border: 1px solid #7f7f7f;
-  border-radius: 2px;
+  border: 1px solid #c0c0c0;
+  border-radius: 4px;
+  font-weight: 500;
+  transition: all 0.2s ease;
 }
 
 .primary {
-  background: linear-gradient(180deg, #fff, #e8e8e8);
+  background: linear-gradient(180deg, #ffffff 0%, #f5f5f5 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #f8f8f8 0%, #efefef 100%);
+  border-color: #217346;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .primary:disabled {
@@ -190,7 +217,13 @@
 }
 
 .secondary {
-  background: #f5f5f5;
+  background: #f8f8f8;
+  border-color: #d0d0d0;
+}
+
+.secondary:hover {
+  background: #eeeeee;
+  border-color: #217346;
 }
 
 .panelWide select,
@@ -216,19 +249,29 @@
 }
 
 .cardChip {
-  padding: 6px 12px;
-  border: 1px solid #b8d4c4;
-  background: #e8f5ee;
-  border-radius: 3px;
+  padding: 8px 14px;
+  border: 1px solid #b8d8c6;
+  background: #f0f8f4;
+  border-radius: 4px;
   color: #217346;
   cursor: pointer;
   font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.cardChip:hover {
+  background: #e5f4ec;
+  border-color: #217346;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(33, 115, 70, 0.15);
 }
 
 .cardChipActive {
-  background: #217346;
+  background: linear-gradient(135deg, #2a8c5a 0%, #217346 100%);
   border-color: #1a5c38;
-  color: #fff;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(33, 115, 70, 0.25);
 }
 
 .cardPickList {
@@ -238,11 +281,17 @@
   max-height: 200px;
   overflow-y: auto;
   border: 1px solid #e0e0e0;
-  border-radius: 2px;
+  border-radius: 4px;
+  background: #ffffff;
 }
 
 .cardPickList li {
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.15s ease;
+}
+
+.cardPickList li:hover {
+  background: #fafafa;
 }
 
 .cardPickList li:last-child {
