@@ -56,12 +56,12 @@ export function Ribbon({ actions, onAction }: RibbonProps) {
       {tab === 'home' ? (
         <div className={styles.ribbon}>
           <div className={styles.group}>
-            <button type="button" className={styles.bigBtn} title="粘贴">
-              <span className={styles.bigIcon}>📋</span>
+            <button type="button" className={styles.actionBtn} title="粘贴">
+              <span className={styles.actionIcon}>📋</span>
               <span>粘贴</span>
             </button>
-            <button type="button" className={styles.smallBtn} title="保存">
-              <span>💾</span>
+            <button type="button" className={styles.actionBtn} title="保存">
+              <span className={styles.actionIcon}>💾</span>
               <span>保存</span>
             </button>
           </div>
@@ -71,7 +71,7 @@ export function Ribbon({ actions, onAction }: RibbonProps) {
               <button
                 key={action.id}
                 type="button"
-                className={`${styles.actionBtn} ${action.active ? styles.actionActive : ''}`}
+                className={styles.actionBtn}
                 disabled={action.disabled}
                 onClick={() => {
                   action.onClick?.();
@@ -85,23 +85,17 @@ export function Ribbon({ actions, onAction }: RibbonProps) {
             ))}
           </div>
           <div className={styles.groupDivider} />
-          <div className={styles.group}>
-            <span className={styles.fontLabel}>微软雅黑</span>
-            <span className={styles.fontSize}>11</span>
-            <button type="button" className={styles.fmtBtn}>
-              B
-            </button>
-            <button type="button" className={styles.fmtBtn}>
-              I
-            </button>
-            <button type="button" className={styles.fmtBtn}>
-              U
-            </button>
+          <div className={styles.fontGroup}>
+            <span className={styles.fontInput}>微软雅黑</span>
+            <span className={styles.fontInput} style={{ minWidth: '24px' }}>11</span>
+            <button type="button" className={styles.fmtBtn}>B</button>
+            <button type="button" className={styles.fmtBtn}>I</button>
+            <button type="button" className={styles.fmtBtn}>U</button>
           </div>
         </div>
       ) : (
         <div className={styles.ribbonPlaceholder}>
-          <span>{TABS.find((tabItem) => tabItem.id === tab)?.label} 功能区（演示）</span>
+          {TABS.find((tabItem) => tabItem.id === tab)?.label} 功能区（演示）
         </div>
       )}
     </div>
