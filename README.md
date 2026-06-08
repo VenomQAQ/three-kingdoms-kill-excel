@@ -126,4 +126,16 @@ npm run build
 
 ## 文档
 
-完
+完整设计见 [docs/README.md](./docs/README.md)：
+
+- [架构设计](./docs/architecture.md)
+- [引擎核心设计](./docs/engine-core-design.md)
+- [引擎实现说明](./docs/engine-implementation.md)
+- [玩法设计](./docs/gameplay.md)
+- [WPS 伪装 UI](./docs/ui-disguise.md)
+- [开发说明](./docs/development.md)
+- [卡牌收录](./docs/cards/)
+
+## 免责声明
+
+本项目仅供学习交流。三国杀为游卡桌游注册商标，请勿用于商业用途；界面风格参考 WPS 表格，不使用官方商标素材。

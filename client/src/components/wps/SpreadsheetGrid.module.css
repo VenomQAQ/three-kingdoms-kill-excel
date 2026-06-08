@@ -438,4 +438,43 @@
 .collapseBtnToggle:hover {
   color: #333;
 }
-
+
+.skillsDisplay {
+  padding: 8px 12px;
+  border-bottom: 1px solid #d0d0d0;
+  background: #ffffff;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.skillsTitle {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.skillItem {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.skillItem:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.skillName {
+  font-weight: 500;
+  color: #217346;
+  margin-bottom: 4px;
+}
+
+.skillDesc {
+  color: #666;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
+}
