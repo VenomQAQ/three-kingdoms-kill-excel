@@ -161,7 +161,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   joinRoom: async (code) => {
     const { socket, nickname } = get();
     if (!socket) return;
-    const trimmed = code.replace(/\D/g, '').slice(0, 8);
+    const raw = code.trim();
+    const trimmed = raw === SANDBOX_ROOM_CODE ? raw : raw.replace(/\D/g, '').slice(0, 8);
     if (trimmed.length !== 8) {
       set({ lastError: '请输入 8 位房间号' });
       return;

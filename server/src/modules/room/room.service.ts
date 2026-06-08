@@ -207,7 +207,8 @@ export class RoomService implements OnModuleInit {
     if (room.players.length >= room.maxPlayers) {
       throw new RoomError('ROOM_FULL', '房间已满');
     }
-    if (!room.hostId) room.hostId = playerId;
+    const hasRealHost = room.players.some((p) => p.id === room.hostId && !p.isVirtual);
+    if (!hasRealHost) room.hostId = playerId;
     room.players.push({
       id: playerId,
       nickname: trimmedNick || `测试员${room.players.length + 1}`,
@@ -286,6 +287,10 @@ export class RoomService implements OnModuleInit {
     if (room.hostId !== playerId) {
       throw new RoomError('NOT_HOST', '仅房主可开局');
     }
+    const realHost = room.players.find((p) => p.id === room.hostId && !p.isVirtual);
+    if (!realHost) {
+      throw new RoomError('NOT_HOST', '虚拟角色不能作为房主开局');
+    }
     if (room.players.length < 1) {
       throw new RoomError('NOT_ENOUGH_PLAYERS', '请至少添加 1 名角色');
     }
@@ -310,10 +315,11 @@ export class RoomService implements OnModuleInit {
     let lordAssigned = false;
     room.players.forEach((p, i) => {
       p.seat = i + 1;
+      p.role = undefined;
       if (!lordAssigned && !p.isVirtual) {
         p.role = '主公';
         lordAssigned = true;
-      } else if (!p.role) {
+      } else {
         p.role = '反贼';
       }
       p.maxHp = 4;
@@ -327,12 +333,6 @@ export class RoomService implements OnModuleInit {
         p.general = sampleGenerals[i % sampleGenerals.length] ?? p.nickname;
       }
     });
-    if (!room.players.some((p) => p.role === '主公')) {
-      room.players[0]!.role = '主公';
-      room.players[0]!.hp = 5;
-      room.players[0]!.maxHp = 5;
-    }
-
     const lordIndex = SangokushiEngine.findLordIndex(room.players);
     const lord = room.players[lordIndex]!;
     room.sandbox = {
