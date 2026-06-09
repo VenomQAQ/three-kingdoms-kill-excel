@@ -123,6 +123,7 @@ export class GameEngine {
     if (!cur) return;
     cur.shaUsedCount = 0;
     cur.skillUseCount = {};
+    cur.skillTargetUseCount = {};
     this.turnPhase = 'judge';
     this.prompt = null;
     this.log.unshift(`—— ${cur.generalName} 的回合开始`);
@@ -912,6 +913,12 @@ export class GameEngine {
       if (this.turnPhase !== 'play') {
         return { ok: false, error: '当前不是出牌阶段' };
       }
+      const validTargets = this.players
+        .filter((p) => p.id !== sourceId && p.hp > 0)
+        .filter((p) => !(cur.skillTargetUseCount.rende ?? []).includes(p.id));
+      if (validTargets.length === 0) {
+        return { ok: false, error: '没有可再次发动仁德的目标角色' };
+      }
       this.prompt = {
         id: nextPromptId(),
         type: 'use_skill',
@@ -919,14 +926,10 @@ export class GameEngine {
         skillId,
         skillName: skill.name,
         characterSkills: characterSkillsForPrompt(cur),
-        message: '【仁德】：选择一名其他角色，勾选多张手牌后点击「给予手牌」，可多次给予直至点击「完成仁德」',
-        validTargetIds: this.players
-          .filter((p) => p.id !== sourceId && p.hp > 0)
-          .map((p) => p.id),
-        options: [
-          { id: 'rende:finish', label: '完成仁德' },
-          { id: 'cancel', label: '取消' },
-        ],
+        message: '【仁德】：选择一名其他角色，勾选多张手牌后点击「给出手牌」',
+        validTargetIds: validTargets.map((p) => p.id),
+        autoCloseAfterSubmit: true,
+        options: [{ id: 'cancel', label: '取消' }],
       };
       return { ok: true };
     }
@@ -1017,7 +1020,7 @@ export class GameEngine {
     return { ok: true };
   }
 
-  /** 仁德：选目标并给出多张手牌（保持仁德弹窗） */
+  /** 仁德：选目标并给出多张手牌（单次给牌后关闭弹窗） */
   rendeGive(
     sourceId: string,
     targetId: string,
@@ -1028,6 +1031,12 @@ export class GameEngine {
     const target = this.players.find((p) => p.id === targetId);
     if (!source || !target) return { ok: false, error: '角色不存在' };
     if (targetId === sourceId) return { ok: false, error: '仁德目标须为其他角色' };
+    if (!this.prompt?.validTargetIds?.includes(targetId)) {
+      return { ok: false, error: '仁德目标不合法' };
+    }
+    if ((source.skillTargetUseCount.rende ?? []).includes(targetId)) {
+      return { ok: false, error: '本回合不能再次对该角色发动仁德' };
+    }
     if (!cardNames.length) return { ok: false, error: '请选择至少一张手牌' };
 
     const given: string[] = [];
@@ -1051,16 +1060,16 @@ export class GameEngine {
     }
 
     this.log.unshift(
-      `${source.generalName} 发动【仁德】，将 ${given.map((c) => `【${c}】`).join('')} 交给 ${target.generalName}`,
+      `${source.generalName} 发动【仁德】，将 ${given.length} 张手牌交给 ${target.generalName}`,
     );
 
-    if (this.prompt?.skillId === 'rende') {
-      this.prompt = {
-        ...this.prompt,
-        id: nextPromptId(),
-        message: `【仁德】已给予 ${target.generalName} ${given.length} 张牌，可继续选牌给予或点击「完成仁德」`,
-      };
-    }
+    source.skillUseCount.rende = (source.skillUseCount.rende ?? 0) + 1;
+    source.skillTargetUseCount.rende = [
+      ...(source.skillTargetUseCount.rende ?? []),
+      targetId,
+    ];
+    this.prompt = null;
+    this.log.unshift(`—— ${source.generalName} 出牌阶段：可选择出牌、发动技能或结束回合`);
     return { ok: true };
   }
 
@@ -1092,7 +1101,6 @@ export class GameEngine {
     if (!cur || cur.id !== playerId) {
       return { ok: false, error: '不是你的回合' };
     }
-    this.log.unshift(`${cur.generalName} 结束出牌阶段`);
     return this.enterDiscardPhase();
   }
 
@@ -1134,6 +1142,7 @@ export class GameEngine {
     this.log.unshift(
       `${cur.generalName} 弃牌阶段：弃置 ${discarded.map((c) => `【${c}】`).join('')}（手牌 ${cur.handCards.length}/${cur.hp}）`,
     );
+    this.log.unshift(`${cur.generalName} 结束出牌阶段`);
     this.prompt = null;
     this.finishTurnAfterDiscard();
     return { ok: true };
@@ -1222,6 +1231,7 @@ export class GameEngine {
       judgeCards: [...(p.judgeCards ?? [])],
       shaUsedCount: 0,
       skillUseCount: {},
+      skillTargetUseCount: {},
     };
   }
 

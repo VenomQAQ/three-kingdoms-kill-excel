@@ -48,6 +48,7 @@ export class TurnRunner {
     if (!cur) return;
     cur.shaUsedCount = 0;
     cur.skillUseCount = {};
+    cur.skillTargetUseCount = {};
     this.host.getFsm().set('judge');
     this.host.getState().turn.phase = 'judge';
     this.host.setPrompt(null);
@@ -336,7 +337,6 @@ export class TurnRunner {
     if (this.host.getState().turn.phase !== 'play') {
       return { ok: false, error: '当前不是出牌阶段' };
     }
-    this.host.log(`${cur.generalName} 结束出牌阶段`);
     return this.enterDiscardPhase();
   }
 
@@ -406,6 +406,7 @@ export class TurnRunner {
     this.host.log(
       `${cur.generalName} 弃牌阶段：弃置 ${discarded.join('、')}（手牌 ${cur.handCards.length}/${handLimit}）`,
     );
+    this.host.log(`${cur.generalName} 结束出牌阶段`);
     this.host.setPrompt(null);
     this.finishTurnAfterDiscard();
     return { ok: true };

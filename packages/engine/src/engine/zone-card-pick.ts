@@ -87,7 +87,7 @@ export function takeZoneCard(
     if (index < 0 || index >= from.handCards.length) return false;
     const taken = from.handCards.splice(index, 1)[0]!;
     to.handCards.push(taken);
-    log(`${to.generalName} 获得 ${from.generalName} 的【${taken}】`);
+    log(`${to.generalName} 获得 ${from.generalName} 的一张手牌`);
     return true;
   }
   if (index < 0 || index >= from.equipment.length) return false;

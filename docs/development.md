@@ -62,8 +62,7 @@
 | `sandbox:submitResponse` | C→S | 响应杀/闪等 `{ promptId, choiceId }` |
 | `sandbox:selectZoneCard` | C→S | 过河拆桥/顺手牵羊选区域牌 `{ promptId, choiceId }` |
 | `sandbox:useSkill` | C→S | 发动技能 `{ skillId }` |
-| `sandbox:rendeGive` | C→S | 仁德给牌 |
-| `sandbox:rendeFinish` | C→S | 结束仁德 |
+| `sandbox:rendeGive` | C→S | 仁德给牌（单次提交后关闭弹窗） |
 | `sandbox:zhihengConfirm` | C→S | 制衡弃牌 `{ handIndices[] }` |
 | `sandbox:modifyJudge` | C→S | 鬼才改判 |
 | `sandbox:skipModifyJudge` | C→S | 不改判 |
@@ -86,7 +85,7 @@
 | `TitleBar` | `client/src/components/wps/TitleBar.tsx` | 顶栏文件名、搜索、共享 |
 | `Ribbon` | `Ribbon.tsx` | 选项卡 +「开始」游戏按钮 |
 | `PlayControlBar` | `PlayControlBar.tsx` | 对局出牌条（手牌、出牌阶段技能、结束回合） |
-| `GamePromptModal` | `GamePromptModal.tsx` | 引擎 `prompt` 弹窗（确认出牌/选目标/响应/无懈/选区域牌/弃牌/改判/技能） |
+| `GamePromptModal` | `GamePromptModal.tsx` | 引擎 `prompt` 弹窗（确认出牌/选目标/响应/无懈/选区域牌/弃牌/改判/技能，支持折叠恢复） |
 | `CharacterSkillModal` | `CharacterSkillModal.tsx` | 查看角色技能、装备区、判定区说明 |
 | `CardDetailModal` | `CardDetailModal.tsx` | 查看装备牌说明 |
 | `RoomListGrid` | `RoomListGrid.tsx` | 房间列表 Sheet |

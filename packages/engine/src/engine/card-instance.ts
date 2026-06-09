@@ -33,8 +33,8 @@ export function formatCardInstance(c: CardInstance): string {
 
 /** 延时锦囊判定是否生效（跳过阶段） */
 export function judgeDelayEffect(judgeCardName: string, result: CardInstance): boolean {
-  if (judgeCardName === '乐不思蜀') return !isRed(result);
-  if (judgeCardName === '兵粮寸断') return !isBlack(result);
+  if (judgeCardName === '乐不思蜀') return result.suit !== '♥';
+  if (judgeCardName === '兵粮寸断') return result.suit !== '♣';
   if (judgeCardName === '闪电') return result.suit === '♠' && result.point >= 2 && result.point <= 9;
   return false;
 }

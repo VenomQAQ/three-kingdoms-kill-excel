@@ -110,7 +110,7 @@ export function takeOneFromZone(
   if (from.handCards.length > 0) {
     const taken = from.handCards.pop()!;
     to.handCards.push(taken);
-    log(`${to.generalName} 获得 ${from.generalName} 的【${taken}】`);
+    log(`${to.generalName} 获得 ${from.generalName} 的一张手牌`);
     return true;
   }
   if (from.equipment.length > 0) {

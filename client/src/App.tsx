@@ -35,6 +35,7 @@ function App() {
   const [sandboxCharName, setSandboxCharName] = useState('');
   const [skillModalPlayer, setSkillModalPlayer] = useState<RoomPlayer | null>(null);
   const [detailCardName, setDetailCardName] = useState<string | null>(null);
+  const [promptCollapsed, setPromptCollapsed] = useState(false);
 
   const {
     connect,
@@ -62,7 +63,6 @@ function App() {
     sandboxSubmitResponse,
     sandboxUseSkill,
     sandboxRendeGive,
-    sandboxRendeFinish,
     sandboxZhihengConfirm,
     sandboxModifyJudge,
     sandboxSkipModifyJudge,
@@ -165,6 +165,10 @@ function App() {
 
   useEffect(() => {
     if (gamePrompt) setSelectedHand(null);
+  }, [gamePrompt?.id]);
+
+  useEffect(() => {
+    setPromptCollapsed(false);
   }, [gamePrompt?.id]);
 
   const resolveHandIndex = useCallback(
@@ -458,7 +462,14 @@ function App() {
   return (
     <div className={styles.app}>
       <TitleBar fileName={fileName} />
-      <Ribbon actions={ribbonActions} onAction={handleRibbonAction} />
+      <Ribbon
+        actions={ribbonActions}
+        onAction={handleRibbonAction}
+        actingPlayer={actingPlayer ?? undefined}
+        turnPhase={turnPhase}
+        canUseSkills={canOperateTurn && !gamePrompt}
+        onUseSkill={(id) => sandboxUseSkill(id)}
+      />
       <InfoBar
         nickname={nickname}
         connected={connected}
@@ -529,6 +540,17 @@ function App() {
           {lastError}（点击关闭）
         </div>
       )}
+      {isPlaying && isSandbox && room && gamePrompt && promptCollapsed && (
+        <div className={styles.promptDock}>
+          <button
+            type="button"
+            className={styles.promptDockButton}
+            onClick={() => setPromptCollapsed(false)}
+          >
+            继续当前操作：{gamePrompt.message || '打开弹窗'}
+          </button>
+        </div>
+      )}
       <div
         className={
           room && !bossMode && !isPlaying ? styles.mainWithChat : styles.main
@@ -585,7 +607,7 @@ function App() {
           onClose={() => setDetailCardName(null)}
         />
       )}
-      {isPlaying && isSandbox && room && gamePrompt && (
+      {isPlaying && isSandbox && room && gamePrompt && !promptCollapsed && (
         <GamePromptModal
           room={room}
           prompt={gamePrompt}
@@ -593,8 +615,12 @@ function App() {
           onClose={
             gamePrompt.type === 'select_targets' ||
             gamePrompt.type === 'select_zone_card' ||
-            (gamePrompt.type === 'use_skill' && gamePrompt.skillId === 'zhiheng')
-              ? () => sandboxConfirmPlay(gamePrompt.id, 'cancel')
+            (gamePrompt.type === 'use_skill' && gamePrompt.skillId === 'zhiheng') ||
+            gamePrompt.type === 'discard_cards' ||
+            gamePrompt.type === 'modify_judge' ||
+            gamePrompt.type === 'response' ||
+            (gamePrompt.type === 'use_skill' && gamePrompt.skillId === 'rende')
+              ? () => setPromptCollapsed(true)
               : undefined
           }
           onConfirmPlay={(pid, cid) => sandboxConfirmPlay(pid, cid)}
@@ -603,7 +629,6 @@ function App() {
           onRendeGive={(tid, cards, indices) =>
             sandboxRendeGive(tid, cards, indices)
           }
-          onRendeFinish={() => sandboxRendeFinish()}
           onZhihengConfirm={(indices) => sandboxZhihengConfirm(indices)}
           onModifyJudge={(pid, idx) => sandboxModifyJudge(pid, idx)}
           onSkipModifyJudge={(pid) => sandboxSkipModifyJudge(pid)}

@@ -91,7 +91,7 @@ CardPlayService.startResolution(普通锦囊/延时锦囊/AOE)
 | 马术 / 义从 | `targeting.distanceBetween` |
 | 仁德 / 制衡 / 荐言 / 鬼才 | `SkillPlayService` + `TurnRunner` + 专用 prompt |
 | 奸雄 / 反馈 | `RuleManager` + `AFTER_DAMAGE` + `EffectExecutor.moveCard` |
-| 过河拆桥 / 顺手牵羊 | `select_zone_card` prompt + `zone-card-pick.ts` |
+| 过河拆桥 / 顺手牵羊 | `select_zone_card` prompt + `zone-card-pick.ts`（手牌匿名，日志不回显暗牌名） |
 | 无懈可击（按座次逐个询问、可抵消单目标或全部目标） | `CardPlayService` + `card-play-context.ts` |
 | 乐不思蜀 / 兵粮寸断 / 闪电置入判定区 | `EffectExecutor.judge` + `TurnRunner` |
 | 酒后【杀】伤害加成消耗 | `effect-runner` + `CardPlayService.applyShaDamageBuff` |
@@ -113,6 +113,7 @@ CardPlayService.startResolution(普通锦囊/延时锦囊/AOE)
 
 - 配置识别：`discard` + `zone: any` → 弃置；`moveCard` 无 `from` → 获得
 - `listZoneCards()`：手牌匿名标签 + Fisher-Yates 打乱；装备明牌
+- `takeZoneCard()` / `takeOneFromZone()`：若取得的是手牌，仅记录“获得一张手牌”，避免日志泄露暗牌信息
 - `choiceId` 格式：`hand:0` / `equipment:1`（真实数组下标，非展示序号）
 - 回调 `host.log` 须用箭头函数绑定，避免 `this.state` 丢失
 
@@ -142,7 +143,7 @@ CardPlayService.startResolution(普通锦囊/延时锦囊/AOE)
 
 ## 客户端
 
-- `GamePromptModal`：全部 prompt 类型 UI
+- `GamePromptModal`：全部 prompt 类型 UI，部分处理中 prompt 可折叠并从顶部提示条恢复
 - `CharacterSkillModal`：表格「技能」列点击查看
 - `CardDetailModal`：点击装备区卡牌查看卡牌说明
 - `room.sandbox.prompt` 经 `GameService.syncRoomFromEngine` 同步
