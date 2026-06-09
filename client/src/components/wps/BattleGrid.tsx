@@ -1,12 +1,9 @@
-import { CardRegistry, CharacterRegistry } from '@tk/engine';
+import { CardRegistry } from '@tk/engine';
 import { ChatMessage, Room, RoomPlayer } from '@tk/shared';
 import { useEffect, useRef, useState } from 'react';
 import type { HandCardPick } from '../../types/hand';
 import { COL_LABELS } from '../../data/decoy';
-import {
-  formatGeneralName,
-  stripGeneralPrefixInText,
-} from '../../utils/display';
+import { formatGeneralName, stripGeneralPrefixInText } from '../../utils/display';
 import styles from './SpreadsheetGrid.module.css';
 
 const HEADERS = ['用户', '角色名', '技能', '血量', '手牌', '装备区', '判定区', '回合状态'];
@@ -36,8 +33,8 @@ function formatEquipmentName(name: string): string {
   return label;
 }
 
-function resolveEquipmentCardName(label: string): string {
-  return label.replace(/\s*[（(][^）)]*[）)]\s*$/, '');
+function isPlayerDead(player: RoomPlayer): boolean {
+  return (player.hp ?? 0) <= 0;
 }
 
 export function BattleGrid({
@@ -68,11 +65,11 @@ export function BattleGrid({
 
   const cols = COL_LABELS.slice(0, HEADERS.length);
   const acting = actingPlayerId ?? playerId;
-  const actingPlayer = room.players.find((p) => p.id === acting);
   const turnPlayer =
     room.sandbox != null ? room.players[room.sandbox.turnIndex] : null;
   const playerStartRow = 2;
   const logs = room.sandbox?.log ?? [];
+  const orderedLogs = [...logs].reverse();
   const totalRows = Math.max(
     playerStartRow + room.players.length * ROWS_PER_PLAYER + 18,
     32,
@@ -102,9 +99,11 @@ export function BattleGrid({
     const isTurn = turnPlayer?.id === player.id;
     const isActing = acting === player.id;
     const handCount = player.handCards?.length ?? 0;
+    const isDead = isPlayerDead(player);
 
     let rowClass = '';
-    if (isTurn) rowClass = styles.turnRow;
+    if (isDead) rowClass = styles.deadRow;
+    else if (isTurn) rowClass = styles.turnRow;
     else if (isActing) rowClass = styles.myRow;
 
     return (
@@ -129,6 +128,7 @@ export function BattleGrid({
                 onClick={() => onSelectCell(ref)}
               >
                 {label}
+                {isDead ? <span className={styles.deadTag}>（阵亡）</span> : null}
               </div>
             );
           }
@@ -160,11 +160,12 @@ export function BattleGrid({
                 role="button"
                 tabIndex={0}
                 onClick={(event) => {
+                  if (isDead) return;
                   event.stopPropagation();
                   onViewSkills(player);
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter') onViewSkills(player);
+                  if (event.key === 'Enter' && !isDead) onViewSkills(player);
                 }}
               >
                 点击查看
@@ -215,7 +216,7 @@ export function BattleGrid({
                         className={styles.inlineLink}
                         onClick={(event) => {
                           event.stopPropagation();
-                          onViewCard(resolveEquipmentCardName(name));
+                          onViewCard(name);
                         }}
                         title={`查看【${formatEquipmentName(name)}】说明`}
                       >
@@ -255,7 +256,11 @@ export function BattleGrid({
                 style={{ minWidth: width, width }}
                 onClick={() => onSelectCell(ref)}
               >
-                {isTurn ? <span className={styles.turnMark}>→当前回合</span> : ''}
+                {isDead ? (
+                  <span className={styles.deadMark}>已阵亡</span>
+                ) : isTurn ? (
+                  <span className={styles.turnMark}>→当前回合</span>
+                ) : ''}
               </div>
             );
           }
@@ -344,10 +349,21 @@ export function BattleGrid({
         </div>
       </div>
 
+      {sideCollapsed ? (
+        <button
+          type="button"
+          className={styles.collapsedHandle}
+          onClick={() => setSideCollapsed(false)}
+          title="展开操作记录"
+        >
+          ▶
+        </button>
+      ) : null}
+
       <aside className={`${styles.sidePane} ${sideCollapsed ? styles.collapsed : ''}`}>
         <section className={styles.sidePanel}>
           <div className={styles.sidePanelTitle}>
-            <span>操作区</span>
+            <span>操作记录</span>
             <button
               type="button"
               className={styles.collapseBtn}
@@ -357,40 +373,11 @@ export function BattleGrid({
               {sideCollapsed ? '▶' : '◀'}
             </button>
           </div>
-          <div className={styles.skillsDisplay}>
-            {actingPlayer && (() => {
-              const character = CharacterRegistry.resolve(
-                actingPlayer.general ?? actingPlayer.nickname,
-              );
-              if (!character) return null;
-              return (
-                <div>
-                  <div className={styles.skillsTitle}>
-                    {formatGeneralName(actingPlayer)} 的技能：
-                  </div>
-                  {character.skills.length > 0 ? (
-                    character.skills.map((skill) => (
-                      <div key={skill.id} className={styles.skillItem}>
-                        <div className={styles.skillName}>
-                          {stripGeneralPrefixInText(skill.name)}
-                        </div>
-                        <div className={styles.skillDesc}>
-                          {stripGeneralPrefixInText(skill.description)}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className={styles.skillItem}>暂无技能</div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
           <div className={styles.logScroll} ref={logScrollRef}>
-            {logs.length === 0 ? (
+            {orderedLogs.length === 0 ? (
               <div className={styles.emptyPanelLine}>暂无操作记录</div>
             ) : (
-              logs.map((line, index) => (
+              orderedLogs.map((line, index) => (
                 <div
                   key={`log-${index}`}
                   className={`${styles.logLine} ${
