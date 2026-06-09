@@ -27,6 +27,7 @@ export interface TurnRunnerHost {
   setPrompt(prompt: GamePrompt | null): void;
   getPendingJudge(): PendingJudge | null;
   setPendingJudge(p: PendingJudge | null): void;
+  startJudgePhase(): void;
 }
 
 /**
@@ -46,13 +47,48 @@ export class TurnRunner {
   beginTurn(): void {
     const cur = this.currentPlayer();
     if (!cur) return;
+    if (cur.hp <= 0) {
+      this.host.log(`${cur.generalName} 已阵亡，跳过回合`);
+      this.finishTurnAfterDiscard();
+      return;
+    }
     cur.shaUsedCount = 0;
     cur.skillUseCount = {};
     cur.skillTargetUseCount = {};
-    this.host.getFsm().set('judge');
-    this.host.getState().turn.phase = 'judge';
+    this.host.getFsm().set('prepare');
+    this.host.getState().turn.phase = 'prepare';
     this.host.setPrompt(null);
     this.host.log(`—— ${cur.generalName} 的回合开始`);
+    this.processPreparePhase();
+  }
+
+  private processPreparePhase(): void {
+    const cur = this.currentPlayer();
+    if (!cur) return;
+
+    const offers = collectOptionalSkillOffers(cur, GameTiming.TURN_START);
+    if (offers.length > 0) {
+      this.host.setPrompt({
+        id: nextPromptId(),
+        type: 'use_skill',
+        playerId: cur.id,
+        characterSkills: characterSkillsForPrompt(cur),
+        message: '准备阶段：是否发动技能？',
+        options: [
+          ...offers.map((offer) => ({
+            id: `skill:${offer.skill.id}`,
+            label: `发动【${offer.skill.name}】`,
+          })),
+          { id: 'skip', label: '不发动，进入判定' },
+        ],
+      });
+      return;
+    }
+
+    this.processJudgePhase();
+  }
+
+  startJudgePhase(): void {
     this.processJudgePhase();
   }
 
@@ -64,6 +100,9 @@ export class TurnRunner {
       playerId: cur.id,
       cardName: cardNameFromHandEntry(name),
     }));
+
+    this.host.getFsm().set('judge');
+    this.host.getState().turn.phase = 'judge';
 
     if (this.judgeQueue.length === 0) {
       this.advanceToDraw();
@@ -412,6 +451,27 @@ export class TurnRunner {
     return { ok: true };
   }
 
+  cancelDiscard(playerId: string, promptId: string): { ok: boolean; error?: string } {
+    const state = this.host.getState();
+    const prompt = state.prompt;
+    if (!prompt || prompt.id !== promptId) {
+      return { ok: false, error: '提示已失效' };
+    }
+    if (prompt.type !== 'discard_cards') {
+      return { ok: false, error: '当前不是弃牌阶段' };
+    }
+    if (prompt.playerId !== playerId) {
+      return { ok: false, error: '不是你的弃牌阶段' };
+    }
+
+    const cur = this.currentPlayer();
+    if (!cur || cur.id !== playerId) return { ok: false, error: '状态错误' };
+
+    this.host.setPrompt(null);
+    this.advanceToPlay();
+    return { ok: true };
+  }
+
   private getHandLimit(player: EnginePlayerState): number {
     if (playerHasSkill(player, 'yingzi')) return player.maxHp;
     return Math.max(0, player.hp);
@@ -419,13 +479,29 @@ export class TurnRunner {
 
   private finishTurnAfterDiscard(): void {
     const s = this.host.getState();
-    const prev = s.turn.index;
-    s.turn.index = (prev + 1) % s.players.length;
-    if (s.turn.index === 0) s.turn.round += 1;
+    this.advanceToNextAlivePlayer();
     this.host.getFsm().set('judge');
     s.turn.phase = 'judge';
     this.host.setPrompt(null);
     this.beginTurn();
+  }
+
+  private advanceToNextAlivePlayer(): void {
+    const state = this.host.getState();
+    const playerCount = state.players.length;
+    if (playerCount === 0) return;
+
+    let nextIndex = state.turn.index;
+    for (let offset = 0; offset < playerCount; offset++) {
+      nextIndex = (nextIndex + 1) % playerCount;
+      if (nextIndex === 0) state.turn.round += 1;
+      if (state.players[nextIndex]?.hp > 0) {
+        state.turn.index = nextIndex;
+        return;
+      }
+    }
+
+    state.turn.index = nextIndex;
   }
 
   dealOpeningHands(count = 4): void {

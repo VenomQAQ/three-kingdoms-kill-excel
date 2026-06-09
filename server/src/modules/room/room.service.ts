@@ -519,15 +519,24 @@ export class RoomService implements OnModuleInit {
     return room;
   }
 
-  sandboxSelectZoneCard(
+  sandboxCancelDiscard(socketPlayerId: string, actingPlayerId: string, promptId: string): Room {
+    const room = this.getRoomByPlayerId(socketPlayerId);
+    const engine = this.requireSandboxEngine(room);
+    const res = engine.cancelDiscard(actingPlayerId, promptId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '取消弃牌失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  async sandboxSelectZoneCard(
     socketPlayerId: string,
     actingPlayerId: string,
     promptId: string,
     choiceId: string,
-  ): Room {
+  ): Promise<Room> {
     const room = this.getRoomByPlayerId(socketPlayerId);
     const engine = this.requireSandboxEngine(room);
-    const res = engine.submitZoneCard(actingPlayerId, promptId, choiceId);
+    const res = await engine.submitZoneCard(actingPlayerId, promptId, choiceId);
     if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '选牌失败');
     this.gameService.syncRoomFromEngine(room, engine);
     return room;

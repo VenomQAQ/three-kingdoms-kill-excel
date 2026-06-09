@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { CharacterRegistry, GameTiming } from '@tk/engine';
+import type { RoomPlayer } from '@tk/shared';
+import { useMemo, useState } from 'react';
+import { stripGeneralPrefixInText } from '../../utils/display';
 import styles from './Ribbon.module.css';
 
 export type RibbonTab =
@@ -34,10 +37,31 @@ export interface RibbonAction {
 interface RibbonProps {
   actions: RibbonAction[];
   onAction: (id: string) => void;
+  actingPlayer?: RoomPlayer;
+  turnPhase?: string;
+  canUseSkills?: boolean;
+  onUseSkill?: (skillId: string) => void;
 }
 
-export function Ribbon({ actions, onAction }: RibbonProps) {
+const SUPPORTED_SKILLS = new Set(['rende', 'zhiheng']);
+
+export function Ribbon({
+  actions,
+  onAction,
+  actingPlayer,
+  turnPhase,
+  canUseSkills = false,
+  onUseSkill,
+}: RibbonProps) {
   const [tab, setTab] = useState<RibbonTab>('home');
+  const currentSkills = useMemo(() => {
+    if (!actingPlayer) return [];
+    const character = CharacterRegistry.resolve(
+      actingPlayer.general ?? actingPlayer.nickname,
+    );
+    if (!character) return [];
+    return character.skills.filter((skill) => skill.timings.includes(GameTiming.PHASE_PLAY));
+  }, [actingPlayer]);
 
   return (
     <div className={styles.wrap}>
@@ -91,6 +115,30 @@ export function Ribbon({ actions, onAction }: RibbonProps) {
             <button type="button" className={styles.fmtBtn}>B</button>
             <button type="button" className={styles.fmtBtn}>I</button>
             <button type="button" className={styles.fmtBtn}>U</button>
+          </div>
+          <div className={styles.skillsPanel}>
+            {currentSkills.length > 0 ? (
+              <div className={styles.skillList}>
+                {currentSkills.map((skill) => {
+                  const isSupported = SUPPORTED_SKILLS.has(skill.id);
+                  const disabled = !isSupported || !canUseSkills || turnPhase !== 'play';
+                  return (
+                    <button
+                      key={skill.id}
+                      type="button"
+                      className={styles.skillBtn}
+                      disabled={disabled}
+                      onClick={() => !disabled && onUseSkill?.(skill.id)}
+                      title={stripGeneralPrefixInText(skill.description)}
+                    >
+                      {stripGeneralPrefixInText(skill.name)}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <span className={styles.skillEmpty}>当前角色无可显示技能</span>
+            )}
           </div>
         </div>
       ) : (

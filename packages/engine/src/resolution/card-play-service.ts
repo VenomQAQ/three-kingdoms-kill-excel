@@ -75,6 +75,9 @@ export class CardPlayService {
     if (!this.canUseShaThisTurn(source, card)) {
       return { ok: false, error: '本回合【杀】已用完' };
     }
+    if (!this.canInitiateTao(source, card)) {
+      return { ok: false, error: '满血时不能对自己使用【桃】' };
+    }
 
     setCardPlayContext(host.getState().resolution.context, {
       cardId: card.id,
@@ -85,6 +88,25 @@ export class CardPlayService {
       responsesRequired: 1,
       responseCount: 0,
     });
+
+    if (needsTargetSelection(card)) {
+      const validTargets = getValidTargets(card, source, host.getState().players);
+      if (validTargets.length === 0) {
+        this.clearCardPlay(host);
+        return { ok: false, error: '没有合法的目标角色' };
+      }
+      const max = card.targeting.count?.max ?? 1;
+      host.setPrompt({
+        id: nextPromptId(),
+        type: 'select_targets',
+        playerId: sourceId,
+        cardId: card.id,
+        cardName: card.name,
+        message: `请选择【${card.name}】的目标（${card.targeting.count?.min ?? 1}~${max} 名）`,
+        validTargetIds: validTargets.map((target) => target.id),
+      });
+      return { ok: true };
+    }
 
     host.setPrompt({
       id: nextPromptId(),
@@ -359,7 +381,7 @@ export class CardPlayService {
       host.log(`${responder.generalName} 未响应【${card.name}】`);
       const onFail = getOnFailEffects(card);
       const damageEffect = onFail.find((effect) => effect.action === 'damage');
-      const amount = this.applyShaDamageBuff(
+      const amount = this.applyDamageBuffs(
         source,
         card,
         (damageEffect?.params?.amount as number) ?? 1,
@@ -368,6 +390,7 @@ export class CardPlayService {
       host.setPrompt(null);
 
       if (aoeActive) {
+        host.completeTargetResolve?.();
         await onDamage({
           sourceId: source.id,
           targetId: responder.id,
@@ -379,7 +402,6 @@ export class CardPlayService {
           setCardPlayContext(host.getState().resolution.context, context);
           return { ok: true, paused: true };
         }
-        host.completeTargetResolve?.();
         await host.drainStack?.();
         if (host.getState().resolution.targetQueue == null) {
           this.clearCardPlay(host);
@@ -561,6 +583,10 @@ export class CardPlayService {
     return card.type === 'trick' && card.name !== '无懈可击' && targetPlayerIds.length > 0;
   }
 
+  private canInitiateTao(source: EnginePlayerState, card: CardDefinition): boolean {
+    return card.id !== 'tao' || source.hp < source.maxHp;
+  }
+
   private collectWuxieQueue(host: CardPlayHost, sourcePlayerId: string): string[] {
     const players = [...host.getState().players].sort((left, right) => left.seat - right.seat);
     const sourceIndex = players.findIndex((player) => player.id === sourcePlayerId);
@@ -660,7 +686,6 @@ export class CardPlayService {
     choiceId: string,
   ): { ok: boolean; error?: string; paused?: boolean; scheduleAoe?: boolean } {
     if (choiceId === 'pass') {
-      host.log(`${responder.generalName} 未打出【无懈可击】`);
       context.awaitingWuxieFrom = undefined;
       setCardPlayContext(host.getState().resolution.context, context);
       host.setPrompt(null);
@@ -717,16 +742,26 @@ export class CardPlayService {
     });
   }
 
-  private applyShaDamageBuff(
+  private applyDamageBuffs(
     source: EnginePlayerState,
     card: CardDefinition,
     amount: number,
   ): number {
-    if (card.id !== 'sha') return amount;
-    const bonus = source.skillUseCount['_jiu_buff'] ?? 0;
-    if (bonus <= 0) return amount;
-    delete source.skillUseCount['_jiu_buff'];
-    return amount + bonus;
+    let nextAmount = amount;
+
+    if (card.id === 'sha') {
+      const jiuBonus = source.skillUseCount['_jiu_buff'] ?? 0;
+      if (jiuBonus > 0) {
+        nextAmount += jiuBonus;
+        delete source.skillUseCount['_jiu_buff'];
+      }
+    }
+
+    if ((card.id === 'sha' || card.id === 'juedou') && source.skillUseCount['_luoyi_damage_plus']) {
+      nextAmount += 1;
+    }
+
+    return nextAmount;
   }
 
   private canUseShaThisTurn(source: EnginePlayerState, card: CardDefinition): boolean {

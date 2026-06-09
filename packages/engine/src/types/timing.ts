@@ -34,6 +34,7 @@ export enum GameTiming {
 }
 
 export type TurnPhase =
+  | 'prepare'
   | 'judge'
   | 'before_draw'
   | 'draw'

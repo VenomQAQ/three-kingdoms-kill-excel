@@ -67,6 +67,7 @@ function App() {
     sandboxModifyJudge,
     sandboxSkipModifyJudge,
     sandboxDiscardCards,
+    sandboxCancelDiscard,
     sandboxSelectZoneCard,
     sandboxEndTurn,
     sendChat,
@@ -120,6 +121,7 @@ function App() {
     canOperateTurn && (turnPhase === 'play' || !turnPhase) && !gamePrompt;
 
   const PHASE_LABEL: Record<string, string> = {
+    prepare: '准备阶段',
     judge: '判定阶段',
     before_draw: '摸牌前',
     draw: '摸牌阶段',
@@ -613,15 +615,16 @@ function App() {
           prompt={gamePrompt}
           actingPlayer={actingPlayer}
           onClose={
-            gamePrompt.type === 'select_targets' ||
-            gamePrompt.type === 'select_zone_card' ||
-            (gamePrompt.type === 'use_skill' && gamePrompt.skillId === 'zhiheng') ||
-            gamePrompt.type === 'discard_cards' ||
-            gamePrompt.type === 'modify_judge' ||
-            gamePrompt.type === 'response' ||
-            (gamePrompt.type === 'use_skill' && gamePrompt.skillId === 'rende')
-              ? () => setPromptCollapsed(true)
-              : undefined
+            gamePrompt.type === 'discard_cards'
+              ? () => sandboxCancelDiscard(gamePrompt.id)
+              : gamePrompt.type === 'select_targets' ||
+                  gamePrompt.type === 'select_zone_card' ||
+                  (gamePrompt.type === 'use_skill' && gamePrompt.skillId === 'zhiheng') ||
+                  gamePrompt.type === 'modify_judge' ||
+                  gamePrompt.type === 'response' ||
+                  (gamePrompt.type === 'use_skill' && gamePrompt.skillId === 'rende')
+                ? () => setPromptCollapsed(true)
+                : undefined
           }
           onConfirmPlay={(pid, cid) => sandboxConfirmPlay(pid, cid)}
           onSelectTargets={(pid, ids) => sandboxSelectTargets(pid, ids)}

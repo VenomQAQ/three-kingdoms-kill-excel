@@ -5,6 +5,7 @@ export type PromptType =
   | 'play_card_confirm'
   | 'select_targets'
   | 'response'
+  | 'dying_rescue'
   | 'discard_cards'
   | 'modify_judge'
   | 'select_zone_card';
@@ -33,14 +34,19 @@ export interface GamePrompt {
   targetPlayerIds?: string[];
   validTargetIds?: string[];
   validResponseCards?: string[];
+  dyingPlayerId?: string;
   /** 弃牌阶段须弃置的张数 */
   discardCount?: number;
   /** 可选手牌下标 */
   discardHandIndices?: number[];
   /** 选区域牌：手牌/装备选项 */
   zoneCardOptions?: { id: string; label: string }[];
+  /** 观星：可调整的牌堆顶牌 */
+  guanxingCards?: string[];
   /** 当前操控角色技能（出牌确认 / 发动技能弹窗展示） */
   characterSkills?: PromptSkillInfo[];
+  /** 提交一次后即关闭弹窗 */
+  autoCloseAfterSubmit?: boolean;
   /** 判定结果展示 */
   judgeCardName?: string;
   judgeResult?: string;
@@ -66,6 +72,8 @@ export interface EnginePlayerState {
   shaUsedCount: number;
   /** 本回合各技能已用次数 skillId -> count */
   skillUseCount: Record<string, number>;
+  /** 本回合各技能已指定过的目标 skillId -> playerIds */
+  skillTargetUseCount: Record<string, string[]>;
 }
 
 export interface EngineSnapshot {

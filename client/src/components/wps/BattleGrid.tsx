@@ -232,10 +232,6 @@ export function BattleGrid({
           }
 
           if (columnIndex === 6) {
-            const judgeCards =
-              (player.judgeCards ?? [])
-                .map((card) => stripGeneralPrefixInText(card))
-                .join('、') || '—';
             return (
               <div
                 key={ref}
@@ -243,7 +239,26 @@ export function BattleGrid({
                 style={{ minWidth: width, width }}
                 onClick={() => onSelectCell(ref)}
               >
-                {judgeCards}
+                {(player.judgeCards?.length ?? 0) > 0 ? (
+                  <div className={styles.inlineList}>
+                    {(player.judgeCards ?? []).map((name, judgeIndex) => (
+                      <button
+                        key={`${ref}-${judgeIndex}-${name}`}
+                        type="button"
+                        className={styles.inlineLink}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onViewCard(name);
+                        }}
+                        title={`查看【${stripGeneralPrefixInText(name)}】说明`}
+                      >
+                        {stripGeneralPrefixInText(name)}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  '—'
+                )}
               </div>
             );
           }

@@ -53,6 +53,7 @@ interface AppState {
   sandboxModifyJudge: (promptId: string, handIndex: number) => void;
   sandboxSkipModifyJudge: (promptId: string) => void;
   sandboxDiscardCards: (promptId: string, handIndices: number[]) => void;
+  sandboxCancelDiscard: (promptId: string) => void;
   sandboxSelectZoneCard: (promptId: string, choiceId: string) => void;
   sandboxEndTurn: () => void;
   sendChat: (content: string) => void;
@@ -279,6 +280,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   sandboxDiscardCards: (promptId, handIndices) => {
     get().socket?.emit('sandbox:discardCards', { promptId, handIndices });
+  },
+
+  sandboxCancelDiscard: (promptId) => {
+    get().socket?.emit('sandbox:cancelDiscard', { promptId });
   },
 
   sandboxSelectZoneCard: (promptId, choiceId) => {

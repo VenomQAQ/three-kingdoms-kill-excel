@@ -33,6 +33,25 @@ export class DeckPile {
     return out;
   }
 
+  peekTop(count: number): string[] {
+    const out: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const name = this.draw[this.draw.length - 1 - i];
+      if (!name) break;
+      out.push(formatHandCard(createCardInstance(name)));
+    }
+    return out;
+  }
+
+  arrangeTop(cards: string[], topCount: number): void {
+    const names = cards.map((card) => cardNameFromHandEntry(card));
+    this.draw.splice(Math.max(0, this.draw.length - names.length), names.length);
+    const top = names.slice(0, topCount);
+    const bottom = names.slice(topCount);
+    this.draw.unshift(...bottom.reverse());
+    this.draw.push(...top.reverse());
+  }
+
   discardCard(entry: string): void {
     this.discard.push(cardNameFromHandEntry(entry));
   }

@@ -41,7 +41,7 @@ packages/engine/
 
 | 层 | 职责 |
 |----|------|
-| **TurnPhaseMachine** | `judge → before_draw → draw → play → discard → end` |
+| **TurnPhaseMachine** | `prepare → judge → before_draw → draw → play → discard → end` |
 | **ResolutionStack** | LIFO 嵌套结算（伤害、濒死、响应） |
 | **EventResolver** | `pre → on → execute → post`，`TAKE_DAMAGE` 后 `AFTER_DAMAGE` 技能 |
 | **RuleManager** | `ConfigRuleLoader` 注册技能 Rule；受伤后仅询问**受害者** |
@@ -70,6 +70,17 @@ CardPlayService.startResolution(普通锦囊/延时锦囊/AOE)
   → 进入响应、选区域牌或即时效果
 ```
 
+### 濒死救助流程
+
+```
+TAKE_DAMAGE 扣至 0 或更低
+  → enqueue DYING
+  → 从当前回合角色开始按座次生成救助队列
+  → prompt dying_rescue：他人可用【桃】，濒死者可用【桃】或【酒】
+  → 放弃则队列前进；濒死者放弃后不再回头询问
+  → 回复至 1 以上则清理救助上下文并恢复结算栈 / AOE 队列
+```
+
 ## 武将数据（30 将）
 
 与 `docs/cards/characters.md` 对齐，按势力拆分：
@@ -89,12 +100,14 @@ CardPlayService.startResolution(普通锦囊/延时锦囊/AOE)
 | 咆哮（杀无次数限制） | `CardPlayService.canUseShaThisTurn` |
 | 英姿（多摸牌/手牌上限） | `TurnRunner` |
 | 马术 / 义从 | `targeting.distanceBetween` |
+| 观星 / 裸衣 | `TurnRunner` + `timing-runner` + `DeckPile.peekTop/arrangeTop` |
 | 仁德 / 制衡 / 荐言 / 鬼才 | `SkillPlayService` + `TurnRunner` + 专用 prompt |
 | 奸雄 / 反馈 | `RuleManager` + `AFTER_DAMAGE` + `EffectExecutor.moveCard` |
 | 过河拆桥 / 顺手牵羊 | `select_zone_card` prompt + `zone-card-pick.ts`（手牌匿名，日志不回显暗牌名） |
 | 无懈可击（按座次逐个询问、可抵消单目标或全部目标） | `CardPlayService` + `card-play-context.ts` |
 | 乐不思蜀 / 兵粮寸断 / 闪电置入判定区 | `EffectExecutor.judge` + `TurnRunner` |
 | 酒后【杀】伤害加成消耗 | `effect-runner` + `CardPlayService.applyShaDamageBuff` |
+| 濒死求桃 | `SangokushiEngine.beginDyingRescue/submitDyingRescue` + `dying_rescue` prompt |
 | 仁王盾 / 青釭剑 | `shaBlockedByArmor` / `sourceIgnoresArmor` |
 
 ## Prompt 类型
@@ -104,10 +117,11 @@ CardPlayService.startResolution(普通锦囊/延时锦囊/AOE)
 | `play_card_confirm` | 出牌确认 |
 | `select_targets` | 需选目标的锦囊/杀 |
 | `response` | 出闪/杀响应 |
+| `dying_rescue` | 濒死求【桃】/自救【桃】【酒】 |
 | `select_zone_card` | 过河拆桥、顺手牵羊 |
 | `discard_cards` | 弃牌阶段 |
 | `modify_judge` | 鬼才改判 |
-| `use_skill` | 主动/被动技能询问、仁德给牌、制衡弃牌、荐言声明等 |
+| `use_skill` | 准备/摸牌前技能询问、观星排序、仁德给牌、制衡弃牌、荐言声明等 |
 
 ## 选区域牌（zone-card-pick）
 
@@ -120,6 +134,7 @@ CardPlayService.startResolution(普通锦囊/延时锦囊/AOE)
 ## 判定与延时锦囊
 
 - `EffectExecutor.judge()` 负责把【乐不思蜀】/【兵粮寸断】/【闪电】等延时锦囊置入判定区
+- `TurnRunner` 先进入准备阶段；如诸葛亮【观星】发动，会先调整牌堆顶/底，再进入判定阶段
 - `TurnRunner` 在判定阶段按放置顺序执行判定，并移除已结算的判定牌
 - 【鬼才】通过 `modify_judge` prompt 改写当前判定结果
 - 角色配置中的 `judge` 类 effect 已支持按红黑结果触发后续效果
@@ -143,7 +158,7 @@ CardPlayService.startResolution(普通锦囊/延时锦囊/AOE)
 
 ## 客户端
 
-- `GamePromptModal`：全部 prompt 类型 UI，部分处理中 prompt 可折叠并从顶部提示条恢复
+- `GamePromptModal`：全部 prompt 类型 UI，部分处理中 prompt 可折叠并从顶部提示条恢复；弃牌弹窗关闭会回到出牌阶段
 - `CharacterSkillModal`：表格「技能」列点击查看
 - `CardDetailModal`：点击装备区卡牌查看卡牌说明
 - `room.sandbox.prompt` 经 `GameService.syncRoomFromEngine` 同步

@@ -43,9 +43,8 @@ export const BASIC_CARDS: CardDefinition[] = [
     description: '回复1点体力。出牌阶段对自己使用；濒死时任意角色可打出。',
     canInitiate: true,
     targeting: {
-      selector: 'choose',
-      count: { min: 1, max: 1 },
-      filter: { relation: ['self', 'other'], alive: true },
+      selector: 'self',
+      filter: { relation: ['self'], alive: true },
       range: { type: 'none' },
     },
     effects: [{ action: 'recover', params: { amount: 1 } }],

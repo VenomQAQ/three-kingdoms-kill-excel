@@ -15,6 +15,22 @@ export interface SkillPlayHost {
   getDeck?: () => { drawOne(): string | undefined };
 }
 
+function isAutoCloseGiveSkill(skillId: string): boolean {
+  return skillId === 'rende';
+}
+
+function filterAvailableTargetsForSkill(
+  source: EnginePlayerState,
+  skillId: string,
+  targetIds: string[],
+): string[] {
+  if (skillId !== 'rende') {
+    return targetIds;
+  }
+  const usedTargets = new Set(source.skillTargetUseCount[skillId] ?? []);
+  return targetIds.filter((targetId) => !usedTargets.has(targetId));
+}
+
 export class SkillPlayService {
   private findSkill(player: EnginePlayerState, skillId: string): SkillDefinition | undefined {
     const character = CharacterRegistry.resolve(player.generalName);
@@ -55,10 +71,14 @@ export class SkillPlayService {
 
     const giveEffect = skill.effects?.find((effect) => effect.action === 'giveCards');
     if (giveEffect) {
-      const others = host
-        .getState()
-        .players.filter((player) => player.id !== sourceId && player.hp > 0)
-        .map((player) => player.id);
+      const others = filterAvailableTargetsForSkill(
+        source,
+        skillId,
+        host
+          .getState()
+          .players.filter((player) => player.id !== sourceId && player.hp > 0)
+          .map((player) => player.id),
+      );
       if (others.length === 0) {
         return { ok: false, error: '没有合法的目标角色' };
       }
@@ -69,12 +89,17 @@ export class SkillPlayService {
         skillId,
         skillName: skill.name,
         characterSkills: characterSkillsForPrompt(source),
-        message: `【${skill.name}】：选择一名其他角色并给出手牌，可多次给出直到点击“完成”。`,
+        message: isAutoCloseGiveSkill(skillId)
+          ? `【${skill.name}】：选择一名其他角色并给出手牌。`
+          : `【${skill.name}】：选择一名其他角色并给出手牌，可多次给出直到点击“完成”。`,
         validTargetIds: others,
-        options: [
-          { id: `${skillId}:finish`, label: `完成${skill.name}` },
-          { id: 'cancel', label: '取消' },
-        ],
+        autoCloseAfterSubmit: isAutoCloseGiveSkill(skillId),
+        options: isAutoCloseGiveSkill(skillId)
+          ? [{ id: 'cancel', label: '取消' }]
+          : [
+              { id: `${skillId}:finish`, label: `完成${skill.name}` },
+              { id: 'cancel', label: '取消' },
+            ],
       });
       return { ok: true };
     }
@@ -156,6 +181,12 @@ export class SkillPlayService {
     if (targetId === sourceId) {
       return { ok: false, error: '目标必须为其他角色' };
     }
+    if (!prompt.validTargetIds?.includes(targetId)) {
+      return { ok: false, error: '目标不合法' };
+    }
+    if ((source.skillTargetUseCount[prompt.skillId] ?? []).includes(targetId)) {
+      return { ok: false, error: '本回合不能再次对该角色发动此技能' };
+    }
     if (!cardEntries.length) return { ok: false, error: '请至少选择一张手牌' };
 
     const skill = this.findSkill(source, prompt.skillId);
@@ -190,7 +221,21 @@ export class SkillPlayService {
       given.push(card);
     }
 
-    host.log(`${source.generalName} 发动【${skillLabel}】，将 ${given.join('、')} 交给 ${target.generalName}`);
+    host.log(
+      `${source.generalName} 发动【${skillLabel}】，将 ${given.length} 张手牌交给 ${target.generalName}`,
+    );
+    source.skillUseCount[prompt.skillId] = (source.skillUseCount[prompt.skillId] ?? 0) + 1;
+    source.skillTargetUseCount[prompt.skillId] = [
+      ...(source.skillTargetUseCount[prompt.skillId] ?? []),
+      targetId,
+    ];
+
+    if (prompt.autoCloseAfterSubmit) {
+      host.setPrompt(null);
+      host.log(`-- ${source.generalName} 出牌阶段：可继续出牌、发动技能或结束回合`);
+      return { ok: true };
+    }
+
     host.setPrompt({
       ...prompt,
       id: nextPromptId(),

@@ -50,6 +50,13 @@ export class ResolutionStack {
     return this.items.pop();
   }
 
+  remove(eventId: string): GameEvent | undefined {
+    const index = this.items.findIndex((event) => event.id === eventId);
+    if (index < 0) return undefined;
+    const [event] = this.items.splice(index, 1);
+    return event;
+  }
+
   clear(): void {
     this.items.length = 0;
   }

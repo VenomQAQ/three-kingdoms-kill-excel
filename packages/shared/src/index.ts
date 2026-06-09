@@ -26,6 +26,7 @@ export interface RoomPlayer {
 }
 
 export type TurnPhase =
+  | 'prepare'
   | 'judge'
   | 'before_draw'
   | 'draw'
@@ -38,6 +39,7 @@ export type PromptType =
   | 'play_card_confirm'
   | 'select_targets'
   | 'response'
+  | 'dying_rescue'
   | 'discard_cards'
   | 'modify_judge'
   | 'select_zone_card';
@@ -61,10 +63,13 @@ export interface GamePrompt {
   targetPlayerIds?: string[];
   validTargetIds?: string[];
   validResponseCards?: string[];
+  dyingPlayerId?: string;
   discardCount?: number;
   discardHandIndices?: number[];
   zoneCardOptions?: { id: string; label: string }[];
+  guanxingCards?: string[];
   characterSkills?: PromptSkillInfo[];
+  autoCloseAfterSubmit?: boolean;
   judgeCardName?: string;
   judgeResult?: string;
   judgeTargetId?: string;
@@ -147,6 +152,7 @@ export interface ClientToServerEvents {
   'sandbox:modifyJudge': (payload: { promptId: string; handIndex: number }) => void;
   'sandbox:skipModifyJudge': (payload: { promptId: string }) => void;
   'sandbox:discardCards': (payload: { promptId: string; handIndices: number[] }) => void;
+  'sandbox:cancelDiscard': (payload: { promptId: string }) => void;
   'sandbox:selectZoneCard': (payload: { promptId: string; choiceId: string }) => void;
   'sandbox:addCard': (payload: { playerId: string; card: string }) => void;
   'sandbox:endTurn': () => void;

@@ -195,9 +195,16 @@
 }
 
 .turnRow {
+  background: transparent;
+}
+
+.turnRow .rowHeader,
+.turnRow .cell {
   background: #fffbf0;
-  outline: 1px solid #ffc53d;
-  box-shadow: inset 0 0 0 1px rgba(255, 197, 61, 0.3);
+  border-top-color: #ffc53d;
+  border-bottom-color: #ffc53d;
+  box-shadow: inset 0 1px 0 rgba(255, 197, 61, 0.3),
+    inset 0 -1px 0 rgba(255, 197, 61, 0.3);
 }
 
 .ready {
@@ -362,10 +369,11 @@
 
 .logLine {
   min-height: 28px;
-  padding: 6px 12px;
+  padding: 5px 12px 7px;
   line-height: 1.5;
   color: #333333;
   font-size: 12px;
+  flex: 0 0 auto;
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;

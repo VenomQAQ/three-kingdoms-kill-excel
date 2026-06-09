@@ -18,10 +18,15 @@ import { CardPlayService } from '../resolution/card-play-service';
 import { SkillPlayService } from '../resolution/skill-play-service';
 import {
   getCardPlayContext,
+  getDyingRescueContext,
   getZonePickContext,
   setCardPlayContext,
+  setDyingRescueContext,
   setZonePickContext,
 } from '../resolution/card-play-context';
+import { cardNameFromHandEntry } from '../engine/card-label';
+import { removeCardFromHand } from '../engine/effect-runner';
+import { nextPromptId } from '../utils/prompt-id';
 import { TurnRunner, type TurnRunnerHost } from './turn-runner';
 import { TurnPhaseMachine } from '../fsm/turn-phase-machine';
 import { normalizeHandEntry } from '../engine/card-label';
@@ -88,6 +93,7 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
         judgeCards: [...(p.judgeCards ?? [])],
         shaUsedCount: 0,
         skillUseCount: {},
+        skillTargetUseCount: {},
       };
     });
   }
@@ -122,6 +128,10 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
     this.pendingJudge = p;
   }
 
+  startJudgePhase(): void {
+    this.turnRunner.startJudgePhase();
+  }
+
   getState(): GameState {
     return this.state;
   }
@@ -140,6 +150,7 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
       players: this.state.players.map((p) => ({
         ...p,
         handCards: [...p.handCards],
+        skillTargetUseCount: { ...p.skillTargetUseCount },
       })),
       pendingJudge: this.pendingJudge
         ? {
@@ -270,6 +281,75 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
         this.log(`-- ${cur?.generalName ?? '角色'} 出牌阶段：可继续出牌、发动技能或结束回合`);
         return Promise.resolve({ ok: true });
       }
+      if (this.state.turn.phase === 'prepare') {
+        if (choiceId === 'skip') {
+          this.setPrompt(null);
+          this.turnRunner.startJudgePhase();
+          return { ok: true };
+        }
+        if (choiceId.startsWith('skill:')) {
+          const skillId = choiceId.slice(6);
+          const currentPlayer = this.state.players[this.state.turn.index];
+          if (!currentPlayer || currentPlayer.id !== playerId) {
+            return { ok: false, error: '不是你的回合' };
+          }
+          const offers = collectOptionalSkillOffers(currentPlayer, GameTiming.TURN_START);
+          const offer = offers.find((item) => item.skill.id === skillId);
+          if (!offer) {
+            return { ok: false, error: '当前时机不能发动此技能' };
+          }
+          currentPlayer.skillUseCount[skillId] =
+            (currentPlayer.skillUseCount[skillId] ?? 0) + 1;
+          if (skillId === 'guanxing') {
+            const aliveCount = this.state.players.filter((player) => player.hp > 0).length;
+            const count = Math.min(5, aliveCount);
+            const cards = this.deck.peekTop(count);
+            this.setPrompt({
+              id: nextPromptId(),
+              type: 'use_skill',
+              playerId,
+              skillId: 'guanxing',
+              skillName: offer.skill.name,
+              guanxingCards: cards,
+              message: `${currentPlayer.generalName} 发动【${offer.skill.name}】，请调整牌堆顶 ${cards.length} 张牌`,
+              options: [{ id: 'guanxing:confirm', label: '确认观星' }],
+            });
+            return { ok: true };
+          }
+          runSkillEffects(currentPlayer, offer.skill, (message) => this.log(message), this.deck);
+          this.setPrompt(null);
+          this.turnRunner.startJudgePhase();
+          return { ok: true };
+        }
+      }
+      if (prompt.skillId === 'guanxing' && choiceId.startsWith('guanxing:confirm')) {
+        const currentPlayer = this.state.players[this.state.turn.index];
+        if (!currentPlayer || currentPlayer.id !== playerId) {
+          return { ok: false, error: '不是你的回合' };
+        }
+        const [, , topCountText, orderText] = choiceId.split(':');
+        const originalCards = prompt.guanxingCards ?? [];
+        const topCount = Math.max(0, Math.min(originalCards.length, Number(topCountText) || 0));
+        const indices = (orderText ?? '')
+          .split(',')
+          .filter(Boolean)
+          .map((value) => Number(value));
+        if (
+          indices.length !== originalCards.length ||
+          new Set(indices).size !== originalCards.length ||
+          indices.some((index) => index < 0 || index >= originalCards.length)
+        ) {
+          return { ok: false, error: '观星顺序无效' };
+        }
+        const arranged = indices.map((index) => originalCards[index]!);
+        this.deck.arrangeTop(arranged, topCount);
+        this.log(
+          `${currentPlayer.generalName} 发动【观星】，将 ${topCount} 张置于牌堆顶，${arranged.length - topCount} 张置于牌堆底`,
+        );
+        this.setPrompt(null);
+        this.turnRunner.startJudgePhase();
+        return { ok: true };
+      }
       if (this.state.turn.phase === 'before_draw') {
         if (choiceId === 'skip') {
           this.setPrompt(null);
@@ -348,6 +428,10 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
       }
     }
 
+    if (prompt.type === 'dying_rescue') {
+      return this.submitDyingRescue(playerId, promptId, choiceId);
+    }
+
     if (prompt.type === 'response') {
       return this.submitResponse(playerId, promptId, choiceId);
     }
@@ -360,6 +444,9 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
     promptId: string,
     choiceId: string,
   ): Promise<{ ok: boolean; error?: string }> {
+    if (this.state.prompt?.type === 'dying_rescue') {
+      return this.submitDyingRescue(playerId, promptId, choiceId);
+    }
     return this.cardPlay.submitResponse(
       this,
       playerId,
@@ -418,10 +505,151 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
           deck: this.deck,
         },
       );
-      if (victim.hp <= 0) {
-        this.log(`${victim.generalName} 进入濒死`);
-      }
+      if (victim.hp <= 0) this.enqueueDying(victim.id);
+      return;
     }
+
+    if (event.type === GameEventType.DYING) {
+      const targetId = event.payload.targetPlayerIds?.[0];
+      const dyingPlayer = this.state.players.find((player) => player.id === targetId);
+      if (!dyingPlayer || dyingPlayer.hp > 0) return;
+      this.log(`${dyingPlayer.generalName} 进入濒死`);
+      this.beginDyingRescue(dyingPlayer.id);
+    }
+  }
+
+  private beginDyingRescue(dyingPlayerId: string): void {
+    const players = this.state.players;
+    const dyingPlayer = players.find((player) => player.id === dyingPlayerId);
+    if (!dyingPlayer || dyingPlayer.hp > 0) return;
+
+    const turnIndex = Math.max(0, Math.min(this.state.turn.index, players.length - 1));
+    const queue = players
+      .slice(turnIndex)
+      .concat(players.slice(0, turnIndex))
+      .filter((player) => player.hp > 0 || player.id === dyingPlayerId)
+      .map((player) => player.id);
+
+    setDyingRescueContext(this.state.resolution.context, {
+      dyingPlayerId,
+      queue,
+      index: 0,
+    });
+    this.promptNextDyingRescue();
+  }
+
+  private promptNextDyingRescue(): void {
+    const context = getDyingRescueContext(this.state.resolution.context);
+    if (!context) return;
+
+    const dyingPlayer = this.state.players.find(
+      (player) => player.id === context.dyingPlayerId,
+    );
+    if (!dyingPlayer || dyingPlayer.hp > 0) {
+      setDyingRescueContext(this.state.resolution.context, undefined);
+      this.setPrompt(null);
+      return;
+    }
+
+    while (context.index < context.queue.length) {
+      const rescuerId = context.queue[context.index]!;
+      const rescuer = this.state.players.find((player) => player.id === rescuerId);
+      if (!rescuer || (rescuer.hp <= 0 && rescuer.id !== dyingPlayer.id)) {
+        context.index += 1;
+        continue;
+      }
+
+      const validCards = rescuer.handCards.filter((entry) => {
+        const cardName = cardNameFromHandEntry(entry);
+        return cardName === '桃' || (rescuer.id === dyingPlayer.id && cardName === '酒');
+      });
+      const options = validCards.map((card) => ({
+        id: `card:${card}`,
+        label: `使用【${cardNameFromHandEntry(card)}】`,
+      }));
+
+      this.setPrompt({
+        id: nextPromptId(),
+        type: 'dying_rescue',
+        playerId: rescuer.id,
+        dyingPlayerId: dyingPlayer.id,
+        validResponseCards: validCards,
+        message:
+          rescuer.id === dyingPlayer.id
+            ? `${dyingPlayer.generalName} 濒死：是否使用【桃】或【酒】自救？`
+            : `${dyingPlayer.generalName} 濒死：${rescuer.generalName} 是否使用【桃】救助？`,
+        options: [...options, { id: 'pass', label: '不救' }],
+      });
+      setDyingRescueContext(this.state.resolution.context, context);
+      return;
+    }
+
+    this.log(`${dyingPlayer.generalName} 未被救回，濒死结算结束`);
+    setDyingRescueContext(this.state.resolution.context, undefined);
+    this.setPrompt(null);
+  }
+
+  private async submitDyingRescue(
+    playerId: string,
+    promptId: string,
+    choiceId: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const prompt = this.state.prompt;
+    const context = getDyingRescueContext(this.state.resolution.context);
+    if (!prompt || prompt.id !== promptId || !context) {
+      return { ok: false, error: '提示已失效' };
+    }
+    if (prompt.type !== 'dying_rescue' || prompt.playerId !== playerId) {
+      return { ok: false, error: '当前不能由你救助' };
+    }
+
+    const rescuer = this.state.players.find((player) => player.id === playerId);
+    const dyingPlayer = this.state.players.find(
+      (player) => player.id === context.dyingPlayerId,
+    );
+    if (!rescuer || !dyingPlayer) {
+      setDyingRescueContext(this.state.resolution.context, undefined);
+      this.setPrompt(null);
+      return { ok: false, error: '状态错误' };
+    }
+
+    if (choiceId.startsWith('card:')) {
+      const cardEntry = choiceId.slice(5);
+      const cardName = cardNameFromHandEntry(cardEntry);
+      if (cardName !== '桃' && !(rescuer.id === dyingPlayer.id && cardName === '酒')) {
+        return { ok: false, error: '此牌不能用于当前救助' };
+      }
+      if (!removeCardFromHand(rescuer, cardName)) {
+        return { ok: false, error: '手牌中没有此牌' };
+      }
+      this.deck.discardCard(cardEntry);
+      dyingPlayer.hp = Math.min(dyingPlayer.maxHp, dyingPlayer.hp + 1);
+      this.log(
+        rescuer.id === dyingPlayer.id
+          ? `${dyingPlayer.generalName} 使用【${cardName}】自救（${dyingPlayer.hp}/${dyingPlayer.maxHp}）`
+          : `${rescuer.generalName} 对 ${dyingPlayer.generalName} 使用【桃】（${dyingPlayer.hp}/${dyingPlayer.maxHp}）`,
+      );
+      if (dyingPlayer.hp > 0) {
+        setDyingRescueContext(this.state.resolution.context, undefined);
+        this.setPrompt(null);
+        await this.drainStack();
+        await this.cardPlay.advanceAoeIfPending(this);
+        return { ok: true };
+      }
+    } else if (choiceId === 'pass') {
+      this.log(`${rescuer.generalName} 放弃救助 ${dyingPlayer.generalName}`);
+    } else {
+      return { ok: false, error: '无效选择' };
+    }
+
+    context.index += 1;
+    setDyingRescueContext(this.state.resolution.context, context);
+    this.promptNextDyingRescue();
+    if (!this.state.prompt) {
+      await this.drainStack();
+      await this.cardPlay.advanceAoeIfPending(this);
+    }
+    return { ok: true };
   }
 
   scheduleAoeTargets(sourcePlayerId: string, targetPlayerIds: string[]): void {
@@ -466,7 +694,13 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
       if (!event) break;
 
       const result = await this.resolver.resolve(this, event);
-      if (result.executeFinished) {
+      if (result.executeFinished && this.stack.peek() !== event) {
+        if (event.type === GameEventType.TAKE_DAMAGE) {
+          this.state.resolution.context.lastDamageEvent = { ...event };
+        }
+        this.stack.remove(event.id);
+        this.syncStackToState();
+      } else if (result.executeFinished) {
         if (event.type === GameEventType.TAKE_DAMAGE) {
           this.state.resolution.context.lastDamageEvent = { ...event };
         }
@@ -592,6 +826,10 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
     handIndices: number[],
   ): { ok: boolean; error?: string } {
     return this.turnRunner.submitDiscard(sourceId, promptId, handIndices);
+  }
+
+  cancelDiscard(sourceId: string, promptId: string): { ok: boolean; error?: string } {
+    return this.turnRunner.cancelDiscard(sourceId, promptId);
   }
 
   submitZoneCard(

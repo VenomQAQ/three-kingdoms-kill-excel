@@ -1,12 +1,12 @@
 import type { TurnPhase } from '../types/timing';
 
-const ORDER: TurnPhase[] = ['judge', 'before_draw', 'draw', 'play', 'discard', 'end'];
+const ORDER: TurnPhase[] = ['prepare', 'judge', 'before_draw', 'draw', 'play', 'discard', 'end'];
 
 /**
  * 回合阶段 FSM：只负责宏观阶段流转，不负责卡牌结算栈。
  */
 export class TurnPhaseMachine {
-  constructor(private phase: TurnPhase = 'judge') {}
+  constructor(private phase: TurnPhase = 'prepare') {}
 
   get current(): TurnPhase {
     return this.phase;
@@ -19,7 +19,7 @@ export class TurnPhaseMachine {
   advance(): TurnPhase {
     const idx = ORDER.indexOf(this.phase);
     if (idx < 0 || idx >= ORDER.length - 1) {
-      this.phase = 'judge';
+      this.phase = 'prepare';
       return this.phase;
     }
     this.phase = ORDER[idx + 1]!;
@@ -27,6 +27,6 @@ export class TurnPhaseMachine {
   }
 
   reset(): void {
-    this.phase = 'judge';
+    this.phase = 'prepare';
   }
 }

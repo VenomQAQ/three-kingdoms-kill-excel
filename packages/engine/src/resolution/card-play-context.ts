@@ -75,3 +75,25 @@ export function setPendingReactive(
   if (value) context[PENDING_REACTIVE_KEY] = value;
   else delete context[PENDING_REACTIVE_KEY];
 }
+
+export interface DyingRescueContext {
+  dyingPlayerId: string;
+  queue: string[];
+  index: number;
+}
+
+export const DYING_RESCUE_CTX_KEY = 'dyingRescue';
+
+export function getDyingRescueContext(
+  context: Record<string, unknown>,
+): DyingRescueContext | undefined {
+  return context[DYING_RESCUE_CTX_KEY] as DyingRescueContext | undefined;
+}
+
+export function setDyingRescueContext(
+  context: Record<string, unknown>,
+  value: DyingRescueContext | undefined,
+): void {
+  if (value) context[DYING_RESCUE_CTX_KEY] = value;
+  else delete context[DYING_RESCUE_CTX_KEY];
+}

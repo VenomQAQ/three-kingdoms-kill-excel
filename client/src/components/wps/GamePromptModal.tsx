@@ -16,7 +16,6 @@ interface GamePromptModalProps {
   onSelectTargets: (promptId: string, targetIds: string[]) => void;
   onSubmitResponse: (promptId: string, choiceId: string) => void;
   onRendeGive: (targetId: string, cards: string[], handIndices: number[]) => void;
-  onRendeFinish: () => void;
   onZhihengConfirm: (handIndices: number[]) => void;
   onModifyJudge: (promptId: string, handIndex: number) => void;
   onSkipModifyJudge: (promptId: string) => void;
@@ -26,6 +25,7 @@ interface GamePromptModalProps {
 }
 
 const PHASE_LABEL: Record<string, string> = {
+  prepare: '准备阶段',
   judge: '判定阶段',
   before_draw: '摸牌前',
   draw: '摸牌阶段',
@@ -57,6 +57,19 @@ function SkillListSection({ skills }: { skills: PromptSkillInfo[] }) {
       </ul>
     </section>
   );
+}
+
+function judgeCardDescription(cardName?: string): string {
+  switch (stripGeneralPrefixInText(cardName ?? '')) {
+    case '乐不思蜀':
+      return '判定为红桃时不生效，可以正常出牌；否则跳过出牌阶段。';
+    case '兵粮寸断':
+      return '判定为梅花时不生效，可以正常摸牌；否则跳过摸牌阶段。';
+    case '闪电':
+      return '判定为黑桃 2 到 9 时生效，受到 3 点雷电伤害；否则不生效。';
+    default:
+      return '选择一张手牌打出，替换当前判定结果。';
+  }
 }
 
 function CardPickChips({
@@ -95,7 +108,6 @@ export function GamePromptModal({
   onSelectTargets,
   onSubmitResponse,
   onRendeGive,
-  onRendeFinish,
   onZhihengConfirm,
   onModifyJudge,
   onSkipModifyJudge,
@@ -110,6 +122,8 @@ export function GamePromptModal({
   const [modifyJudgeIndex, setModifyJudgeIndex] = useState<number | null>(null);
   const [discardIndices, setDiscardIndices] = useState<number[]>([]);
   const [zonePickId, setZonePickId] = useState('');
+  const [guanxingOrder, setGuanxingOrder] = useState<number[]>([]);
+  const [guanxingTopCount, setGuanxingTopCount] = useState(0);
 
   useEffect(() => {
     setSelectedTargets([]);
@@ -119,6 +133,9 @@ export function GamePromptModal({
     setModifyJudgeIndex(null);
     setDiscardIndices([]);
     setZonePickId('');
+    const guanxingCards = prompt.guanxingCards ?? [];
+    setGuanxingOrder(guanxingCards.map((_, index) => index));
+    setGuanxingTopCount(guanxingCards.length);
   }, [prompt.id]);
 
   const cardDef = prompt.cardName ? CardRegistry.getByName(prompt.cardName) : undefined;
@@ -136,10 +153,9 @@ export function GamePromptModal({
     .filter((player): player is RoomPlayer => !!player);
 
   const isGiveCardsSkill =
-    prompt.type === 'use_skill' &&
-    !!prompt.skillId &&
-    (prompt.options?.some((option) => option.id.endsWith(':finish')) ?? false);
+    prompt.type === 'use_skill' && !!prompt.skillId && Array.isArray(prompt.validTargetIds);
   const isZhiheng = prompt.type === 'use_skill' && prompt.skillId === 'zhiheng';
+  const isGuanxing = prompt.type === 'use_skill' && prompt.skillId === 'guanxing';
   const isModifyJudge = prompt.type === 'modify_judge';
   const isDiscard = prompt.type === 'discard_cards';
   const isZonePick = prompt.type === 'select_zone_card';
@@ -177,6 +193,9 @@ export function GamePromptModal({
     if (prompt.type === 'response') {
       return '请进行响应';
     }
+    if (prompt.type === 'dying_rescue') {
+      return '濒死救助';
+    }
     if (isGiveCardsSkill) {
       return `请选择【${stripGeneralPrefixInText(prompt.skillName ?? '技能')}】目标`;
     }
@@ -201,9 +220,7 @@ export function GamePromptModal({
   const showSkills =
     prompt.characterSkills &&
     prompt.characterSkills.length > 0 &&
-    (prompt.type === 'play_card_confirm' ||
-      prompt.type === 'use_skill' ||
-      prompt.type === 'modify_judge');
+    (prompt.type === 'play_card_confirm' || prompt.type === 'use_skill');
 
   const rendeHand = actingPlayer?.handCards ?? [];
   const zhihengHand = actingPlayer?.handCards ?? [];
@@ -216,6 +233,20 @@ export function GamePromptModal({
     .map((id) => room.players.find((player) => player.id === id))
     .filter((player): player is RoomPlayer => !!player)
     .map((player) => formatGeneralName(player));
+  const guanxingCards = prompt.guanxingCards ?? [];
+  const orderedGuanxingCards = guanxingOrder.map((index) => guanxingCards[index]).filter(Boolean);
+
+  const moveGuanxingCard = (position: number, delta: number) => {
+    setGuanxingOrder((previous) => {
+      const nextPosition = position + delta;
+      if (nextPosition < 0 || nextPosition >= previous.length) return previous;
+      const next = [...previous];
+      const [item] = next.splice(position, 1);
+      if (item == null) return previous;
+      next.splice(nextPosition, 0, item);
+      return next;
+    });
+  };
 
   const toggleTarget = (id: string) => {
     setSelectedTargets((previous) => {
@@ -272,7 +303,9 @@ export function GamePromptModal({
           )}
         </header>
         <div className={styles.body}>
-          {prompt.message && (
+          {prompt.message &&
+            prompt.type !== 'play_card_confirm' &&
+            prompt.type !== 'select_targets' && (
             <p className={styles.message}>
               {isWuxieResponse && sourcePlayer
                 ? `${formatGeneralName(sourcePlayer)}对${wuxieTargetNames.join('、')}使用【${stripGeneralPrefixInText(prompt.cardName ?? '')}】`
@@ -307,6 +340,7 @@ export function GamePromptModal({
                 被判定：{formatGeneralName(judgeTarget) || '—'} · 【
                 {prompt.judgeCardName ?? '未知'}】
               </p>
+              <p>{judgeCardDescription(prompt.judgeCardName)}</p>
               <p>当前判定结果：{prompt.judgeResult}</p>
               <p className={styles.muted}>选择一张手牌打出，替换当前判定结果。</p>
               <ul className={styles.cardPickList}>
@@ -346,9 +380,9 @@ export function GamePromptModal({
             </section>
           )}
 
-          {promptActor && prompt.type === 'response' && (
+          {promptActor && (prompt.type === 'response' || prompt.type === 'dying_rescue') && (
             <section className={styles.section}>
-              <h3>响应角色</h3>
+              <h3>{prompt.type === 'dying_rescue' ? '询问角色' : '响应角色'}</h3>
               <p>
                 {formatGeneralName(promptActor)} · 手牌 {promptActor.handCards?.length ?? 0} 张
               </p>
@@ -378,8 +412,8 @@ export function GamePromptModal({
                           onChange={() => toggleTarget(target.id)}
                         />
                         <span>
-                          【{target.role ?? '未知'}】{formatGeneralName(target)} 体力:
-                          {target.hp ?? 0}/{target.maxHp ?? 0}
+                          {formatGeneralName(target)} 体力:{target.hp ?? 0}/
+                          {target.maxHp ?? 0}
                         </span>
                       </label>
                     </li>
@@ -411,11 +445,11 @@ export function GamePromptModal({
                     >
                       <option value="">请选择目标角色</option>
                       {validTargets.map((target) => (
-                        <option key={target.id} value={target.id}>
-                          {formatGeneralName(target)}
-                        </option>
-                      ))}
-                    </select>
+                      <option key={target.id} value={target.id}>
+                          {formatGeneralName(target)} 体力:{target.hp ?? 0}/{target.maxHp ?? 0}
+                      </option>
+                    ))}
+                  </select>
                   </label>
                   <p className={styles.muted}>下面是卡牌列表：</p>
                   <CardPickChips
@@ -437,13 +471,6 @@ export function GamePromptModal({
                   }}
                 >
                   给出手牌（{rendeCardIndices.length}）
-                </button>
-                <button
-                  type="button"
-                  className={styles.secondary}
-                  onClick={() => onRendeFinish()}
-                >
-                  {prompt.options?.find((option) => option.id.endsWith(':finish'))?.label ?? '完成'}
                 </button>
                 <button
                   type="button"
@@ -480,6 +507,71 @@ export function GamePromptModal({
                   onClick={() => onConfirmPlay(prompt.id, 'cancel')}
                 >
                   取消并继续出牌
+                </button>
+              </div>
+            </section>
+          )}
+
+          {isGuanxing && guanxingCards.length > 0 && (
+            <section className={styles.section}>
+              <h3>调整牌堆</h3>
+              <p className={styles.muted}>上方会按顺序置于牌堆顶，下方会按顺序沉底。</p>
+              <label className={styles.fieldLabel}>
+                置于牌堆顶张数
+                <select
+                  className={styles.select}
+                  value={guanxingTopCount}
+                  onChange={(event) => setGuanxingTopCount(Number(event.target.value))}
+                >
+                  {orderedGuanxingCards.map((_, index) => (
+                    <option key={index} value={index}>
+                      {index}
+                    </option>
+                  ))}
+                  <option value={orderedGuanxingCards.length}>{orderedGuanxingCards.length}</option>
+                </select>
+              </label>
+              <ul className={styles.cardPickList}>
+                {orderedGuanxingCards.map((card, position) => (
+                  <li key={`${card}-${position}`}>
+                    <div className={styles.targetOption}>
+                      <span>
+                        {position < guanxingTopCount ? '顶' : '底'} · 【{card}】
+                      </span>
+                      <div className={styles.actions}>
+                        <button
+                          type="button"
+                          className={styles.secondary}
+                          disabled={position === 0}
+                          onClick={() => moveGuanxingCard(position, -1)}
+                        >
+                          上移
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.secondary}
+                          disabled={position === orderedGuanxingCards.length - 1}
+                          onClick={() => moveGuanxingCard(position, 1)}
+                        >
+                          下移
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  onClick={() =>
+                    onConfirmPlay(
+                      prompt.id,
+                      `guanxing:confirm:${guanxingTopCount}:${guanxingOrder.join(',')}`,
+                    )
+                  }
+                >
+                  确认观星
                 </button>
               </div>
             </section>
@@ -556,6 +648,7 @@ export function GamePromptModal({
           {prompt.options &&
             !isGiveCardsSkill &&
             !isZhiheng &&
+            !isGuanxing &&
             !isModifyJudge &&
             !isDiscard &&
             !isZonePick &&
@@ -571,7 +664,7 @@ export function GamePromptModal({
                         : styles.primary
                     }
                     onClick={() => {
-                      if (prompt.type === 'response') {
+                      if (prompt.type === 'response' || prompt.type === 'dying_rescue') {
                         onSubmitResponse(prompt.id, option.id);
                       } else {
                         onConfirmPlay(prompt.id, option.id);

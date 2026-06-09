@@ -45,9 +45,12 @@ export class EventResolver {
       await this.defaultExecuteCore(host, event);
     }
 
-    // AOE 响应等：execute 阶段已弹出 prompt，事件留栈待响应完成后再出栈
+    // AOE 响应等在 execute 阶段弹出 prompt，事件留栈待响应完成后再出栈。
     if (host.getState().prompt) {
-      return { paused: true, executeFinished: false };
+      return {
+        paused: true,
+        executeFinished: event.type === GameEventType.DYING,
+      };
     }
 
     r = await this.emitPhase(host, event, 'post');

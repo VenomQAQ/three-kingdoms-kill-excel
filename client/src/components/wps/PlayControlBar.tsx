@@ -20,6 +20,7 @@ interface PlayControlBarProps {
 }
 
 const PHASE_LABEL: Record<string, string> = {
+  prepare: '准备阶段',
   judge: '判定阶段',
   before_draw: '摸牌前',
   draw: '摸牌阶段',

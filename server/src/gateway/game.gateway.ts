@@ -424,15 +424,34 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @SubscribeMessage('sandbox:cancelDiscard')
+  handleSandboxCancelDiscard(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string },
+  ) {
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
+    try {
+      const room = this.roomService.sandboxCancelDiscard(
+        socketId,
+        actingId,
+        payload?.promptId ?? '',
+      );
+      this.server.to(room.id).emit('room:state', room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
   @SubscribeMessage('sandbox:selectZoneCard')
-  handleSandboxSelectZoneCard(
+  async handleSandboxSelectZoneCard(
     @ConnectedSocket() client: GameSocket,
     @MessageBody() payload: { promptId: string; choiceId: string },
   ) {
     const socketId = this.getPlayerId(client);
     const actingId = this.getActingPlayerId(client);
     try {
-      const room = this.roomService.sandboxSelectZoneCard(
+      const room = await this.roomService.sandboxSelectZoneCard(
         socketId,
         actingId,
         payload?.promptId ?? '',

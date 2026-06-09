@@ -1,4 +1,5 @@
 import { CharacterRegistry } from '../registry/character-registry';
+import { CardRegistry } from '../registry/card-registry';
 import type { CardDefinition } from '../types/card';
 import type { EnginePlayerState } from '../types/game';
 import type { SkillDefinition } from '../types/skill';
@@ -69,7 +70,11 @@ export function collectOptionalSkillOffers(
   player: EnginePlayerState,
   timing: GameTiming,
 ): TimingSkillOffer[] {
-  const skills = skillsAtTiming(player, timing, { activeOnly: true });
+  const timings =
+    timing === GameTiming.BEFORE_DRAW
+      ? [GameTiming.BEFORE_DRAW, GameTiming.PHASE_DRAW]
+      : [timing];
+  const skills = timings.flatMap((item) => skillsAtTiming(player, item, { activeOnly: true }));
   return skills.map((skill) => ({
     playerId: player.id,
     skill,
@@ -98,6 +103,21 @@ export function runSkillEffects(
   log: (msg: string) => void,
   deck?: { drawMany(n: number): string[] },
 ): void {
+  if (skill.timings.includes(GameTiming.PHASE_DRAW)) {
+    player.skillUseCount['_skip_draw'] = 1;
+  }
+
+  if (skill.id === 'luoyi') {
+    const revealed = deck?.drawMany(3) ?? [];
+    const gained = revealed.filter(isLuoyiGainCard);
+    player.handCards.push(...gained);
+    player.skillUseCount['_luoyi_damage_plus'] = 1;
+    log(
+      `${player.generalName} 发动【${skill.name}】，亮出 ${formatCardList(revealed)}，获得 ${formatCardList(gained)}，下回合开始前【杀】或【决斗】伤害+1`,
+    );
+    return;
+  }
+
   for (const effect of skill.effects ?? []) {
     if (effect.action === 'draw') {
       const count = (effect.params?.count as number) ?? 1;
@@ -108,6 +128,15 @@ export function runSkillEffects(
       log(`${player.generalName} 发动【${skill.name}】，摸 ${count} 张牌`);
     }
   }
+}
+
+function isLuoyiGainCard(entry: string): boolean {
+  const card = CardRegistry.getByName(entry);
+  return card?.type === 'basic' || card?.subType === 'weapon' || card?.name === '决斗';
+}
+
+function formatCardList(cards: string[]): string {
+  return cards.length > 0 ? cards.join('、') : '无';
 }
 
 function timingLabel(timing: GameTiming, skillName: string): string {
