@@ -139,7 +139,11 @@ export interface ClientToServerEvents {
   'sandbox:start': () => void;
   'sandbox:playCard': (payload: { card: string; handIndex?: number }) => void;
   'sandbox:confirmPlay': (payload: { promptId: string; choiceId: string }) => void;
-  'sandbox:selectTargets': (payload: { promptId: string; targetIds: string[] }) => void;
+  'sandbox:selectTargets': (payload: {
+    promptId: string;
+    targetIds: string[];
+    zoneCardId?: string;
+  }) => void;
   'sandbox:submitResponse': (payload: { promptId: string; choiceId: string }) => void;
   'sandbox:useSkill': (payload: { skillId: string }) => void;
   'sandbox:rendeGive': (payload: {

@@ -32,6 +32,7 @@ import {
 } from './card-play-context';
 import {
   discardZoneCard,
+  getZonePickAction,
   listZoneCards,
   parseZoneCardId,
   takeZoneCard,
@@ -165,7 +166,8 @@ export class CardPlayService {
     sourceId: string,
     promptId: string,
     targetIds: string[],
-  ): { ok: boolean; error?: string; scheduleAoe?: boolean } {
+    zoneCardId?: string,
+  ): { ok: boolean; error?: string; scheduleAoe?: boolean; paused?: boolean } {
     const prompt = host.getState().prompt;
     const context = this.requireCardPlay(host);
     if (!prompt || prompt.id !== promptId || !context) {
@@ -192,6 +194,17 @@ export class CardPlayService {
       };
     }
 
+    if (zoneCardId) {
+      if (!getZonePickAction(card!)) {
+        return { ok: false, error: '当前卡牌不需要选择区域牌' };
+      }
+      if (!parseZoneCardId(zoneCardId)) {
+        return { ok: false, error: '请选择一张牌' };
+      }
+      context.pendingZoneCardId = zoneCardId;
+      setCardPlayContext(host.getState().resolution.context, context);
+    }
+
     return this.startResolution(host, sourceId, targetIds);
   }
 
@@ -210,10 +223,6 @@ export class CardPlayService {
       return { ok: false, error: '结算失败' };
     }
 
-    removeCardFromHand(source, card.name, context.handIndex);
-    host.getDeck().discardCard(card.name);
-    if (card.id === 'sha') source.shaUsedCount += 1;
-
     let targets = targetIds
       .map((id) => host.getState().players.find((player) => player.id === id))
       .filter((player): player is EnginePlayerState => !!player);
@@ -229,9 +238,12 @@ export class CardPlayService {
     }
 
     context.targetPlayerIds = targets.map((target) => target.id);
-    host.log(
-      `${source.generalName} 对 ${targets.map((target) => target.generalName).join('、') || '全场'} 使用【${card.name}】`,
-    );
+    setCardPlayContext(host.getState().resolution.context, context);
+
+    const zonePickAction = getZonePickAction(card);
+    if (!zonePickAction) {
+      this.commitPlayedCard(host, source, card, context, targets);
+    }
 
     if (this.shouldPromptWuxie(card, context.targetPlayerIds)) {
       context.wuxieQueue = this.collectWuxieQueue(host, source.id);
@@ -429,6 +441,27 @@ export class CardPlayService {
     host.setPrompt(null);
   }
 
+  private commitPlayedCard(
+    host: CardPlayHost,
+    source: EnginePlayerState,
+    card: CardDefinition,
+    context: CardPlayContext,
+    targets: EnginePlayerState[],
+  ): void {
+    if (context.cardCommitted) return;
+
+    removeCardFromHand(source, card.name, context.handIndex);
+    host.getDeck().discardCard(card.name);
+    if (card.id === 'sha') source.shaUsedCount += 1;
+
+    const targetLabel =
+      targets.map((target) => target.generalName).join('、') || '全场';
+    host.log(`${source.generalName} 对 ${targetLabel} 使用【${card.name}】`);
+
+    context.cardCommitted = true;
+    setCardPlayContext(host.getState().resolution.context, context);
+  }
+
   submitZoneCardSelection(
     host: CardPlayHost,
     sourceId: string,
@@ -453,12 +486,18 @@ export class CardPlayService {
     const target = host.getState().players.find(
       (player) => player.id === zonePick.targetPlayerId,
     );
-    if (!source || !target) {
+    const playContext = this.requireCardPlay(host);
+    const card =
+      CardRegistry.getById(playContext?.cardId ?? prompt.cardId ?? '') ??
+      undefined;
+    if (!source || !target || !playContext || !card) {
       this.clearCardPlay(host);
       setZonePickContext(host.getState().resolution.context, undefined);
       host.setPrompt(null);
       return { ok: false, error: '状态错误' };
     }
+
+    this.commitPlayedCard(host, source, card, playContext, [target]);
 
     const ok =
       zonePick.action === 'discard'
@@ -471,6 +510,7 @@ export class CardPlayService {
 
     if (!ok) return { ok: false, error: '所选牌无效' };
 
+    playContext.pendingZoneCardId = undefined;
     this.clearCardPlay(host);
     setZonePickContext(host.getState().resolution.context, undefined);
     host.setPrompt(null);
@@ -498,6 +538,7 @@ export class CardPlayService {
     context: CardPlayContext,
   ): { ok: boolean; error?: string; paused?: boolean; scheduleAoe?: boolean } {
     if (context.wuxieCancelledAll) {
+      this.commitPlayedCard(host, source, card, context, targets);
       host.log(`【${card.name}】被【无懈可击】抵消`);
       this.clearCardPlay(host);
       host.setPrompt(null);
@@ -509,6 +550,7 @@ export class CardPlayService {
     context.targetPlayerIds = finalTargets.map((target) => target.id);
 
     if (finalTargets.length === 0 && targets.length > 0) {
+      this.commitPlayedCard(host, source, card, context, targets);
       host.log(`【${card.name}】的目标全部被【无懈可击】抵消`);
       this.clearCardPlay(host);
       host.setPrompt(null);
@@ -562,7 +604,7 @@ export class CardPlayService {
       return this.promptResponse(host, card, source, target, context);
     }
 
-    const zonePickAction = this.getZonePickAction(card);
+    const zonePickAction = getZonePickAction(card);
     if (zonePickAction && finalTargets.length > 0) {
       return this.promptZoneCardPick(
         host,
@@ -573,6 +615,7 @@ export class CardPlayService {
       );
     }
 
+    this.commitPlayedCard(host, source, card, context, finalTargets);
     this.runImmediateEffects(host, card, source, finalTargets);
     this.clearCardPlay(host);
     host.setPrompt(null);
@@ -797,14 +840,6 @@ export class CardPlayService {
     setCardPlayContext(host.getState().resolution.context, undefined);
   }
 
-  private getZonePickAction(card: CardDefinition): 'discard' | 'take' | null {
-    for (const effect of card.effects) {
-      if (effect.action === 'discard' && effect.params?.zone === 'any') return 'discard';
-      if (effect.action === 'moveCard' && !effect.params?.from) return 'take';
-    }
-    return null;
-  }
-
   private promptZoneCardPick(
     host: CardPlayHost,
     card: CardDefinition,
@@ -814,6 +849,10 @@ export class CardPlayService {
   ): { ok: boolean; error?: string; paused?: boolean } {
     const options = listZoneCards(target);
     if (options.length === 0) {
+      const context = this.requireCardPlay(host);
+      if (context) {
+        this.commitPlayedCard(host, source, card, context, [target]);
+      }
       host.log(`${target.generalName} 区域无牌，【${card.name}】无效`);
       this.clearCardPlay(host);
       host.setPrompt(null);
@@ -827,8 +866,9 @@ export class CardPlayService {
     });
 
     const verb = action === 'discard' ? '弃置' : '获得';
+    const promptId = nextPromptId();
     host.setPrompt({
-      id: nextPromptId(),
+      id: promptId,
       type: 'select_zone_card',
       playerId: source.id,
       cardId: card.id,
@@ -840,6 +880,17 @@ export class CardPlayService {
         label: option.label,
       })),
     });
+
+    const context = this.requireCardPlay(host);
+    if (context?.pendingZoneCardId) {
+      return this.submitZoneCardSelection(
+        host,
+        source.id,
+        promptId,
+        context.pendingZoneCardId,
+      );
+    }
+
     return { ok: true, paused: true };
   }
 }

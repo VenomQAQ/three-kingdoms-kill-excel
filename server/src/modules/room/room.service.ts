@@ -400,10 +400,16 @@ export class RoomService implements OnModuleInit {
     actingPlayerId: string,
     promptId: string,
     targetIds: string[],
+    zoneCardId?: string,
   ): Promise<Room> {
     const room = this.getRoomByPlayerId(socketPlayerId);
     const engine = this.requireSandboxEngine(room);
-    const res = await engine.selectTargets(actingPlayerId, promptId, targetIds);
+    const res = await engine.selectTargets(
+      actingPlayerId,
+      promptId,
+      targetIds,
+      zoneCardId,
+    );
     if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '选目标失败');
     this.gameService.syncRoomFromEngine(room, engine);
     return room;

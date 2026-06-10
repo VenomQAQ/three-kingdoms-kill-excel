@@ -15,6 +15,13 @@ export { EQUIPMENT_CARDS } from './config/cards/equipment';
 export { CHARACTERS } from './config/characters';
 export { buildStandardDeck, createShuffledDeck } from './config/deck';
 export { DeckPile } from './engine/deck-pile';
+export {
+  getZonePickAction,
+  listZoneCards,
+  needsZoneCardPick,
+  parseZoneCardId,
+} from './engine/zone-card-pick';
+export type { ZoneCardArea, ZoneCardOption, ZoneCardTarget } from './engine/zone-card-pick';
 
 // —— 配置驱动核心引擎（推荐新功能使用） ——
 export { SangokushiEngine } from './core/sangokushi-engine';

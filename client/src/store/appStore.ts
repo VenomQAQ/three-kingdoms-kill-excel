@@ -40,7 +40,7 @@ interface AppState {
   sandboxStart: () => void;
   sandboxPlayCard: (card: string, handIndex?: number) => void;
   sandboxConfirmPlay: (promptId: string, choiceId: string) => void;
-  sandboxSelectTargets: (promptId: string, targetIds: string[]) => void;
+  sandboxSelectTargets: (promptId: string, targetIds: string[], zoneCardId?: string) => void;
   sandboxSubmitResponse: (promptId: string, choiceId: string) => void;
   sandboxUseSkill: (skillId: string) => void;
   sandboxRendeGive: (
@@ -246,8 +246,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     get().socket?.emit('sandbox:confirmPlay', { promptId, choiceId });
   },
 
-  sandboxSelectTargets: (promptId, targetIds) => {
-    get().socket?.emit('sandbox:selectTargets', { promptId, targetIds });
+  sandboxSelectTargets: (promptId, targetIds, zoneCardId) => {
+    get().socket?.emit('sandbox:selectTargets', { promptId, targetIds, zoneCardId });
   },
 
   sandboxSubmitResponse: (promptId, choiceId) => {

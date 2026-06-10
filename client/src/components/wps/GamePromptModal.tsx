@@ -1,4 +1,4 @@
-import { CardRegistry } from '@tk/engine';
+import { CardRegistry, listZoneCards, needsZoneCardPick } from '@tk/engine';
 import type { GamePrompt, PromptSkillInfo, Room, RoomPlayer } from '@tk/shared';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -13,7 +13,7 @@ interface GamePromptModalProps {
   prompt: GamePrompt;
   actingPlayer: RoomPlayer | undefined;
   onConfirmPlay: (promptId: string, choiceId: string) => void;
-  onSelectTargets: (promptId: string, targetIds: string[]) => void;
+  onSelectTargets: (promptId: string, targetIds: string[], zoneCardId?: string) => void;
   onSubmitResponse: (promptId: string, choiceId: string) => void;
   onRendeGive: (targetId: string, cards: string[], handIndices: number[]) => void;
   onZhihengConfirm: (handIndices: number[]) => void;
@@ -159,6 +159,8 @@ export function GamePromptModal({
   const isModifyJudge = prompt.type === 'modify_judge';
   const isDiscard = prompt.type === 'discard_cards';
   const isZonePick = prompt.type === 'select_zone_card';
+  const isZonePickTargetSelect =
+    prompt.type === 'select_targets' && needsZoneCardPick(cardDef);
   const isWuxieResponse =
     prompt.type === 'response' &&
     prompt.validResponseCards?.includes('无懈可击') === true &&
@@ -249,6 +251,7 @@ export function GamePromptModal({
   };
 
   const toggleTarget = (id: string) => {
+    setZonePickId('');
     setSelectedTargets((previous) => {
       if (singleTarget) return previous[0] === id ? [] : [id];
       if (previous.includes(id)) return previous.filter((value) => value !== id);
@@ -256,6 +259,18 @@ export function GamePromptModal({
       return [...previous, id];
     });
   };
+
+  const zonePickTargetForSelect = isZonePickTargetSelect
+    ? room.players.find((player) => player.id === selectedTargets[0])
+    : undefined;
+  const zoneOptionsForSelect = useMemo(() => {
+    if (!zonePickTargetForSelect) return [];
+    return listZoneCards({
+      handCards: zonePickTargetForSelect.handCards ?? [],
+      equipment: zonePickTargetForSelect.equipment ?? [],
+      judgeCards: zonePickTargetForSelect.judgeCards ?? [],
+    });
+  }, [zonePickTargetForSelect, prompt.id]);
 
   const toggleRendeCard = (index: number) => {
     setRendeCardIndices((previous) =>
@@ -283,6 +298,8 @@ export function GamePromptModal({
 
   const canConfirmTargets =
     selectedTargets.length >= targetMin && selectedTargets.length <= targetMax;
+  const canConfirmZonePickTargetSelect =
+    canConfirmTargets && !!zonePickId && zoneOptionsForSelect.length > 0;
 
   return (
     <div className={styles.overlay} role="presentation">
@@ -303,7 +320,7 @@ export function GamePromptModal({
           )}
         </header>
         <div className={styles.body}>
-          {prompt.message &&
+          {/* {prompt.message &&
             prompt.type !== 'play_card_confirm' &&
             prompt.type !== 'select_targets' && (
             <p className={styles.message}>
@@ -311,15 +328,16 @@ export function GamePromptModal({
                 ? `${formatGeneralName(sourcePlayer)}对${wuxieTargetNames.join('、')}使用【${stripGeneralPrefixInText(prompt.cardName ?? '')}】`
                 : prompt.message}
             </p>
-          )}
+          )} */}
 
           {actingPlayer && (
             <section className={styles.section}>
-              <h3>当前操控</h3>
+              {/* <h3>当前操控</h3>
               <p className={styles.inlineMeta}>
                 【{actingPlayer.role ?? '未知'}】{formatGeneralName(actingPlayer)} 体力:
                 {actingPlayer.hp ?? 0} 手牌:{actingPlayer.handCards?.length ?? 0}
-              </p>
+              </p> */}
+              <h3>当前操控：{formatGeneralName(actingPlayer)}</h3>
             </section>
           )}
 
@@ -420,14 +438,72 @@ export function GamePromptModal({
                   ))}
                 </ul>
               )}
-              <button
-                type="button"
-                className={styles.primary}
-                disabled={noLegalTargets || !canConfirmTargets}
-                onClick={() => onSelectTargets(prompt.id, selectedTargets)}
-              >
-                确认目标
-              </button>
+              {isZonePickTargetSelect && zonePickTargetForSelect && (
+                <>
+                  <h3>选择
+                    <span style={{ fontWeight: 'bold', color: 'red' }}>{formatGeneralName(zonePickTargetForSelect)}</span>
+                    区域中的一张牌
+                  </h3>
+                  {/* <p className={styles.muted}>
+                    目标：{formatGeneralName(zonePickTargetForSelect)}（手牌
+                    {zonePickTargetForSelect.handCards?.length ?? 0}张，装备
+                    {zonePickTargetForSelect.equipment?.length ?? 0}件，判定
+                    {zonePickTargetForSelect.judgeCards?.length ?? 0}张）
+                  </p> */}
+                  <p className={styles.muted} style={{ marginBottom: '10px' }}>（手牌
+                    {zonePickTargetForSelect.handCards?.length ?? 0}张，装备
+                    {zonePickTargetForSelect.equipment?.length ?? 0}件，判定
+                    {zonePickTargetForSelect.judgeCards?.length ?? 0}张）
+                  </p>
+                  {zoneOptionsForSelect.length > 0 ? (
+                    <ul className={styles.cardPickList}>
+                      {zoneOptionsForSelect.map((option) => (
+                        <li key={option.id}>
+                          <label className={styles.targetOption}>
+                            <input
+                              type="radio"
+                              name="zone-pick-card-target-select"
+                              checked={zonePickId === option.id}
+                              onChange={() => setZonePickId(option.id)}
+                            />
+                            <span>{option.label}</span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className={styles.notice}>该目标区域没有可选牌。</p>
+                  )}
+                </>
+              )}
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={
+                    noLegalTargets ||
+                    (isZonePickTargetSelect
+                      ? !canConfirmZonePickTargetSelect
+                      : !canConfirmTargets)
+                  }
+                  onClick={() =>
+                    onSelectTargets(
+                      prompt.id,
+                      selectedTargets,
+                      isZonePickTargetSelect ? zonePickId : undefined,
+                    )
+                  }
+                >
+                  {isZonePickTargetSelect ? '确认选择' : '确认目标'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => onConfirmPlay(prompt.id, 'cancel')}
+                >
+                  取消
+                </button>
+              </div>
             </section>
           )}
 
@@ -602,12 +678,21 @@ export function GamePromptModal({
 
           {isZonePick && (
             <section className={styles.section}>
-              <h3>选择目标区域中的一张牌</h3>
+              <h3>选择
+                <span style={{ fontWeight: 'bold', color: 'red' }}>{formatGeneralName(zonePickTarget)}</span>
+                区域中的一张牌
+              </h3>
               {zonePickTarget && (
-                <p className={styles.muted}>
-                  目标：{formatGeneralName(zonePickTarget)}（手牌
+                // <p className={styles.muted}>
+                //   目标：{formatGeneralName(zonePickTarget)}（手牌
+                //   {zonePickTarget.handCards?.length ?? 0}张，装备
+                //   {zonePickTarget.equipment?.length ?? 0}件，判定
+                //   {zonePickTarget.judgeCards?.length ?? 0}张）
+                // </p>
+                <p className={styles.muted} style={{ marginBottom: '10px' }}>（手牌
                   {zonePickTarget.handCards?.length ?? 0}张，装备
-                  {zonePickTarget.equipment?.length ?? 0}件）
+                  {zonePickTarget.equipment?.length ?? 0}件，判定
+                  {zonePickTarget.judgeCards?.length ?? 0}张）
                 </p>
               )}
               <ul className={styles.cardPickList}>

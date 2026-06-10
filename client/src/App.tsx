@@ -618,8 +618,9 @@ function App() {
             gamePrompt.type === 'discard_cards'
               ? () => sandboxCancelDiscard(gamePrompt.id)
               : gamePrompt.type === 'select_targets' ||
-                  gamePrompt.type === 'select_zone_card' ||
-                  (gamePrompt.type === 'use_skill' && gamePrompt.skillId === 'zhiheng') ||
+                  gamePrompt.type === 'select_zone_card'
+                ? () => sandboxConfirmPlay(gamePrompt.id, 'cancel')
+              : (gamePrompt.type === 'use_skill' && gamePrompt.skillId === 'zhiheng') ||
                   gamePrompt.type === 'modify_judge' ||
                   gamePrompt.type === 'response' ||
                   (gamePrompt.type === 'use_skill' && gamePrompt.skillId === 'rende')

@@ -222,8 +222,9 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
     sourceId: string,
     promptId: string,
     targetIds: string[],
+    zoneCardId?: string,
   ): Promise<{ ok: boolean; error?: string }> {
-    const res = this.cardPlay.selectTargets(this, sourceId, promptId, targetIds);
+    const res = this.cardPlay.selectTargets(this, sourceId, promptId, targetIds, zoneCardId);
     if (!res.ok) return Promise.resolve(res);
     return this.continueAfterCardPlayStart(res);
   }

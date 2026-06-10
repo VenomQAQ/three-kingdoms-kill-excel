@@ -256,7 +256,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('sandbox:selectTargets')
   async handleSandboxTargets(
     @ConnectedSocket() client: GameSocket,
-    @MessageBody() payload: { promptId: string; targetIds: string[] },
+    @MessageBody() payload: { promptId: string; targetIds: string[]; zoneCardId?: string },
   ) {
     const socketId = this.getPlayerId(client);
     const actingId = this.getActingPlayerId(client);
@@ -266,6 +266,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         actingId,
         payload?.promptId ?? '',
         payload?.targetIds ?? [],
+        payload?.zoneCardId,
       );
       this.server.to(room.id).emit('room:state', room);
     } catch (err) {

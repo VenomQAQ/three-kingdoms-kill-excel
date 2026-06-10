@@ -14,6 +14,10 @@ export interface CardPlayContext {
   wuxieCancelledTargetIds?: string[];
   wuxieCancelledAll?: boolean;
   pendingAoeAdvance?: boolean;
+  /** 锦囊已从手牌打出（用于延迟消耗：选区域牌前取消可保留手牌） */
+  cardCommitted?: boolean;
+  /** 选目标时一并提交的区域牌（合并确认） */
+  pendingZoneCardId?: string;
 }
 
 export const CARD_PLAY_CTX_KEY = 'cardPlay';
