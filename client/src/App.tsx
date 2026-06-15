@@ -628,7 +628,7 @@ function App() {
                 : undefined
           }
           onConfirmPlay={(pid, cid) => sandboxConfirmPlay(pid, cid)}
-          onSelectTargets={(pid, ids) => sandboxSelectTargets(pid, ids)}
+          onSelectTargets={(pid, ids, zid) => sandboxSelectTargets(pid, ids, zid)}
           onSubmitResponse={(pid, cid) => sandboxSubmitResponse(pid, cid)}
           onRendeGive={(tid, cards, indices) =>
             sandboxRendeGive(tid, cards, indices)

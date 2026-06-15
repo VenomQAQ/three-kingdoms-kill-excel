@@ -606,6 +606,30 @@ export class CardPlayService {
 
     const zonePickAction = getZonePickAction(card);
     if (zonePickAction && finalTargets.length > 0) {
+      const context = this.requireCardPlay(host);
+      if (context?.pendingZoneCardId) {
+        const parsed = parseZoneCardId(context.pendingZoneCardId);
+        if (parsed) {
+          this.commitPlayedCard(host, source, card, context, [finalTargets[0]!]);
+          const ok =
+            zonePickAction === 'discard'
+              ? discardZoneCard(finalTargets[0]!, parsed.zone, parsed.index, host.getDeck(), (message) =>
+                  host.log(message),
+                )
+              : takeZoneCard(finalTargets[0]!, source, parsed.zone, parsed.index, (message) =>
+                  host.log(message),
+                );
+
+          if (ok) {
+            context.pendingZoneCardId = undefined;
+            this.clearCardPlay(host);
+            setZonePickContext(host.getState().resolution.context, undefined);
+            host.setPrompt(null);
+            return { ok: true };
+          }
+        }
+      }
+
       return this.promptZoneCardPick(
         host,
         card,
@@ -880,16 +904,6 @@ export class CardPlayService {
         label: option.label,
       })),
     });
-
-    const context = this.requireCardPlay(host);
-    if (context?.pendingZoneCardId) {
-      return this.submitZoneCardSelection(
-        host,
-        source.id,
-        promptId,
-        context.pendingZoneCardId,
-      );
-    }
 
     return { ok: true, paused: true };
   }
