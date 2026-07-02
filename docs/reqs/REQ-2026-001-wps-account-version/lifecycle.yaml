@@ -1,0 +1,26 @@
+req_id: REQ-2026-001
+title: WPS 摸鱼版 · 账号 + 版本切换 + 全局聊天区 + 单元格填满
+stage: "②评审会签"
+current_versions:
+  prd: v1
+  review: v1
+last_flip:
+  by: prd-author
+  from: null
+  to: "②评审会签"
+  ts: 2026-07-02T15:55+08:00
+history:
+  - { ts: 2026-07-02T15:50+08:00, by: prd-author,             stage: "①已定稿",    note: "PRD v1 起草并自检通过" }
+  - { ts: 2026-07-02T15:55+08:00, by: lifecycle-orchestrator, stage: "②评审会签", note: "进入三维并行签核" }
+  - { ts: 2026-07-02T16:00+08:00, by: frontend-feasibility,   stage: "②评审会签", note: "签 pass-with-conditions" }
+  - { ts: 2026-07-02T16:00+08:00, by: backend-feasibility,    stage: "②评审会签", note: "签 pass-with-conditions" }
+  - { ts: 2026-07-02T16:00+08:00, by: qa-testability,         stage: "②评审会签", note: "签 pass-with-conditions" }
+result: pending
+next_action:
+  suggest: |
+    三方全签 pass-with-conditions（无 reject），条件已合并至 review/review-signoff.v1.yaml.merged_conditions。
+    请 prd-author 基于合并条件产出 prd.v2.md：
+      - 消解条件后再由三方复核（review v2）或直接翻至"②已通过"
+      - 若无实质冲突且用户认可 merged_conditions 建议值，可授权 lifecycle-orchestrator 一次性翻至"②已通过"
+  candidate_agent: prd-author
+  awaiting_user_decision: true

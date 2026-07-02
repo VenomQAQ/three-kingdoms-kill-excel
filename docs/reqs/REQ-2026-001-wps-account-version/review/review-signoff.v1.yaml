@@ -1,0 +1,93 @@
+req_id: REQ-2026-001
+version: v1
+stage: "②评审会签"
+prd_ref: prd/prd.v1.md
+signoffs:
+  frontend-feasibility:
+    status: signed
+    verdict: pass-with-conditions
+    reviewer: frontend-feasibility
+    ts: 2026-07-02T16:00+08:00
+    ref: review/frontend-feasibility.v1.md
+    complexity: M
+    cost_person_day: "3-5"
+    scope:
+      - client/src/components/wps/LoginDialog        # 新增
+      - client/src/components/wps/ChangePasswordDialog # 新增
+      - client/src/components/wps/LobbyChatPanel     # 新增
+      - client/src/components/wps/Ribbon             # 扩展：VersionButton
+      - client/src/components/wps/RoomListGrid       # 扩展：增列 + 右侧插槽
+      - client/src/components/wps/SpreadsheetGrid    # 扩展：填满自适应
+      - client/src/store/appStore                    # 扩展：authState / currentVersion
+      - client/src/components/wps/FormulaBar         # 扩展：/version 命令
+    depends_on_backend:
+      - 登录 session 机制（Cookie/JWT 由 backend-design 定）
+      - room:list 支持按 version 过滤
+      - 大厅频道事件定型
+    conditions:
+      - PRD 明确 sandbox 房是否强制登录
+      - PRD 明确未登录可见范围
+      - R-2 3% 判据的测量方法澄清
+      - 版本切换入口 Ribbon vs 公式栏主辅关系
+  backend-feasibility:
+    status: signed
+    verdict: pass-with-conditions
+    reviewer: backend-feasibility
+    ts: 2026-07-02T16:00+08:00
+    ref: review/backend-feasibility.v1.md
+    complexity: M
+    cost_person_day: "3-5"
+    scope:
+      - server/src/modules/auth                      # 新增
+      - server/src/modules/room/room.service         # 扩展：version 字段
+      - server/src/modules/chat/chat.service         # 扩展：lobby 频道
+      - server/src/gateway/game.gateway              # 扩展：auth 中间件
+      - packages/shared/src/index                    # 扩展：auth/version/lobby 事件
+      - packages/shared/config/versions              # 新增：版本目录
+    interfaces_to_frontend:
+      - "≈6-8 条新增/扩展事件（HTTP + Socket）"
+    conditions:
+      - PRD 决定大厅是否需要历史消息
+      - PRD 决定 sandbox 房是否强制登录
+      - PRD 给存储偏好（SQLite / JSON 文件 / 内存）
+      - PRD 说明改密码是否强制所有 session 失效
+  qa-testability:
+    status: signed
+    verdict: pass-with-conditions
+    reviewer: qa-testability
+    ts: 2026-07-02T16:00+08:00
+    ref: review/qa-testability.v1.md
+    per_requirement:
+      "R-1": { testable: partial, note: "需截图 diff 基线作为回归判据" }
+      "R-2": { testable: yes,     note: "需 PRD 明确像素占比计算方法" }
+      "R-3": { testable: yes,     note: "" }
+      "R-4": { testable: yes,     note: "需明确 session TTL / 重连时限" }
+      "R-5": { testable: yes,     note: "" }
+      "R-6": { testable: yes,     note: "" }
+      "R-7": { testable: yes,     note: "" }
+      "R-8": { testable: yes,     note: "需明确节流阈值 + 历史保留策略" }
+      "R-9": { testable: yes,     note: "" }
+    seed_or_stub_needed: false
+    cost_person_day_for_qa: "1-3"
+    conditions:
+      - 授权 QA 建立视觉基线截图
+      - R-2 空白像素计算方法澄清
+      - 大厅聊天节流阈值 + 历史策略明确
+      - session TTL / 重连时限明确
+result: pending    # 全部为 pass-with-conditions → 待 prd-author 出 v2 消解条件后再判
+last_signer: ""    # v1 未翻牌
+suggested_next:
+  agent: prd-author
+  reason: |
+    三方均判 pass-with-conditions；合并条件清单交回 prd-author 出 prd.v2.md，
+    v2 消解后由 lifecycle-orchestrator 起 review v2 或直接翻至 ②已通过。
+merged_conditions:
+  - sandbox 房是否强制登录（建议：登录后可进；老 `/sandbox` 命令保留）
+  - 未登录可见范围（建议：仅登录页可见，房间列表 / 大厅聊天不可见）
+  - R-2 空白像素计算方法（建议：非表格背景色像素占视口面积比 ≤ 3%）
+  - 版本切换入口（建议：Ribbon 按钮为主，`/version` 命令为辅）
+  - 大厅聊天历史（建议：不持久化，仅滚动 100 条内存缓存；进入后 T=0 起接收）
+  - 大厅聊天节流（建议：1 条/秒/账号，单条 ≤ 200 字符）
+  - 存储选型偏好（建议：MVP 选 SQLite；生产可切 Postgres）
+  - session TTL / 重连时限（建议：access 1h + refresh 7d；断线 5min 内自动重连保留 socket 状态）
+  - 改密码后 session 处理（建议：所有 session 失效，强制全部标签页重新登录）
