@@ -1,0 +1,215 @@
+req_id: REQ-2026-001
+version: v1
+contract_ref: design/api-contract.v1.md   # frozen
+design_ref: design/backend-tech-design.v1.md
+tasks:
+  - id: BE-1
+    title: 引入 ORM & 初始化 SQLite
+    ref_req: [R-3, R-4, R-8]
+    scope:
+      - server/package.json
+      - server/src/app.module.ts
+      - server/src/main.ts
+      - server/data/                       # .gitignore
+      - .gitignore
+    deliverable:
+      - typeorm + better-sqlite3 + cookie-parser + argon2 + jsonwebtoken + ulid
+      - TypeOrmModule 初始化，指向 server/data/app.sqlite
+      - main.ts app.use(cookieParser())
+    depends_on: []
+    estimate_h: 3
+    acceptance:
+      - npm run build -w server 成功
+      - 启动服务无报错，server/data/app.sqlite 自动生成
+
+  - id: BE-2
+    title: user / refresh_token 实体 + 迁移
+    ref_req: [R-3, R-4, R-5]
+    scope:
+      - server/src/modules/auth/entities/user.entity.ts
+      - server/src/modules/auth/entities/refresh-token.entity.ts
+      - server/src/modules/auth/auth.module.ts
+    deliverable:
+      - user: id(uuid), email(unique), passwordHash, nickname, preferredVersion, createdAt, lastLoginAt
+      - refresh_token: id(uuid), userId, familyId, generation(int), token(hash), expiresAt, revokedAt(null), revokedReason(null)
+      - 唯一索引 email；索引 familyId
+    depends_on: [BE-1]
+    estimate_h: 2
+    acceptance:
+      - 表能生成，可通过 repository CRUD
+
+  - id: BE-3
+    title: PasswordService + TokenService
+    ref_req: [R-3, R-4]
+    scope:
+      - server/src/modules/auth/password.service.ts
+      - server/src/modules/auth/token.service.ts
+    deliverable:
+      - PasswordService.hash / verify (argon2id)
+      - TokenService.issueAccess(userId) → JWT 1h
+      - TokenService.issueRefresh(userId, familyId?) → 生成 opaque + 存 hash；旋转策略见 design §2.2
+      - TokenService.rotate(refreshToken) 5s 竞态窗口逻辑
+      - TokenService.revokeAll(userId, reason)
+    depends_on: [BE-2]
+    estimate_h: 5
+    acceptance:
+      - 单测覆盖：正常刷新旋转、过期、盗刷拉黑、5s 内并发的重复请求不拉黑
+
+  - id: BE-4
+    title: AuthController + guard
+    ref_req: [R-3, R-4, R-5, R-9]
+    scope:
+      - server/src/modules/auth/auth.controller.ts
+      - server/src/modules/auth/auth.service.ts
+      - server/src/modules/auth/auth.guard.ts
+    deliverable:
+      - POST /api/auth/register, login, logout, change-password, refresh
+      - GET /api/auth/me
+      - HTTP guard（读 tk_at Cookie，注入 req.user）
+      - 邮箱正则 + 密码强度 + 登录限流
+    depends_on: [BE-3]
+    estimate_h: 6
+    acceptance:
+      - 契约错误码全命中：E_UNAUTHORIZED / E_BAD_CREDENTIALS / E_USER_EXISTS / E_INVALID_EMAIL / E_WEAK_PASSWORD / E_PASSWORD_MISMATCH / E_REFRESH_EXPIRED / E_REFRESH_REUSED / E_LOGIN_RATE_LIMIT
+
+  - id: BE-5
+    title: Gateway auth 中间件 + auth:hello / auth:invalidated
+    ref_req: [R-4, R-5, R-9]
+    scope:
+      - server/src/gateway/game.gateway.ts
+      - server/src/modules/auth/auth.guard.ts (socket 部分)
+    deliverable:
+      - handshake 读 Cookie tk_at，认证失败允许匿名连接（socket.userId = null）
+      - 连接后立即 emit auth:hello
+      - emitToUser(userId, event, payload) 工具方法
+      - disconnectByUser(userId) 工具方法
+    depends_on: [BE-4]
+    estimate_h: 3
+    acceptance:
+      - 匿名与登录连接都能收到 auth:hello；改密后 auth:invalidated 广播
+
+  - id: BE-6
+    title: 版本目录 + capabilities 端点
+    ref_req: [R-6, R-7]
+    scope:
+      - packages/shared/src/versions.ts       # 新增
+      - server/src/modules/version/version.registry.ts
+      - server/src/modules/capabilities/capabilities.controller.ts
+    deliverable:
+      - packages/shared 导出 VERSIONS 数组含 standard-2014 (min 2, max 10, default true)
+      - GET /api/capabilities 返回契约 §2.1 结构
+    depends_on: [BE-1]
+    estimate_h: 2
+    acceptance:
+      - 前端 fetch 得到 sandboxEnabled / versions / chatLimits / session 完整字段
+
+  - id: BE-7
+    title: 房间加 version 字段 + 容量按版本读
+    ref_req: [R-6, R-7]
+    scope:
+      - server/src/modules/room/room.service.ts
+      - packages/shared/src/index.ts
+    deliverable:
+      - Room 新增 versionId 字段（创建时快照）
+      - MAX_ROOM_PLAYERS 保留为 fallback，实际以 versionRegistry.get(versionId).maxPlayers 为准
+      - room:create/join 校验 versionId；错误码 E_VERSION_UNKNOWN / E_ROOM_VERSION_MISMATCH / E_ROOM_FULL
+      - room:list ack 返回 versionId
+    depends_on: [BE-6]
+    estimate_h: 3
+    acceptance:
+      - 创建版本上限 10 的房间加到第 11 人被拒 E_ROOM_FULL
+
+  - id: BE-8
+    title: 断线保坐 5 分钟 + userId 匹配
+    ref_req: [R-4]
+    scope:
+      - server/src/gateway/game.gateway.ts
+      - server/src/modules/room/room.service.ts
+    deliverable:
+      - onDisconnect：scheduleReclaim(userId, roomCode, 300s)
+      - onConnect：命中 pending 则 rebind
+      - 现有按 nickname 匹配的分支替换为按 userId
+    depends_on: [BE-5, BE-7]
+    estimate_h: 3
+    acceptance:
+      - 断线 4 分钟重连座位保留；6 分钟重连座位已回收
+      - 改密触发时立即回收（不受 5 分钟保护）
+
+  - id: BE-9
+    title: lobby-chat 完整栈（存储 + 限流 + snapshot + broadcast）
+    ref_req: [R-8, R-9]
+    scope:
+      - server/src/modules/lobby-chat/*
+    deliverable:
+      - LobbyChatMessage 实体 + repository
+      - lobby:chat:send / lobby:chat:snapshot / lobby:chat:message 事件
+      - 滚动窗口 1000 淘汰 + 首拉 100 条快照
+      - 滑动窗口限流 1 QPS/账号；长度 ≤ 200
+      - 匿名连接可 snapshot + 收 message；send 需 auth
+    depends_on: [BE-5]
+    estimate_h: 5
+    acceptance:
+      - 发第 1001 条后最老 1 条淘汰
+      - 新连接立即收 snapshot（≤100 条），后续增量到达
+      - E_CHAT_RATE_LIMIT / E_CHAT_TOO_LONG / E_CHAT_MUTED 触发正常
+
+  - id: BE-10
+    title: 房间内 chat 加 auth 门槛 + _v 字段
+    ref_req: [R-9]
+    scope:
+      - server/src/modules/chat/chat.service.ts
+    deliverable:
+      - chat:send 需登录
+      - payload 顶层加 _v: 1
+    depends_on: [BE-5]
+    estimate_h: 1
+    acceptance:
+      - 匿名 chat:send → E_UNAUTHORIZED
+
+  - id: BE-11
+    title: sandbox 环境开关
+    ref_req: [R-9]
+    scope:
+      - server/src/gateway/game.gateway.ts
+      - server/src/modules/room/room.service.ts
+    deliverable:
+      - SANDBOX_ENABLED=false 时 sandbox 相关事件返回 E_SANDBOX_DISABLED
+      - capabilities.sandboxEnabled 同步
+    depends_on: [BE-6]
+    estimate_h: 1
+    acceptance:
+      - SANDBOX_ENABLED 切换后 restart 服务，前端 capabilities 变化立即体现
+
+  - id: BE-12
+    title: dev-only /api/debug/advance-clock
+    ref_req: [R-4]
+    scope:
+      - server/src/modules/debug/*
+    deliverable:
+      - ENABLE_DEBUG_CLOCK=true 时挂载；接受 seconds 参数
+      - 用于 QA refresh 7 天用例
+    depends_on: [BE-1]
+    estimate_h: 1
+    acceptance:
+      - 生产 build (ENABLE_DEBUG_CLOCK 未设) 时端点 404
+
+  - id: BE-13
+    title: version:switch / version:switched 事件
+    ref_req: [R-6]
+    scope:
+      - server/src/modules/version/version.registry.ts
+      - server/src/gateway/game.gateway.ts
+    deliverable:
+      - client → server version:switch { versionId }
+      - server 更新 user.preferredVersion
+      - server → 同 userId 所有 socket 广播 version:switched
+    depends_on: [BE-6, BE-5]
+    estimate_h: 2
+    acceptance:
+      - 同账号两个 tab，任一切版本另一 tab 同步收到事件
+
+notes_for_coder:
+  - 严格按契约事件名和字段命名，禁止自造别名
+  - 每步交付都要 npm run build -w server 通过；backend-unit-tester 后续补单测
+  - 涉及并发的地方（rateLimiter、refresh 旋转、reclaim 计时器）测试要覆盖竞态
+  - 引入原生依赖 (better-sqlite3) 若 CI 编译失败，切 libsql 或 sql.js

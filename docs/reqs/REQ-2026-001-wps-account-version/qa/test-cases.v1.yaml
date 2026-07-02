@@ -1,0 +1,465 @@
+req_id: REQ-2026-001
+version: v1
+plan_ref: qa/test-plan.v1.md
+contract_ref: design/api-contract.v1.md
+cases:
+
+# =========================================================
+# Auth · 注册 (R-3)
+# =========================================================
+  - id: TC-A-001
+    ref_req: R-3
+    ref_task: BE-4
+    priority: P0
+    type: integration
+    title: 正常注册成功
+    steps:
+      - POST /api/auth/register with {email:"12345@qq.com",password:"Aa123456",nickname:"aa"}
+    expected:
+      - 201, ok:true, data.userId 存在
+      - Set-Cookie tk_at 与 tk_rt 均存在，httpOnly, SameSite=Lax
+      - 数据库 user 表新增一行，passwordHash 非明文
+  - id: TC-A-002
+    ref_req: R-3
+    priority: P0
+    type: integration
+    title: 非 QQ 邮箱注册被拒
+    steps: [POST register {email:"user@gmail.com",...}]
+    expected: [400, code:"E_INVALID_EMAIL"]
+  - id: TC-A-003
+    ref_req: R-3
+    priority: P0
+    type: integration
+    title: 密码不含数字被拒
+    steps: [POST register {password:"abcdefgh",...}]
+    expected: [400, code:"E_WEAK_PASSWORD"]
+  - id: TC-A-004
+    ref_req: R-3
+    priority: P0
+    type: integration
+    title: 密码不含字母被拒
+    steps: [POST register {password:"12345678",...}]
+    expected: [400, code:"E_WEAK_PASSWORD"]
+  - id: TC-A-005
+    ref_req: R-3
+    priority: P0
+    type: integration
+    title: 重复邮箱注册被拒
+    steps: [POST register 同一邮箱两次]
+    expected: [第 2 次 409, code:"E_USER_EXISTS"]
+  - id: TC-A-006
+    ref_req: R-3
+    priority: P1
+    type: integration
+    title: 昵称前后 trim
+    steps: [POST register {nickname:"  张三  "}]
+    expected: [data.nickname == "张三"]
+
+# =========================================================
+# Auth · 登录 / 登出 (R-4)
+# =========================================================
+  - id: TC-A-010
+    ref_req: R-4
+    priority: P0
+    type: integration
+    title: 正确密码登录成功
+    expected: [200, Set-Cookie tk_at + tk_rt, data.preferredVersion]
+  - id: TC-A-011
+    ref_req: R-4
+    priority: P0
+    type: integration
+    title: 错误密码登录失败
+    expected: [401, code:"E_BAD_CREDENTIALS"]
+  - id: TC-A-012
+    ref_req: R-4
+    priority: P0
+    type: integration
+    title: 邮箱不存在登录失败
+    expected: [401, code:"E_BAD_CREDENTIALS"]      # 不透露是否存在，统一码
+  - id: TC-A-013
+    ref_req: R-4
+    priority: P0
+    type: integration
+    title: 登录失败限流命中
+    steps: [同 IP 1 分钟内失败 11 次]
+    expected: [第 11 次 429, code:"E_LOGIN_RATE_LIMIT"]
+  - id: TC-A-014
+    ref_req: R-4
+    priority: P0
+    type: integration
+    title: 登出后 access 失效
+    steps: [login → logout → 用旧 access 请求 /api/auth/me]
+    expected: [401, code:"E_UNAUTHORIZED"]
+  - id: TC-A-015
+    ref_req: R-4
+    priority: P0
+    type: integration
+    title: /api/auth/me 未登录返回 401
+    expected: [401, code:"E_UNAUTHORIZED"]
+  - id: TC-A-016
+    ref_req: R-4
+    priority: P1
+    type: e2e
+    title: 前端首屏 hydrate → 未登录显示登录对话框
+    expected: [LoginDialog 可见；房间列表 sheet 只读可见]
+  - id: TC-A-017
+    ref_req: R-4
+    priority: P1
+    type: e2e
+    title: 前端登录成功后 InfoBar 显示邮箱
+    expected: [InfoBar 文案 "已登录 12345@qq.com"]
+
+# =========================================================
+# Auth · 改密 (R-5)
+# =========================================================
+  - id: TC-A-020
+    ref_req: R-5
+    priority: P0
+    type: integration
+    title: 改密成功后旧 access 立即失效
+    steps: [login (tab1) → login (tab2) → tab1 改密 → tab2 用旧 access 请求 /api/auth/me]
+    expected: [tab2 请求 401，code:"E_UNAUTHORIZED"]
+  - id: TC-A-021
+    ref_req: R-5
+    priority: P0
+    type: integration
+    title: 改密成功后所有 refresh 作废
+    steps: [改密 → 用旧 tk_rt 请求 /api/auth/refresh]
+    expected: [401, code:"E_REFRESH_EXPIRED" 或 REUSED]
+  - id: TC-A-022
+    ref_req: R-5
+    priority: P0
+    type: integration
+    title: 原密码错误改密失败
+    expected: [400, code:"E_PASSWORD_MISMATCH"]
+  - id: TC-A-023
+    ref_req: R-5
+    priority: P0
+    type: e2e
+    title: 改密广播 auth:invalidated 到其他标签页
+    steps: [tab1/tab2 同账号登录 → tab1 改密 → 等 socket 事件]
+    expected: [tab2 收到 auth:invalidated{reason:'password-changed'} 后跳登录页]
+  - id: TC-A-024
+    ref_req: R-5
+    priority: P1
+    type: integration
+    title: 新密码不合规改密失败
+    expected: [400, code:"E_WEAK_PASSWORD"]
+
+# =========================================================
+# Auth · Refresh 旋转 (R-4)
+# =========================================================
+  - id: TC-A-030
+    ref_req: R-4
+    priority: P0
+    type: integration
+    title: refresh 成功旋转旧 refresh 失效
+    steps: [refresh(rt1) → 得到 rt2 → 再次用 rt1 refresh]
+    expected: [第二次 rt1 收到 E_REFRESH_REUSED；此账号所有 refresh 拉黑]
+  - id: TC-A-031
+    ref_req: R-4
+    priority: P0
+    type: integration
+    title: 5 秒内并发 refresh 不拉黑（重复请求）
+    steps: [同一 rt 并发 2 次 refresh，间隔 ≤ 5s]
+    expected:
+      - 一个成功、一个 E_REFRESH_REUSED
+      - 数据库 refresh_token 未整族拉黑；后续用新 rt 仍可 refresh
+  - id: TC-A-032
+    ref_req: R-4
+    priority: P0
+    type: integration
+    title: refresh 超期
+    steps: [advance-clock 604801s → refresh]
+    expected: [401, code:"E_REFRESH_EXPIRED"]
+  - id: TC-A-033
+    ref_req: R-4
+    priority: P0
+    type: integration
+    title: access 超期后前端自动 refresh 一次
+    steps: [advance-clock 3601s → 前端调 /api/auth/me]
+    expected:
+      - http 层看到 401 → 自动 POST /api/auth/refresh → 再次 me 成功
+      - 只重试一次；再次 401 则跳登录
+  - id: TC-A-034
+    ref_req: R-4
+    priority: P1
+    type: integration
+    title: 盗用 refresh 触发全账号踢下线
+    steps: [rt1 refresh 成功 → 5s 后用 rt1 再 refresh]
+    expected: [E_REFRESH_REUSED；auth:invalidated 广播到所有 socket；后续 refresh 全失败]
+
+# =========================================================
+# Session · 断线保坐 (R-4)
+# =========================================================
+  - id: TC-S-001
+    ref_req: R-4
+    priority: P0
+    type: e2e
+    title: 断线 4 分钟内重连座位保留
+    steps: [登录 → 加入房间 → 断 socket → advance-clock 240s → 重连]
+    expected: [rebind 成功，玩家仍在房间座位；引擎绑定保持]
+  - id: TC-S-002
+    ref_req: R-4
+    priority: P0
+    type: e2e
+    title: 断线超过 5 分钟座位被回收
+    steps: [同上 → advance-clock 301s → 重连]
+    expected: [rebind 失败，房间不再包含该玩家]
+  - id: TC-S-003
+    ref_req: R-4
+    priority: P0
+    type: e2e
+    title: 改密触发时立即回收座位（不受 5 分钟保护）
+    steps: [tab1 登录进房间 → tab2 改密]
+    expected: [tab1 立即断线；座位立即回收，不等 5 分钟]
+  - id: TC-S-004
+    ref_req: R-4
+    priority: P1
+    type: e2e
+    title: 未进入房间的断线不触发 reclaim 计时器
+    steps: [登录未加房间 → 断线]
+    expected: [无 scheduleReclaim 日志]
+
+# =========================================================
+# Version 目录 & 切换 (R-6)
+# =========================================================
+  - id: TC-V-001
+    ref_req: R-6
+    priority: P0
+    type: integration
+    title: capabilities.versions 包含 standard-2014
+    expected: [id="standard-2014", minPlayers=2, maxPlayers=10, default=true]
+  - id: TC-V-002
+    ref_req: R-6
+    priority: P0
+    type: integration
+    title: version:switch 更新 user.preferredVersion
+    steps: [emit version:switch standard-2014 → GET /api/auth/me]
+    expected: [preferredVersion="standard-2014"]
+  - id: TC-V-003
+    ref_req: R-6
+    priority: P0
+    type: e2e
+    title: 同账号多 tab 版本切换同步
+    steps: [tab1 切版本 → tab2 观察]
+    expected: [tab2 收到 version:switched；currentVersion 更新]
+  - id: TC-V-004
+    ref_req: R-6
+    priority: P1
+    type: integration
+    title: 未知版本切换被拒
+    expected: [E_VERSION_UNKNOWN]
+
+# =========================================================
+# Room 容量按版本 (R-7)
+# =========================================================
+  - id: TC-R-001
+    ref_req: R-7
+    priority: P0
+    type: integration
+    title: standard-2014 房间加到第 11 人被拒
+    expected: [E_ROOM_FULL]
+  - id: TC-R-002
+    ref_req: R-7
+    priority: P0
+    type: integration
+    title: 加入者版本与房间不同
+    steps: [房主创建 standard-2014，加入者 preferredVersion 为其他值]
+    expected: [E_ROOM_VERSION_MISMATCH（前端应自动切版本再重发）]
+  - id: TC-R-003
+    ref_req: R-7
+    priority: P0
+    type: integration
+    title: room:list ack 返回 versionId
+    expected: [每条房间含 versionId="standard-2014"]
+
+# =========================================================
+# Lobby Chat (R-8, R-9)
+# =========================================================
+  - id: TC-C-001
+    ref_req: R-8
+    priority: P0
+    type: integration
+    title: 大厅聊天广播
+    steps: [两账号登录 → A 发送 → B 收到 lobby:chat:message]
+    expected: [B 收到 payload 完整]
+  - id: TC-C-002
+    ref_req: R-8
+    priority: P0
+    type: integration
+    title: 滚动窗口 1000 淘汰
+    steps: [写入 1001 条]
+    expected: [最老一条从 DB 消失]
+  - id: TC-C-003
+    ref_req: R-8
+    priority: P0
+    type: integration
+    title: 新连接 snapshot 返回最近 100 条
+    steps: [写入 150 条 → 新账号连接 → emit lobby:chat:snapshot]
+    expected: [ack 返回 100 条时间升序]
+  - id: TC-C-004
+    ref_req: R-8
+    priority: P0
+    type: integration
+    title: 限流 1 QPS/账号
+    steps: [同账号 1 秒内连发 2 条]
+    expected: [第 2 条 chat:error code=E_CHAT_RATE_LIMIT]
+  - id: TC-C-005
+    ref_req: R-8
+    priority: P0
+    type: integration
+    title: 长度 > 200 被拒
+    expected: [E_CHAT_TOO_LONG]
+  - id: TC-C-006
+    ref_req: R-9
+    priority: P0
+    type: integration
+    title: 未登录发聊天被拒
+    expected: [E_CHAT_MUTED 或 E_UNAUTHORIZED]
+  - id: TC-C-007
+    ref_req: R-9
+    priority: P0
+    type: e2e
+    title: 未登录可看大厅消息
+    expected: [匿名 socket 收到 lobby:chat:message 广播]
+  - id: TC-C-008
+    ref_req: R-8
+    priority: P1
+    type: e2e
+    title: 进入房间后前端切换频道
+    steps: [大厅接收若干消息 → 加入房间 → 观察 lobbyMessages 缓存]
+    expected: [切频道后 lobbyMessages 清空，不再新增]
+
+# =========================================================
+# Auth Gate 未登录只读 (R-9)
+# =========================================================
+  - id: TC-G-001
+    ref_req: R-9
+    priority: P0
+    type: integration
+    title: 匿名 room:list 可读
+    expected: [ack 返回房间数组]
+  - id: TC-G-002
+    ref_req: R-9
+    priority: P0
+    type: integration
+    title: 匿名 room:create 被拒
+    expected: [room:error code=E_UNAUTHORIZED]
+  - id: TC-G-003
+    ref_req: R-9
+    priority: P0
+    type: integration
+    title: 匿名 room:join 被拒
+    expected: [room:error code=E_UNAUTHORIZED]
+  - id: TC-G-004
+    ref_req: R-9
+    priority: P0
+    type: integration
+    title: 匿名 version:switch 被拒
+    expected: [E_UNAUTHORIZED]
+  - id: TC-G-005
+    ref_req: R-9
+    priority: P1
+    type: e2e
+    title: 未登录点击房间号触发登录提示
+    expected: [Toast/Dialog 显示"请先登录"]
+
+# =========================================================
+# Sandbox 环境开关 (R-9)
+# =========================================================
+  - id: TC-X-001
+    ref_req: R-9
+    priority: P0
+    type: e2e
+    title: SANDBOX_ENABLED=false 时 Ribbon 测试房按钮不可见
+    expected: [button not rendered, /sandbox 命令返回 E_SANDBOX_DISABLED]
+  - id: TC-X-002
+    ref_req: R-9
+    priority: P0
+    type: e2e
+    title: SANDBOX_ENABLED=true 时可进但需登录
+    steps: [未登录点击测试房]
+    expected: [先触发登录对话框；登录后可进]
+  - id: TC-X-003
+    ref_req: R-9
+    priority: P1
+    type: integration
+    title: capabilities.sandboxEnabled 与环境变量一致
+    expected: [true/false 反映实时]
+
+# =========================================================
+# Visual 基线 (R-1, R-2)
+# =========================================================
+  - id: TC-U-001
+    ref_req: R-1
+    priority: P0
+    type: visual
+    title: 首屏未登录截图对齐基线（1440x900）
+    steps: [Playwright 1440x900 → 截图 → 对比 baseline]
+    expected: [pixelmatch diff ≤ 0.5%]
+  - id: TC-U-002
+    ref_req: R-2
+    priority: P0
+    type: visual
+    title: 大厅登录后 1440x900 非背景色像素占比
+    expected: [(非 --bg-cell 颜色像素) / (视口面积) ≤ 3.0% ±0.3%]
+  - id: TC-U-003
+    ref_req: R-2
+    priority: P0
+    type: visual
+    title: 大厅登录后 1920x1080 非背景色像素占比
+    expected: [(同上) ≤ 3.0% ±0.3%]
+  - id: TC-U-004
+    ref_req: R-2
+    priority: P0
+    type: visual
+    title: 大厅登录后 2560x1440 非背景色像素占比
+    expected: [(同上) ≤ 3.0% ±0.3%]
+  - id: TC-U-005
+    ref_req: R-2
+    priority: P1
+    type: visual
+    title: 聊天区折叠 / 展开 无 1px 缝
+    steps: [截取两态 → 对比行列坐标]
+    expected: [列右边界像素 std ≤ 1px]
+  - id: TC-U-006
+    ref_req: R-1
+    priority: P1
+    type: visual
+    title: 老板键 Ctrl+Shift+H 切区域销售
+    expected: [假表可见；聊天区隐藏；单元格填满一致]
+
+# =========================================================
+# Regression 出牌流程冒烟
+# =========================================================
+  - id: TC-Z-001
+    ref_req: existing
+    priority: P0
+    type: e2e
+    title: 主公摸牌 → 出牌 → 弃牌 → 下一角色
+    expected: [回合按 phase 状态机流转，无死锁]
+  - id: TC-Z-002
+    ref_req: existing
+    priority: P0
+    type: e2e
+    title: 【杀】响应【闪】
+    expected: [响应窗口出现 → 打闪 → 不伤]
+  - id: TC-Z-003
+    ref_req: existing
+    priority: P0
+    type: e2e
+    title: 濒死【桃】救助
+    expected: [濒死 prompt 出现 → 桃救助后回 1 血]
+  - id: TC-Z-004
+    ref_req: existing
+    priority: P0
+    type: e2e
+    title: 【决斗】完整流程
+    expected: [轮流出杀 → 不出方受 1 点决斗使用者伤害]
+  - id: TC-Z-005
+    ref_req: existing
+    priority: P0
+    type: e2e
+    title: 【恂恂】摸牌前观 4 顶 2 沉 2
+    expected: [选择顺序确认后牌堆顶符合排序；每回合限 1 次]

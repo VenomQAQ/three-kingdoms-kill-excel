@@ -1,14 +1,21 @@
 req_id: REQ-2026-001
 title: WPS 摸鱼版 · 账号 + 版本切换 + 全局聊天区 + 单元格填满
-stage: "②已通过"
+stage: "③开发"
 current_versions:
   prd: v2
   review: v2
+  api_contract: v1              # frozen
+  backend_tech_design: v1
+  frontend_tech_design: v1
+  backend_tasks: v1
+  frontend_tasks: v1
+  qa_test_plan: v1
+  qa_test_cases: v1
 last_flip:
-  by: qa-testability        # 最后一签者翻牌（图里的规则）
-  from: "②评审会签"
-  to: "②已通过"
-  ts: 2026-07-02T17:30+08:00
+  by: lifecycle-orchestrator
+  from: "②已通过"
+  to: "③开发"
+  ts: 2026-07-02T18:35+08:00
 history:
   - { ts: 2026-07-02T15:50+08:00, by: prd-author,             stage: "①已定稿",    note: "PRD v1 起草并自检通过" }
   - { ts: 2026-07-02T15:55+08:00, by: lifecycle-orchestrator, stage: "②评审会签", note: "进入三维并行签核" }
@@ -20,14 +27,20 @@ history:
   - { ts: 2026-07-02T17:30+08:00, by: backend-feasibility,    stage: "②评审会签", note: "v2 复核签 pass" }
   - { ts: 2026-07-02T17:30+08:00, by: qa-testability,         stage: "②评审会签", note: "v2 复核签 pass（最后一签者翻牌）" }
   - { ts: 2026-07-02T17:30+08:00, by: lifecycle-orchestrator, stage: "②已通过",   note: "三方 v2 全 pass，翻至 ②已通过" }
+  - { ts: 2026-07-02T18:00+08:00, by: backend-design,         stage: "③开发",     note: "产出 api-contract.v1（SSOT）+ backend-tech-design.v1" }
+  - { ts: 2026-07-02T18:15+08:00, by: frontend-design,        stage: "③开发",     note: "消费契约 v1 无异议 → 产出 frontend-tech-design.v1" }
+  - { ts: 2026-07-02T18:20+08:00, by: backend-design,         stage: "③开发",     note: "api-contract.v1 置 frozen: true" }
+  - { ts: 2026-07-02T18:25+08:00, by: backend-task,           stage: "③开发",     note: "产出 backend-tasks.v1（13 条）" }
+  - { ts: 2026-07-02T18:25+08:00, by: frontend-task,          stage: "③开发",     note: "产出 frontend-tasks.v1（11 条）" }
+  - { ts: 2026-07-02T18:30+08:00, by: qa-test-designer,       stage: "③开发",     note: "②③预备：产出 qa/test-plan.v1 + qa/test-cases.v1（62 条）" }
+  - { ts: 2026-07-02T18:35+08:00, by: lifecycle-orchestrator, stage: "③开发",     note: "阶段翻至 ③开发（编码待启动）" }
 result: pass
 next_action:
   suggest: |
-    进入 ③开发。首站 backend-design：
-      1) 产出 design/backend-tech-design.v1.md
-      2) 产出 design/api-contract.v1.md（SSOT）—— 覆盖 auth / lobby-chat / version / room 事件与错误码
-    契约初版发布后邀请 frontend-design 消费；对齐无异议后 backend-design 将契约 frozen: true。
-    并行动作：qa-test-designer 可开始起草 qa/test-plan.v1.md + qa/test-cases.v1.yaml。
-  candidate_agent: backend-design
-  awaiting_user_decision: false
-  open_items_for_design_ref: review/review-signoff.v2.yaml#open_items_for_design
+    ③开发编码启动。两个 coder 并行认领：
+      backend-coder  → 按 BE-1 … BE-13 顺序，先起 ORM + auth + capabilities 主干
+      frontend-coder → 与 BE-4/BE-5/BE-6 有依赖的 FE 任务等接口就绪再动；无依赖的 FE-8/FE-10 可先起
+    每步交付需 build 通过；backend-unit-tester 补单测后进入 code-review。
+    联调后前端和后端各自签"联"（integration-signoff.v1.yaml），最后一签者翻至 ③已完成。
+  candidate_agent: backend-coder, frontend-coder
+  awaiting_user_decision: true       # 请用户裁决：并行开跑，还是先跑一条主干？

@@ -1,0 +1,180 @@
+req_id: REQ-2026-001
+version: v1
+contract_ref: design/api-contract.v1.md   # frozen
+design_ref: design/frontend-tech-design.v1.md
+tasks:
+  - id: FE-1
+    title: api/ 目录 + http.ts + auth.ts + capabilities.ts
+    ref_req: [R-3, R-4, R-5]
+    scope:
+      - client/src/api/http.ts
+      - client/src/api/auth.ts
+      - client/src/api/capabilities.ts
+    deliverable:
+      - fetch 封装，自动 credentials:'include'
+      - 401 自动尝试 POST /api/auth/refresh 一次，再失败抛出到调用方
+      - auth.ts 导出 register/login/logout/changePassword/refresh/me
+      - capabilities.ts 导出 getCapabilities()
+    depends_on: []
+    estimate_h: 3
+    acceptance:
+      - build 通过；类型定义与契约 §1/§2 一致
+
+  - id: FE-2
+    title: appStore 扩展 authState / capabilities / currentVersion
+    ref_req: [R-3, R-4, R-6, R-9]
+    scope:
+      - client/src/store/appStore.ts
+      - client/src/store/authSlice.ts
+    deliverable:
+      - authState: 'loading' | 'guest' | 'authed' | 'refreshing'
+      - user: { userId, email, nickname, preferredVersion } | null
+      - capabilities: Capabilities | null
+      - actions: login/register/logout/changePassword/refresh/hydrate
+    depends_on: [FE-1]
+    estimate_h: 3
+    acceptance:
+      - 页面挂载时 hydrate 并行调用 capabilities + me；401 触发一次 refresh
+
+  - id: FE-3
+    title: LoginDialog（登录 / 注册 tab）
+    ref_req: [R-3, R-4]
+    scope:
+      - client/src/components/wps/LoginDialog.tsx
+      - client/src/components/wps/LoginDialog.module.css
+    deliverable:
+      - 在房间列表 sheet 中央呈现，Esc 可关（回到只读浏览）
+      - 登录/注册 tab，字段：邮箱、密码；注册多一个昵称
+      - 邮箱正则前端预校验（提示但不阻塞提交）
+      - 提交后 loading，错误码 → data/errorMessages.ts 中文
+    depends_on: [FE-2]
+    estimate_h: 4
+    acceptance:
+      - 键盘 Tab / Enter / Esc 行为符合契约与 PRD §4.1
+
+  - id: FE-4
+    title: ChangePasswordDialog + InfoBar 下拉
+    ref_req: [R-5]
+    scope:
+      - client/src/components/wps/ChangePasswordDialog.tsx
+      - client/src/components/wps/InfoBar.tsx
+    deliverable:
+      - InfoBar 显示 "已登录 xxx@qq.com" + 下拉 修改密码 / 登出
+      - 表单：原密码 / 新密码 / 确认；提交成功后弹提示并等待 auth:invalidated 事件跳登录
+    depends_on: [FE-3]
+    estimate_h: 3
+    acceptance:
+      - 改密后其它标签页因 auth:invalidated 立即掉回登录页
+
+  - id: FE-5
+    title: Ribbon 版本按钮 + /version 命令
+    ref_req: [R-6]
+    scope:
+      - client/src/components/wps/Ribbon.tsx
+      - client/src/components/wps/VersionMenu.tsx
+      - client/src/components/wps/FormulaBar.tsx
+    deliverable:
+      - Ribbon 增 "版本" 按钮，下拉从 capabilities.versions 渲染
+      - 选中即触发 version:switch；命令 /version <id> 走同一 action
+      - 当前版本高亮
+    depends_on: [FE-2]
+    estimate_h: 3
+    acceptance:
+      - 版本切换后 room:list 按 versionId 过滤；同账号多 tab 同步
+
+  - id: FE-6
+    title: RoomListGrid 扩展（版本列 + 未登录只读 + 右侧聊天插槽）
+    ref_req: [R-1, R-2, R-7, R-8, R-9]
+    scope:
+      - client/src/components/wps/RoomListGrid.tsx
+    deliverable:
+      - 列：房间号 / 状态 / 玩家人数 / 房主 / 版本 / 备注
+      - 未登录：加入 / 创建按钮禁用；点击房间号提示"请先登录"
+      - 右侧插槽渲染 LobbyChatPanel
+    depends_on: [FE-2]
+    estimate_h: 3
+    acceptance:
+      - 匿名浏览可见房间列表；操作类均触发登录提示
+
+  - id: FE-7
+    title: LobbyChatPanel（大厅频道）
+    ref_req: [R-8, R-9]
+    scope:
+      - client/src/components/wps/LobbyChatPanel.tsx
+      - client/src/store/chatSlice.ts
+    deliverable:
+      - 挂载：先 lobby:chat:snapshot ack 拿 100 条，再订阅 lobby:chat:message，按 id 去重
+      - 未登录：输入禁用，placeholder "登录后可发送消息"
+      - 输入源：复用公式栏（在大厅 sheet 下输入非命令普通文字视为发聊天）
+      - 长度 200 字符前端截断 + 提示；限流命中显示"发送太快，稍后再试"
+      - 进入房间时切频道：清空 lobby 消息缓存，取消订阅
+    depends_on: [FE-2]
+    estimate_h: 4
+    acceptance:
+      - 匿名可见消息；已登录可发；切换 sheet/进房间时正确切换频道
+
+  - id: FE-8
+    title: SpreadsheetGrid 单元格填满自适应 + bgColorToken
+    ref_req: [R-1, R-2]
+    scope:
+      - client/src/components/wps/SpreadsheetGrid.module.css
+      - client/src/components/wps/RoomListGrid.tsx (对齐)
+      - client/src/components/wps/BattleGrid.tsx (对齐)
+    deliverable:
+      - ResizeObserver + rAF 计算表格区可用行/列
+      - 空单元格补齐至覆盖表格区
+      - 通过 CSS 变量 --bg-cell 暴露背景色 token，同步到 data-attr 便于 QA 抓取
+    depends_on: []
+    estimate_h: 4
+    acceptance:
+      - 1440x900 / 1920x1080 / 2560x1440 三档下非背景色像素 / 视口 ≤ 3%
+      - Ribbon 折叠、聊天区折叠、老板键切换后无 1px 缝
+
+  - id: FE-9
+    title: 全局 socket 事件监听
+    ref_req: [R-4, R-5, R-6]
+    scope:
+      - client/src/App.tsx
+      - client/src/store/appStore.ts
+    deliverable:
+      - 监听 auth:hello / auth:invalidated / version:switched
+      - auth:invalidated → 清空 authState + toast + 跳登录
+      - version:switched → 更新 currentVersion + 重拉 room:list
+    depends_on: [FE-2]
+    estimate_h: 2
+    acceptance:
+      - 改密广播场景两 tab 同步下线
+
+  - id: FE-10
+    title: 错误码 → 中文提示映射
+    ref_req: [R-3, R-4, R-5, R-6, R-7, R-8, R-9]
+    scope:
+      - client/src/data/errorMessages.ts
+    deliverable:
+      - 契约 §0.4 全量枚举
+      - Toast 组件（若无则新增最小实现）
+    depends_on: []
+    estimate_h: 2
+    acceptance:
+      - 每个错误码触发时展示对应中文；未覆盖时兜底 "发生了错误"
+
+  - id: FE-11
+    title: 移除 nickname-only 流程 & sandbox 入口门控
+    ref_req: [R-9]
+    scope:
+      - client/src/components/wps/Ribbon.tsx
+      - client/src/components/wps/FormulaBar.tsx
+      - client/src/App.tsx
+    deliverable:
+      - 老 /nick 命令保留但仅用于房间显示昵称的临时改名（不再作为身份）
+      - Ribbon 测试房按钮 / /sandbox 根据 capabilities.sandboxEnabled 显示/隐藏
+    depends_on: [FE-2, FE-6]
+    estimate_h: 2
+    acceptance:
+      - sandboxEnabled=false 时按钮和命令都不生效
+
+notes_for_coder:
+  - 严禁自造契约里没有的字段；发现契约需要扩展 → 走 frontend-design → backend-design → CR
+  - 每步交付都要 npm run build -w client 通过
+  - 现有 sandbox 流程要能沿用（登录后进入），不要破坏对局面板 GameGrid 等
+  - CSS 修改注意与 STYLE_UPDATES.md / CHANGELOG_UI_IMPROVEMENTS.md 现有风格一致
