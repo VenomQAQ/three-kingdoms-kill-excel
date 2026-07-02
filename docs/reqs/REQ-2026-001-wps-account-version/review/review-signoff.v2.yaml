@@ -1,0 +1,70 @@
+req_id: REQ-2026-001
+version: v2
+stage: "②评审会签"
+prd_ref: prd/prd.v2.md
+based_on: review/review-signoff.v1.yaml   # 上一轮合并条件的历史证据
+signoffs:
+  frontend-feasibility:
+    status: signed
+    verdict: pass
+    reviewer: frontend-feasibility
+    ts: 2026-07-02T17:30+08:00
+    ref: review/frontend-feasibility.v2.md
+    complexity: M
+    cost_person_day: "3.5-5.5"
+    v1_conditions_resolved: [sandbox-login, guest-scope, r2-3pct, version-entry]
+    new_notes:
+      - "capabilities 端点（sandboxEnabled + versions[]）需在 API 契约中定义"
+      - "auth:invalidated 事件名与 payload 由 backend-design 定"
+      - "标签页同步失效走 socket 广播，不引入 storage"
+  backend-feasibility:
+    status: signed
+    verdict: pass
+    reviewer: backend-feasibility
+    ts: 2026-07-02T17:30+08:00
+    ref: review/backend-feasibility.v2.md
+    complexity: M
+    cost_person_day: "5-7"
+    v1_conditions_resolved: [lobby-history, sandbox-login, storage-choice, password-change-invalidate]
+    new_notes:
+      - "首次引入 ORM（推荐 typeorm + better-sqlite3 或 prisma），需在 backend-design 定"
+      - "refresh 旋转的并发竞态策略在契约里描述"
+      - "错误码：E_UNAUTHORIZED / E_CHAT_RATE_LIMIT / E_CHAT_TOO_LONG / E_VERSION_UNKNOWN / E_ROOM_FULL / E_BAD_CREDENTIALS"
+      - "断线保坐从 nickname 匹配切到 userId 匹配（sandbox 也已强制登录，可彻底切）"
+  qa-testability:
+    status: signed
+    verdict: pass
+    reviewer: qa-testability
+    ts: 2026-07-02T17:30+08:00
+    ref: review/qa-testability.v2.md
+    per_requirement:
+      "R-1": { testable: yes,  note: "已授权建立视觉基线" }
+      "R-2": { testable: yes,  note: "非背景色像素 ≤ 3%，容差建议 ±0.3%" }
+      "R-3": { testable: yes,  note: "" }
+      "R-4": { testable: yes,  note: "需 backend 提供 mock clock 或 debug:advanceClock（design 期解决）" }
+      "R-5": { testable: yes,  note: "" }
+      "R-6": { testable: yes,  note: "" }
+      "R-7": { testable: yes,  note: "" }
+      "R-8": { testable: yes,  note: "限流 / 长度 / 滚动窗口均可断言" }
+      "R-9": { testable: yes,  note: "" }
+    seed_or_stub_needed: false
+    cost_person_day_for_qa: "2-3"
+    v1_conditions_resolved: [visual-baseline-auth, r2-3pct-formula, session-ttl, chat-throttle-history]
+    new_notes:
+      - "请后端在契约中提供 dev-only 时间快进接口，否则 refresh 7 天用例无法在合理时间跑完"
+      - "背景色 token 需前端在 data-attr / CSS 变量中暴露，供像素扫描读取"
+result: pass                # 三方 verdict 均为 pass
+last_signer: qa-testability # 最后一签者翻牌
+last_signer_ts: 2026-07-02T17:30+08:00
+suggested_next:
+  agent: lifecycle-orchestrator
+  reason: |
+    v2 三方全 pass，可翻至 "②已通过"。
+    ③开发首站：backend-design 起草 API 契约（SSOT）+ 后端技术方案；
+    前端 design 消费契约后并行拆解；QA 用例可提前起草（"用例可在②③预备"）。
+open_items_for_design:  # 复核阶段遗留，交由 design 阶段处理，不阻断翻牌
+  - "capabilities 端点定义（前端消费）"
+  - "auth token 载体（Cookie vs Header）"
+  - "refresh 并发竞态策略"
+  - "dev-only mock clock / debug:advanceClock"
+  - "背景色 CSS token 暴露约定"
