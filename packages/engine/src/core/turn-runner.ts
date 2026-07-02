@@ -327,6 +327,14 @@ export class TurnRunner {
       return;
     }
 
+    this.performDraw();
+  }
+
+  /** 直接进入摸牌结算：跳过 BEFORE_DRAW 时机的技能询问 */
+  performDraw(): void {
+    const cur = this.currentPlayer();
+    if (!cur) return;
+
     if (cur.skillUseCount['_skip_draw']) {
       delete cur.skillUseCount['_skip_draw'];
       this.host.log(`${cur.generalName} 跳过摸牌阶段`);

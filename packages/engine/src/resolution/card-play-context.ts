@@ -18,6 +18,10 @@ export interface CardPlayContext {
   cardCommitted?: boolean;
   /** 选目标时一并提交的区域牌（合并确认） */
   pendingZoneCardId?: string;
+  /** 决斗轮流出【杀】流程 */
+  duelActive?: boolean;
+  duelInitiator?: string;
+  duelTarget?: string;
 }
 
 export const CARD_PLAY_CTX_KEY = 'cardPlay';

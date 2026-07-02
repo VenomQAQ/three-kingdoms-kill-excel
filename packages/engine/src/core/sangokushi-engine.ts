@@ -351,10 +351,41 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
         this.turnRunner.startJudgePhase();
         return { ok: true };
       }
+      if (prompt.skillId === 'xunxun' && choiceId.startsWith('xunxun:confirm')) {
+        const currentPlayer = this.state.players[this.state.turn.index];
+        if (!currentPlayer || currentPlayer.id !== playerId) {
+          return { ok: false, error: '不是你的回合' };
+        }
+        const [, , topCountText, orderText] = choiceId.split(':');
+        const originalCards = prompt.guanxingCards ?? [];
+        const topCount = Math.max(
+          0,
+          Math.min(originalCards.length, Number(topCountText) || 0),
+        );
+        const indices = (orderText ?? '')
+          .split(',')
+          .filter(Boolean)
+          .map((value) => Number(value));
+        if (
+          indices.length !== originalCards.length ||
+          new Set(indices).size !== originalCards.length ||
+          indices.some((index) => index < 0 || index >= originalCards.length)
+        ) {
+          return { ok: false, error: '恂恂调整顺序无效' };
+        }
+        const arranged = indices.map((index) => originalCards[index]!);
+        this.deck.arrangeTop(arranged, topCount);
+        this.log(
+          `${currentPlayer.generalName} 发动【恂恂】，将 ${topCount} 张置于牌堆顶，${arranged.length - topCount} 张置于牌堆底`,
+        );
+        this.setPrompt(null);
+        this.turnRunner.performDraw();
+        return { ok: true };
+      }
       if (this.state.turn.phase === 'before_draw') {
         if (choiceId === 'skip') {
           this.setPrompt(null);
-          this.turnRunner.advanceToDraw();
+          this.turnRunner.performDraw();
           return { ok: true };
         }
         if (choiceId.startsWith('skill:')) {
@@ -370,9 +401,30 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
           }
           currentPlayer.skillUseCount[skillId] =
             (currentPlayer.skillUseCount[skillId] ?? 0) + 1;
+
+          // 恂恂：观看牌堆顶4张，选2张置顶、其余置底
+          if (skillId === 'xunxun') {
+            const count = (offer.skill.effects?.[0]?.params?.count as number) ?? 4;
+            const arrangeTop = (offer.skill.effects?.[0]?.params?.arrange as number) ?? 2;
+            const cards = this.deck.peekTop(count);
+            this.log(`${currentPlayer.generalName} 发动【${offer.skill.name}】`);
+            this.setPrompt({
+              id: nextPromptId(),
+              type: 'use_skill',
+              playerId,
+              skillId: 'xunxun',
+              skillName: offer.skill.name,
+              guanxingCards: cards,
+              message: `${currentPlayer.generalName} 发动【${offer.skill.name}】，请将 ${arrangeTop} 张置于牌堆顶，其余置于牌堆底`,
+              options: [{ id: 'xunxun:confirm', label: '确认调整' }],
+            });
+            return { ok: true };
+          }
+
+          this.log(`${currentPlayer.generalName} 发动【${offer.skill.name}】`);
           runSkillEffects(currentPlayer, offer.skill, (message) => this.log(message), this.deck);
           this.setPrompt(null);
-          this.turnRunner.advanceToDraw();
+          this.turnRunner.performDraw();
           return { ok: true };
         }
       }

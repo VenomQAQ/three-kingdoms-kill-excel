@@ -155,7 +155,10 @@ export function GamePromptModal({
   const isGiveCardsSkill =
     prompt.type === 'use_skill' && !!prompt.skillId && Array.isArray(prompt.validTargetIds);
   const isZhiheng = prompt.type === 'use_skill' && prompt.skillId === 'zhiheng';
-  const isGuanxing = prompt.type === 'use_skill' && prompt.skillId === 'guanxing';
+  const isGuanxing =
+    prompt.type === 'use_skill' &&
+    (prompt.skillId === 'guanxing' || prompt.skillId === 'xunxun');
+  const isXunxun = prompt.type === 'use_skill' && prompt.skillId === 'xunxun';
   const isModifyJudge = prompt.type === 'modify_judge';
   const isDiscard = prompt.type === 'discard_cards';
   const isZonePick = prompt.type === 'select_zone_card';
@@ -205,7 +208,9 @@ export function GamePromptModal({
       return `弃置手牌（${zhihengCardIndices.length}）`;
     }
     if (prompt.type === 'use_skill') {
-      return `发动【${stripGeneralPrefixInText(prompt.skillName ?? '技能')}】`;
+      const skillLabel = stripGeneralPrefixInText(prompt.skillName ?? '');
+      if (skillLabel) return `发动【${skillLabel}】`;
+      return prompt.message || '是否发动技能？';
     }
     return '确认动作';
   }, [
@@ -591,50 +596,59 @@ export function GamePromptModal({
           {isGuanxing && guanxingCards.length > 0 && (
             <section className={styles.section}>
               <h3>调整牌堆</h3>
-              <p className={styles.muted}>上方会按顺序置于牌堆顶，下方会按顺序沉底。</p>
-              <label className={styles.fieldLabel}>
-                置于牌堆顶张数
-                <select
-                  className={styles.select}
-                  value={guanxingTopCount}
-                  onChange={(event) => setGuanxingTopCount(Number(event.target.value))}
-                >
-                  {orderedGuanxingCards.map((_, index) => (
-                    <option key={index} value={index}>
-                      {index}
-                    </option>
-                  ))}
-                  <option value={orderedGuanxingCards.length}>{orderedGuanxingCards.length}</option>
-                </select>
-              </label>
+              <p className={styles.muted}>
+                {isXunxun
+                  ? '前 2 张按顺序置于牌堆顶，其余按顺序置于牌堆底。使用上下按钮调整顺序。'
+                  : '上方会按顺序置于牌堆顶，下方会按顺序沉底。'}
+              </p>
+              {!isXunxun && (
+                <label className={styles.fieldLabel}>
+                  置于牌堆顶张数
+                  <select
+                    className={styles.select}
+                    value={guanxingTopCount}
+                    onChange={(event) => setGuanxingTopCount(Number(event.target.value))}
+                  >
+                    {orderedGuanxingCards.map((_, index) => (
+                      <option key={index} value={index}>
+                        {index}
+                      </option>
+                    ))}
+                    <option value={orderedGuanxingCards.length}>{orderedGuanxingCards.length}</option>
+                  </select>
+                </label>
+              )}
               <ul className={styles.cardPickList}>
-                {orderedGuanxingCards.map((card, position) => (
-                  <li key={`${card}-${position}`}>
-                    <div className={styles.targetOption}>
-                      <span>
-                        {position < guanxingTopCount ? '顶' : '底'} · 【{card}】
-                      </span>
-                      <div className={styles.actions}>
-                        <button
-                          type="button"
-                          className={styles.secondary}
-                          disabled={position === 0}
-                          onClick={() => moveGuanxingCard(position, -1)}
-                        >
-                          上移
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.secondary}
-                          disabled={position === orderedGuanxingCards.length - 1}
-                          onClick={() => moveGuanxingCard(position, 1)}
-                        >
-                          下移
-                        </button>
+                {orderedGuanxingCards.map((card, position) => {
+                  const topLimit = isXunxun ? 2 : guanxingTopCount;
+                  return (
+                    <li key={`${card}-${position}`}>
+                      <div className={styles.targetOption}>
+                        <span>
+                          {position < topLimit ? '顶' : '底'} · 【{card}】
+                        </span>
+                        <div className={styles.actions}>
+                          <button
+                            type="button"
+                            className={styles.secondary}
+                            disabled={position === 0}
+                            onClick={() => moveGuanxingCard(position, -1)}
+                          >
+                            上移
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.secondary}
+                            disabled={position === orderedGuanxingCards.length - 1}
+                            onClick={() => moveGuanxingCard(position, 1)}
+                          >
+                            下移
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
               <div className={styles.actions}>
                 <button
@@ -643,11 +657,13 @@ export function GamePromptModal({
                   onClick={() =>
                     onConfirmPlay(
                       prompt.id,
-                      `guanxing:confirm:${guanxingTopCount}:${guanxingOrder.join(',')}`,
+                      isXunxun
+                        ? `xunxun:confirm:2:${guanxingOrder.join(',')}`
+                        : `guanxing:confirm:${guanxingTopCount}:${guanxingOrder.join(',')}`,
                     )
                   }
                 >
-                  确认观星
+                  {isXunxun ? '确认调整' : '确认观星'}
                 </button>
               </div>
             </section>

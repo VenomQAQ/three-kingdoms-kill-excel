@@ -45,7 +45,7 @@ export const WEI_CHARACTERS = [
         type: 'passive',
         description: '当你受到 1 点伤害后，你可以获得伤害来源的一张牌。',
         timings: [GameTiming.AFTER_DAMAGE],
-        effects: [{ action: 'moveCard', params: { from: 'damageSource', count: 1 } }],
+        effects: [{ action: 'moveCard', params: { count: 1 } }],
       },
       {
         id: 'guicai',
@@ -189,6 +189,7 @@ export const WEI_CHARACTERS = [
         description:
           '摸牌阶段开始时，你可以观看牌堆顶四张牌，将其中两张置于牌堆顶，其余置于牌堆底。',
         timings: [GameTiming.BEFORE_DRAW],
+        limitPerTurn: 1,
         effects: [{ action: 'showCard', params: { count: 4, arrange: 2 } }],
       },
       {

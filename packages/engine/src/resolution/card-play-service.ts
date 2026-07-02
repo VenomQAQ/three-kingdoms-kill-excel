@@ -296,13 +296,19 @@ export class CardPlayService {
     const hint =
       required > 1 ? `（需 ${required} 张【${label}】，已 ${count}/${required}）` : '';
 
+    const duelActive = context.duelActive === true;
+    const message = duelActive
+      ? `${target.generalName}：请打出【${label}】继续决斗（不出则受到 1 点伤害）`
+      : `${target.generalName}：请打出【${label}】响应【${card.name}】${hint}`;
+    const passLabel = duelActive ? '不出（承受伤害）' : '不出（承受效果）';
+
     host.setPrompt({
       id: nextPromptId(),
       type: 'response',
       playerId: target.id,
       sourcePlayerId: source.id,
       cardName: card.name,
-      message: `${target.generalName}：请打出【${label}】响应【${card.name}】${hint}`,
+      message,
       validResponseCards: validCards,
       targetPlayerIds: context.targetPlayerIds,
       options: [
@@ -310,7 +316,7 @@ export class CardPlayService {
           id: `card:${validCard}`,
           label: `打出【${validCard}】`,
         })),
-        { id: 'pass', label: '不出（承受效果）' },
+        { id: 'pass', label: passLabel },
       ],
     });
     return { ok: true, paused: true };
@@ -361,6 +367,7 @@ export class CardPlayService {
 
     const required = context.responsesRequired;
     const aoeActive = context.isAoe === true;
+    const duelActive = context.duelActive === true;
 
     if (choiceId.startsWith('card:')) {
       const cardName = choiceId.slice(5);
@@ -368,6 +375,28 @@ export class CardPlayService {
         return { ok: false, error: '手牌中没有此牌' };
       }
       host.getDeck().discardCard(cardName);
+
+      // 决斗：出【杀】后切换到另一方继续出【杀】
+      if (duelActive) {
+        host.log(`${responder.generalName} 打出【${cardName}】(1/1)`);
+        const nextResponderId =
+          responder.id === context.duelTarget
+            ? context.duelInitiator
+            : context.duelTarget;
+        const nextResponder = host
+          .getState()
+          .players.find((player) => player.id === nextResponderId);
+        if (!nextResponder) {
+          this.clearCardPlay(host);
+          host.setPrompt(null);
+          return { ok: false, error: '决斗对手不存在' };
+        }
+        context.awaitingResponseFrom = nextResponder.id;
+        context.responseCount = 0;
+        setCardPlayContext(host.getState().resolution.context, context);
+        return this.promptResponse(host, card, source, nextResponder, context);
+      }
+
       context.responseCount += 1;
       host.log(
         `${responder.generalName} 打出【${cardName}】（${context.responseCount}/${required}）`,
@@ -400,6 +429,18 @@ export class CardPlayService {
       );
 
       host.setPrompt(null);
+
+      // 决斗：不出【杀】者受到来自决斗使用者的 1 点伤害
+      if (duelActive) {
+        this.clearCardPlay(host);
+        await onDamage({
+          sourceId: context.duelInitiator ?? source.id,
+          targetId: responder.id,
+          amount,
+          damageCardName: card.name,
+        });
+        return { ok: true, paused: host.getState().prompt != null };
+      }
 
       if (aoeActive) {
         host.completeTargetResolve?.();
@@ -600,6 +641,14 @@ export class CardPlayService {
       context.isAoe = false;
       context.responseCount = 0;
       context.awaitingResponseFrom = target.id;
+
+      // 决斗：轮流出【杀】流程，目标先出。响应人切换由 submitResponse 处理
+      if (card.id === 'juedou') {
+        context.duelActive = true;
+        context.duelInitiator = source.id;
+        context.duelTarget = target.id;
+      }
+
       setCardPlayContext(host.getState().resolution.context, context);
       return this.promptResponse(host, card, source, target, context);
     }
