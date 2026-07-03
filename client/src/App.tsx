@@ -157,9 +157,11 @@ function App() {
   }, [room, bossMode]);
 
   const isSandbox = room?.isSandbox || room?.code === SANDBOX_ROOM_CODE;
-  const isPlaying = room?.status === 'playing';
-  const actingId = actingPlayerId ?? playerId;
-  const actingPlayer = room?.players.find((p) => p.id === actingId);
+  const isPlaying = room?.status === 'playing' || room?.status === 'finished';
+  const controlId = isSandbox ? (actingPlayerId ?? playerId) : playerId;
+  const controlPlayer = room?.players.find((p) => p.id === controlId);
+  const actingPlayer = controlPlayer;
+  const actingId = controlId;
   const turnPlayer =
     room?.sandbox != null && isPlaying
       ? room.players[room.sandbox.turnIndex]
@@ -245,9 +247,13 @@ function App() {
     (card: string, handIndex?: number) => {
       const idx = resolveHandIndex(card, handIndex);
       if (idx >= 0) setSelectedHand({ name: card, index: idx });
-      if (!isSandbox || !isPlaying) return;
+      if (!isPlaying) return;
       if (!canOperateTurn) {
-        useAppStore.setState({ lastError: '请用「操控」下拉框切换到当前回合角色' });
+        useAppStore.setState({
+          lastError: isSandbox
+            ? '请用「操控」下拉框切换到当前回合角色'
+            : '当前不是你的回合',
+        });
         return;
       }
       if (gamePrompt) {
@@ -393,8 +399,8 @@ function App() {
     const inRoom = !!room;
     const playing = isPlaying;
 
-    if (playing && isSandbox) {
-      return [
+    if (playing) {
+      const actions: RibbonAction[] = [
         {
           id: 'playCard',
           label: '打出',
@@ -407,13 +413,16 @@ function App() {
           icon: '⏭',
           disabled: !canOperateTurn || !!gamePrompt,
         },
-        {
+      ];
+      if (isSandbox) {
+        actions.push({
           id: 'switchNext',
           label: '切换角色',
           icon: '🔄',
-        },
-        { id: 'leave', label: '离开', icon: '🚪' },
-      ];
+        });
+      }
+      actions.push({ id: 'leave', label: '离开', icon: '🚪' });
+      return actions;
     }
 
     const base: RibbonAction[] = [
@@ -543,7 +552,7 @@ function App() {
       } else {
         sendLobbyChat(raw);
       }
-    } else if (isPlaying && isSandbox) {
+    } else if (isPlaying) {
       const hand = actingPlayer?.handCards ?? [];
       const matchedIndex = hand.findIndex((card) => card === raw);
       if (matchedIndex >= 0) {
@@ -633,7 +642,7 @@ function App() {
         onChangePassword={() => setShowChangePasswordDialog(true)}
         onLogout={() => void logout()}
       />
-      {isPlaying && isSandbox && room && (
+      {isPlaying && room && (
         <PlayControlBar
           actingPlayer={actingPlayer}
           turnPlayer={turnPlayer ?? undefined}
@@ -679,12 +688,16 @@ function App() {
         onChange={setFormulaInput}
         onSubmit={handleFormulaSubmit}
         placeholder={
-          isPlaying && isSandbox
+          isPlaying
             ? canPlayCards
               ? '输入牌名 Enter 出牌 · 或点击「打出选中」确认弹窗 · 「结束回合」结束'
               : gamePrompt
                 ? '请按弹窗完成操作（响应/选目标/确认）'
-                : `请切换操控到「${turnPlayer?.nickname}」再出牌`
+                : isSandbox
+                  ? `请切换操控到「${turnPlayer?.nickname}」再出牌`
+                  : turnPlayer?.id === playerId
+                    ? '等待你的回合'
+                    : `当前回合：${turnPlayer?.nickname}`
             : onLobbySheet
               ? isAuthed
                 ? '大厅聊天或 /create · /join 房间号 · /version 版本号'
@@ -701,7 +714,7 @@ function App() {
           {lastError}（点击关闭）
         </div>
       )}
-      {isPlaying && isSandbox && room && gamePrompt && promptCollapsed && (
+      {isPlaying && room && gamePrompt && promptCollapsed && (
         <div className={styles.promptDock}>
           <button
             type="button"
@@ -797,7 +810,7 @@ function App() {
           onClose={() => setDetailCardName(null)}
         />
       )}
-      {isPlaying && isSandbox && room && gamePrompt && !promptCollapsed && (
+      {isPlaying && room && gamePrompt && !promptCollapsed && (
         <GamePromptModal
           room={room}
           prompt={gamePrompt}

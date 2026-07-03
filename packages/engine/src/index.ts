@@ -47,6 +47,8 @@ export { ConditionRegistry } from './rules/condition-registry';
 export type { ConditionContext } from './rules/condition-registry';
 export { EffectExecutor } from './rules/effect-executor';
 export type { EffectExecutionContext } from './rules/effect-executor';
+export * from './core/identity';
+export { validResponseCardsForPlayer, canUseAsSha, canUseAsShan } from './engine/virtual-card';
 export { InteractionRegistry } from './rules/interaction-registry';
 export type { InteractionContext, InteractionHandler } from './rules/interaction-registry';
 export { GameEventType, MAX_RESOLUTION_STACK_DEPTH } from './types/event';

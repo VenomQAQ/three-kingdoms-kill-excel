@@ -12,6 +12,7 @@ import {
   shaBlockedByArmor,
   validResponseCards,
 } from '../engine/effect-runner';
+import { validResponseCardsForPlayer } from '../engine/virtual-card';
 import { cardNameFromHandEntry } from '../engine/card-label';
 import {
   applyLockedModifiers,
@@ -265,8 +266,9 @@ export class CardPlayService {
     const target = host.getState().players.find((player) => player.id === targetId);
     if (!card || !source || !target) return;
 
-    if (target.hp <= 0) {
+    if (target.hp <= 0 || target.dead) {
       host.log(`${target.generalName} 已阵亡，跳过【${card.name}】响应`);
+      host.completeTargetResolve?.();
       return;
     }
 
@@ -289,7 +291,7 @@ export class CardPlayService {
       return { ok: true, paused: false };
     }
 
-    const validCards = validResponseCards(responseType, target.handCards);
+    const validCards = validResponseCardsForPlayer(target, responseType, target.handCards);
     const label = responseType === 'shan' ? '闪' : '杀';
     const required = context.responsesRequired;
     const count = context.responseCount;

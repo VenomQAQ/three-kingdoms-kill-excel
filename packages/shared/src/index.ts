@@ -17,6 +17,12 @@ export interface RoomPlayer {
   general?: string;
   /** 身份 */
   role?: string;
+  /** 身份是否已公开 */
+  roleRevealed?: boolean;
+  /** 是否阵亡 */
+  dead?: boolean;
+  /** 手牌数（他人视角过滤后） */
+  handCount?: number;
   hp?: number;
   maxHp?: number;
   /** 装备区 */
@@ -78,7 +84,7 @@ export interface GamePrompt {
 }
 
 export interface SandboxGameState {
-  phase: 'lobby' | 'playing';
+  phase: 'lobby' | 'playing' | 'finished';
   turnIndex: number;
   round: number;
   turnPhase?: TurnPhase;
@@ -86,6 +92,8 @@ export interface SandboxGameState {
   log: string[];
   /** 等待玩家操作的 UI 提示（由引擎下发） */
   prompt?: GamePrompt | null;
+  /** 对局结束信息 */
+  victory?: { winners: string[]; message: string } | null;
 }
 
 export interface RoomSettings {
@@ -163,6 +171,30 @@ export interface ClientToServerEvents {
   'sandbox:selectZoneCard': (payload: { promptId: string; choiceId: string }) => void;
   'sandbox:addCard': (payload: { playerId: string; card: string }) => void;
   'sandbox:endTurn': () => void;
+  /** 正式房间对局操作（每人操控自己的座位） */
+  'game:playCard': (payload: { card: string; handIndex?: number }) => void;
+  'game:confirmPlay': (payload: { promptId: string; choiceId: string }) => void;
+  'game:selectTargets': (payload: {
+    promptId: string;
+    targetIds: string[];
+    zoneCardId?: string;
+  }) => void;
+  'game:submitResponse': (payload: { promptId: string; choiceId: string }) => void;
+  'game:useSkill': (payload: { skillId: string }) => void;
+  'game:rendeGive': (payload: {
+    targetId: string;
+    cards: string[];
+    handIndices?: number[];
+  }) => void;
+  'game:rendeFinish': () => void;
+  'game:zhihengConfirm': (payload: { handIndices: number[] }) => void;
+  'game:modifyJudge': (payload: { promptId: string; handIndex: number }) => void;
+  'game:skipModifyJudge': (payload: { promptId: string }) => void;
+  'game:discardCards': (payload: { promptId: string; handIndices: number[] }) => void;
+  'game:cancelDiscard': (payload: { promptId: string }) => void;
+  'game:selectZoneCard': (payload: { promptId: string; choiceId: string }) => void;
+  'game:endTurn': () => void;
+  'game:sync': (ack?: (room: Room | null) => void) => void;
   'chat:send': (payload: { content: string }) => void;
   'chat:history': (ack?: (messages: ChatMessage[]) => void) => void;
 }
@@ -176,6 +208,8 @@ export interface ServerToClientEvents {
   'room:playerLeft': (payload: { playerId: string }) => void;
   'chat:message': (message: ChatMessage) => void;
   'game:started': (payload: { roomId: string }) => void;
+  'game:finished': (payload: { roomId: string; victory: { winners: string[]; message: string } }) => void;
+  'game:event': (payload: { type: string; message: string }) => void;
   'sandbox:actor': (payload: { actingPlayerId: string }) => void;
 }
 

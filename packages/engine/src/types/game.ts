@@ -62,7 +62,11 @@ export interface EnginePlayerState {
   generalId: string;
   generalName: string;
   role: string;
+  /** 身份是否已公开（主公开局公开，其余死亡时公开） */
+  roleRevealed?: boolean;
   kingdom: string;
+  /** 是否已阵亡 */
+  dead?: boolean;
   hp: number;
   maxHp: number;
   handCards: string[];
@@ -83,6 +87,8 @@ export interface EngineSnapshot {
   log: string[];
   prompt: GamePrompt | null;
   players: EnginePlayerState[];
+  /** 对局结束时的胜负信息 */
+  victory?: { winners: string[]; message: string } | null;
   /** 判定阶段：翻出判定牌后、生效前的上下文 */
   pendingJudge?: {
     targetPlayerId: string;

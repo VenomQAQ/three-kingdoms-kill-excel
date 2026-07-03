@@ -40,6 +40,8 @@ import { RuleManager } from '../rules/rule-manager';
 import { ConfigRuleLoader } from '../rules/config-rule-loader';
 import { DeckPile } from '../engine/deck-pile';
 import type { RoomPlayerInput } from '../engine/game-engine';
+import { checkVictory } from './identity';
+import { discardOneFromZone } from '../engine/equipment-zone';
 
 let eventIdSeq = 0;
 
@@ -85,6 +87,7 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
         generalId: ch?.id ?? 'unknown',
         generalName: ch?.name ?? p.general ?? p.nickname,
         role: p.role ?? '反贼',
+        roleRevealed: p.role === '主公',
         kingdom: ch?.kingdom ?? 'qun',
         hp: p.hp ?? maxHp,
         maxHp,
@@ -94,6 +97,7 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
         shaUsedCount: 0,
         skillUseCount: {},
         skillTargetUseCount: {},
+        dead: false,
       };
     });
   }
@@ -152,6 +156,7 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
         handCards: [...p.handCards],
         skillTargetUseCount: { ...p.skillTargetUseCount },
       })),
+      victory: this.state.victory ?? null,
       pendingJudge: this.pendingJudge
         ? {
             targetPlayerId: this.pendingJudge.targetPlayerId,
@@ -421,6 +426,30 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
             return { ok: true };
           }
 
+          if (skillId === 'tuxi') {
+            const others = this.state.players.filter(
+              (p) =>
+                p.id !== currentPlayer.id &&
+                p.hp > 0 &&
+                !p.dead &&
+                p.handCards.length > 0,
+            );
+            const stealCount = Math.min(2, others.length);
+            for (let i = 0; i < stealCount; i++) {
+              const target = others[i]!;
+              const idx = Math.floor(Math.random() * target.handCards.length);
+              const card = target.handCards.splice(idx, 1)[0]!;
+              currentPlayer.handCards.push(card);
+              this.log(
+                `${currentPlayer.generalName}【突袭】获得 ${target.generalName} 的一张手牌`,
+              );
+            }
+            currentPlayer.skillUseCount['_tuxi_skip'] = stealCount;
+            this.setPrompt(null);
+            this.turnRunner.performDraw();
+            return { ok: true };
+          }
+
           this.log(`${currentPlayer.generalName} 发动【${offer.skill.name}】`);
           runSkillEffects(currentPlayer, offer.skill, (message) => this.log(message), this.deck);
           this.setPrompt(null);
@@ -558,7 +587,10 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
           deck: this.deck,
         },
       );
-      if (victim.hp <= 0) this.enqueueDying(victim.id);
+      if (victim.hp <= 0) {
+        this.state.lastDamageSourceId = sourceId ?? null;
+        this.enqueueDying(victim.id);
+      }
       return;
     }
 
@@ -640,6 +672,63 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
     this.log(`${dyingPlayer.generalName} 未被救回，濒死结算结束`);
     setDyingRescueContext(this.state.resolution.context, undefined);
     this.setPrompt(null);
+    void this.handlePlayerDeath(dyingPlayer.id);
+  }
+
+  /** 角色死亡：公开身份、弃置所有牌、击杀奖惩、胜负判定 */
+  private async handlePlayerDeath(playerId: string): Promise<void> {
+    if (this.state.victory) return;
+    const victim = this.state.players.find((p) => p.id === playerId);
+    if (!victim || victim.dead) return;
+    if (victim.hp > 0) return;
+
+    victim.dead = true;
+    victim.roleRevealed = true;
+    this.log(`【阵亡】${victim.generalName}（${victim.role}）死亡，身份公开`);
+
+    for (const card of victim.handCards.splice(0)) {
+      this.deck.discardCard(card);
+    }
+    while (victim.equipment.length > 0) {
+      discardOneFromZone(victim, 'equipment', this.deck, (m) => this.log(m));
+    }
+    while (victim.judgeCards.length > 0) {
+      discardOneFromZone(victim, 'any', this.deck, (m) => this.log(m));
+    }
+
+    const killerId = this.state.lastDamageSourceId;
+    const killer = killerId
+      ? this.state.players.find((p) => p.id === killerId && p.hp > 0)
+      : undefined;
+    if (killer && victim.role === '反贼') {
+      const drawn = this.deck.drawMany(3);
+      killer.handCards.push(...drawn);
+      this.log(`${killer.generalName} 击杀反贼，摸 3 张牌`);
+    }
+    if (killer?.role === '主公' && victim.role === '忠臣') {
+      while (killer.handCards.length > 0) {
+        this.deck.discardCard(killer.handCards.pop()!);
+      }
+      while (killer.equipment.length > 0) {
+        discardOneFromZone(killer, 'equipment', this.deck, (m) => this.log(m));
+      }
+      this.log(`主公 ${killer.generalName} 误杀忠臣，弃置所有手牌和装备`);
+    }
+
+    const result = checkVictory(this.state.players);
+    if (result) {
+      this.state.victory = { winners: result.winners, message: result.message };
+      this.log(`【游戏结束】${result.message}`);
+      this.setPrompt(null);
+      return;
+    }
+
+    await this.drainStack();
+    await this.cardPlay.advanceAoeIfPending(this);
+  }
+
+  isGameOver(): boolean {
+    return !!this.state.victory;
   }
 
   private async submitDyingRescue(
@@ -759,17 +848,6 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
         }
         this.stack.pop();
         this.syncStackToState();
-
-        if (
-          event.type === GameEventType.TARGET_RESOLVE &&
-          !this.state.prompt
-        ) {
-          const sourceId = event.payload.sourcePlayerId;
-          if (this.targetQueue && sourceId) {
-            this.targetQueue.shift();
-            this.pushNextAoeTargetEvent(sourceId);
-          }
-        }
       }
       if (this.state.prompt || result.paused) return { paused: true };
 

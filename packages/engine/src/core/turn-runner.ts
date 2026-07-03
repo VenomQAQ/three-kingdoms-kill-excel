@@ -344,7 +344,10 @@ export class TurnRunner {
 
     this.host.getState().turn.phase = 'draw';
     this.host.getFsm().set('draw');
-    const drawCount = 2 + (playerHasSkill(cur, 'yingzi') ? 1 : 0);
+    const drawBase = 2 + (playerHasSkill(cur, 'yingzi') ? 1 : 0);
+    const tuxiSkip = cur.skillUseCount['_tuxi_skip'] ?? 0;
+    if (tuxiSkip > 0) delete cur.skillUseCount['_tuxi_skip'];
+    const drawCount = Math.max(0, drawBase - tuxiSkip);
     const drawn = this.host.getDeck().drawMany(drawCount);
     cur.handCards.push(...drawn);
     this.host.log(

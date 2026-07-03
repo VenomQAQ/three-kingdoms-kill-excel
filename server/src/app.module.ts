@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { env } from './config/env';
 import { RoomModule } from './modules/room/room.module';
+import { GameModule } from './modules/game/game.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CapabilitiesModule } from './modules/capabilities/capabilities.module';
@@ -29,6 +30,7 @@ mkdirSync(dirname(sqlitePath), { recursive: true });
     AuthModule,
     CapabilitiesModule,
     RoomModule,
+    GameModule,
     ChatModule,
     LobbyChatModule,
     TypeOrmModule.forFeature([User]), // gateway 用（version:switch 需更新 preferredVersion）

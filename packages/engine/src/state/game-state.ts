@@ -36,6 +36,8 @@ export interface GameState {
   resolution: ResolutionState;
   modifiers: RuleModifier[];
   log: string[];
+  victory?: { winners: string[]; message: string } | null;
+  lastDamageSourceId?: string | null;
 }
 
 export function createEmptyResolution(): ResolutionState {

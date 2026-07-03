@@ -1,5 +1,9 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { SangokushiEngine } from '@tk/engine';
+import {
+  assignIdentities,
+  assignRandomGenerals,
+  SangokushiEngine,
+} from '@tk/engine';
 import { v4 as uuidv4 } from 'uuid';
 import {
   DEFAULT_VERSION_ID,
@@ -85,8 +89,12 @@ export class RoomService implements OnModuleInit {
     this.userPlayer.set(userId, newPlayerId);
     // sandbox 引擎里的 playerId 也要迁移
     if (room.isSandbox && room.status === 'playing') {
-      this.gameService.remapSandboxPlayerId(room.id, oldPlayerId, newPlayerId);
-      const engine = this.gameService.getSandboxEngine(room.id);
+      this.gameService.remapPlayerId(room.id, oldPlayerId, newPlayerId);
+      const engine = this.gameService.getRoomEngine(room.id);
+      if (engine) this.gameService.syncRoomFromEngine(room, engine);
+    } else if (!room.isSandbox && room.status === 'playing') {
+      this.gameService.remapPlayerId(room.id, oldPlayerId, newPlayerId);
+      const engine = this.gameService.getRoomEngine(room.id);
       if (engine) this.gameService.syncRoomFromEngine(room, engine);
     }
     return room;
@@ -217,9 +225,28 @@ export class RoomService implements OnModuleInit {
       throw new RoomError('NOT_ALL_READY', '还有玩家未准备');
     }
     room.status = 'playing';
-    room.players.forEach((p, i) => {
-      p.seat = i + 1;
+    assignRandomGenerals(room.players);
+    const lordIndex = Math.max(0, room.players.findIndex((p) => p.id === room.hostId));
+    assignIdentities(room.players, lordIndex);
+    room.players.forEach((p) => {
+      p.roleRevealed = p.role === '主公';
+      p.handCards = [];
+      const isLord = p.role === '主公';
+      p.maxHp = 4 + (isLord ? 1 : 0);
+      p.hp = p.maxHp;
     });
+    const turnLordIndex = SangokushiEngine.findLordIndex(room.players);
+    room.sandbox = {
+      phase: 'playing',
+      turnIndex: turnLordIndex,
+      round: 1,
+      turnPhase: 'judge',
+      log: [],
+      prompt: null,
+    };
+    const engine = this.gameService.createRoomEngine(room);
+    engine.start();
+    this.gameService.syncRoomFromEngine(room, engine);
     return room;
   }
 
@@ -271,8 +298,8 @@ export class RoomService implements OnModuleInit {
       if (room.hostId === oldId) room.hostId = playerId;
       this.actingPlayerBySocket.set(playerId, playerId);
       if (room.status === 'playing') {
-        this.gameService.remapSandboxPlayerId(room.id, oldId, playerId);
-        const engine = this.gameService.getSandboxEngine(room.id);
+        this.gameService.remapPlayerId(room.id, oldId, playerId);
+        const engine = this.gameService.getRoomEngine(room.id);
         if (engine) this.gameService.syncRoomFromEngine(room, engine);
       }
       return room;
@@ -418,10 +445,254 @@ export class RoomService implements OnModuleInit {
       prompt: null,
     };
 
-    const engine = this.gameService.createSandboxEngine(room);
+    const engine = this.gameService.createRoomEngine(room);
     engine.start();
     this.gameService.syncRoomFromEngine(room, engine);
     return room;
+  }
+
+  private requireRoomEngine(room: Room): SangokushiEngine {
+    const engine = this.gameService.getRoomEngine(room.id);
+    if (!engine) {
+      throw new RoomError('ENGINE_MISSING', '对局引擎未初始化');
+    }
+    return engine;
+  }
+
+  private assertPlaying(room: Room): void {
+    if (room.status !== 'playing' || !room.sandbox) {
+      throw new RoomError('NOT_PLAYING', '对局未开始');
+    }
+    if (room.sandbox.phase === 'finished') {
+      throw new RoomError('GAME_OVER', '对局已结束');
+    }
+  }
+
+  private assertActorInRoom(room: Room, actingPlayerId: string): void {
+    const player = room.players.find((p) => p.id === actingPlayerId);
+    if (!player?.connected) {
+      throw new RoomError('NOT_IN_ROOM', '不在房间内');
+    }
+  }
+
+  // —— 正式房间对局操作（每人只能操控自己的座位） ——
+
+  gamePlayCard(playerId: string, card: string, handIndex?: number): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxPlayCard(playerId, playerId, card, handIndex);
+    }
+    this.assertPlaying(room);
+    this.assertActorInRoom(room, playerId);
+    const trimmed = card.trim();
+    if (!trimmed) throw new RoomError('INVALID_CARD', '请输入牌名');
+    const engine = this.requireRoomEngine(room);
+    const res = engine.initiatePlayCard(playerId, trimmed, handIndex);
+    if (!res.ok) throw new RoomError('PLAY_FAILED', res.error ?? '无法出牌');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  async gameConfirmPlay(
+    playerId: string,
+    promptId: string,
+    choiceId: string,
+  ): Promise<Room> {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxConfirmPlay(playerId, playerId, promptId, choiceId);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = await engine.submitPromptChoice(playerId, promptId, choiceId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '操作失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  async gameSelectTargets(
+    playerId: string,
+    promptId: string,
+    targetIds: string[],
+    zoneCardId?: string,
+  ): Promise<Room> {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxSelectTargets(playerId, playerId, promptId, targetIds, zoneCardId);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = await engine.selectTargets(playerId, promptId, targetIds, zoneCardId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '选目标失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  async gameSubmitResponse(
+    playerId: string,
+    promptId: string,
+    choiceId: string,
+  ): Promise<Room> {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxSubmitResponse(playerId, playerId, promptId, choiceId);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = await engine.submitResponse(playerId, promptId, choiceId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '响应失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  gameUseSkill(playerId: string, skillId: string): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxUseSkill(playerId, playerId, skillId);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = engine.initiateSkill(playerId, skillId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '技能失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  gameRendeGive(
+    playerId: string,
+    targetId: string,
+    cards: string[],
+    handIndices?: number[],
+  ): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxRendeGive(playerId, playerId, targetId, cards, handIndices);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = engine.rendeGive(
+      playerId,
+      targetId,
+      cards.map((c) => c.trim()).filter(Boolean),
+      handIndices,
+    );
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '仁德失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  gameRendeFinish(playerId: string): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxRendeFinish(playerId, playerId);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = engine.rendeFinish(playerId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '无法结束仁德');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  gameZhihengConfirm(playerId: string, handIndices: number[]): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxZhihengConfirm(playerId, playerId, handIndices);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = engine.zhihengConfirm(playerId, handIndices);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '制衡失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  gameModifyJudge(playerId: string, promptId: string, handIndex: number): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxModifyJudge(playerId, playerId, promptId, handIndex);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = engine.submitModifyJudge(playerId, promptId, handIndex);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '改判失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  gameSkipModifyJudge(playerId: string, promptId: string): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxSkipModifyJudge(playerId, playerId, promptId);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = engine.skipModifyJudge(playerId, promptId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '操作失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  gameDiscardCards(playerId: string, promptId: string, handIndices: number[]): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxDiscardCards(playerId, playerId, promptId, handIndices);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = engine.submitDiscard(playerId, promptId, handIndices);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '弃牌失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  gameCancelDiscard(playerId: string, promptId: string): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxCancelDiscard(playerId, playerId, promptId);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = engine.cancelDiscard(playerId, promptId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '取消弃牌失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  async gameSelectZoneCard(
+    playerId: string,
+    promptId: string,
+    choiceId: string,
+  ): Promise<Room> {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxSelectZoneCard(playerId, playerId, promptId, choiceId);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = await engine.submitZoneCard(playerId, promptId, choiceId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '选牌失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  gameEndTurn(playerId: string): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxEndTurn(playerId, playerId);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = engine.endTurn(playerId);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '无法结束回合');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  getFilteredRoomForPlayer(roomId: string, playerId: string): Room | null {
+    const room = this.getRoomById(roomId);
+    if (!room) return null;
+    return this.gameService.filterRoomForPlayer(room, playerId);
   }
 
   private requireSandboxEngine(room: Room): SangokushiEngine {

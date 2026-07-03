@@ -99,6 +99,22 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? '';
 
 let socketInstance: GameSocket | null = null;
 
+/** 根据房间类型路由 sandbox:* 或 game:* 事件 */
+function routeGameEmit(
+  socket: GameSocket,
+  room: Room,
+  sandboxEvent: string,
+  formalEvent: string,
+  payload?: unknown,
+): void {
+  const event = room.isSandbox ? sandboxEvent : formalEvent;
+  if (payload === undefined) {
+    (socket.emit as (e: string) => void)(event);
+  } else {
+    (socket.emit as (e: string, p: unknown) => void)(event, payload);
+  }
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   socket: null,
   connected: false,
@@ -163,6 +179,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     socket.on('game:started', () => {
       void get().fetchRoomList();
+    });
+    socket.on('game:finished', ({ victory }) => {
+      useToastStore.getState().show(victory?.message ?? '对局结束');
+    });
+    socket.on('game:event', ({ message }) => {
+      if (message) useToastStore.getState().show(message);
     });
 
     (socket as any).on('lobby:chat:message', (msg: LobbyChatMessage) => {
@@ -332,59 +354,116 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   sandboxPlayCard: (card, handIndex) => {
-    get().socket?.emit('sandbox:playCard', { card, handIndex });
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:playCard', 'game:playCard', { card, handIndex });
   },
 
   sandboxConfirmPlay: (promptId, choiceId) => {
-    get().socket?.emit('sandbox:confirmPlay', { promptId, choiceId });
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:confirmPlay', 'game:confirmPlay', {
+      promptId,
+      choiceId,
+    });
   },
 
   sandboxSelectTargets: (promptId, targetIds, zoneCardId) => {
-    get().socket?.emit('sandbox:selectTargets', { promptId, targetIds, zoneCardId });
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:selectTargets', 'game:selectTargets', {
+      promptId,
+      targetIds,
+      zoneCardId,
+    });
   },
 
   sandboxSubmitResponse: (promptId, choiceId) => {
-    get().socket?.emit('sandbox:submitResponse', { promptId, choiceId });
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:submitResponse', 'game:submitResponse', {
+      promptId,
+      choiceId,
+    });
   },
 
   sandboxUseSkill: (skillId) => {
-    get().socket?.emit('sandbox:useSkill', { skillId });
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:useSkill', 'game:useSkill', { skillId });
   },
 
   sandboxRendeGive: (targetId, cards, handIndices) => {
-    get().socket?.emit('sandbox:rendeGive', { targetId, cards, handIndices });
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:rendeGive', 'game:rendeGive', {
+      targetId,
+      cards,
+      handIndices,
+    });
   },
 
   sandboxRendeFinish: () => {
-    get().socket?.emit('sandbox:rendeFinish');
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:rendeFinish', 'game:rendeFinish');
   },
 
   sandboxZhihengConfirm: (handIndices) => {
-    get().socket?.emit('sandbox:zhihengConfirm', { handIndices });
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:zhihengConfirm', 'game:zhihengConfirm', {
+      handIndices,
+    });
   },
 
   sandboxModifyJudge: (promptId, handIndex) => {
-    get().socket?.emit('sandbox:modifyJudge', { promptId, handIndex });
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:modifyJudge', 'game:modifyJudge', {
+      promptId,
+      handIndex,
+    });
   },
 
   sandboxSkipModifyJudge: (promptId) => {
-    get().socket?.emit('sandbox:skipModifyJudge', { promptId });
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:skipModifyJudge', 'game:skipModifyJudge', {
+      promptId,
+    });
   },
 
   sandboxDiscardCards: (promptId, handIndices) => {
-    get().socket?.emit('sandbox:discardCards', { promptId, handIndices });
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:discardCards', 'game:discardCards', {
+      promptId,
+      handIndices,
+    });
   },
 
   sandboxCancelDiscard: (promptId) => {
-    get().socket?.emit('sandbox:cancelDiscard', { promptId });
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:cancelDiscard', 'game:cancelDiscard', {
+      promptId,
+    });
   },
 
   sandboxSelectZoneCard: (promptId, choiceId) => {
-    get().socket?.emit('sandbox:selectZoneCard', { promptId, choiceId });
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:selectZoneCard', 'game:selectZoneCard', {
+      promptId,
+      choiceId,
+    });
   },
 
   sandboxEndTurn: () => {
-    get().socket?.emit('sandbox:endTurn');
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:endTurn', 'game:endTurn');
   },
 
   sendChat: (content) => {

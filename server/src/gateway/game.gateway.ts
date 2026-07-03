@@ -12,6 +12,7 @@ import { Server, Socket } from 'socket.io';
 import { v4 as uuidv4 } from 'uuid';
 import {
   ClientToServerEvents,
+  Room,
   RoomCreateAck,
   RoomJoinAck,
   ServerToClientEvents,
@@ -26,6 +27,7 @@ import { ReconnectService } from '../modules/room/reconnect.service';
 import { SocketAuthService } from '../modules/auth/socket-auth.service';
 import { LobbyChatService } from '../modules/lobby-chat/lobby-chat.service';
 import { User } from '../modules/auth/entities/user.entity';
+import { GameService } from '../modules/game/game.service';
 
 type GameSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
@@ -49,6 +51,7 @@ export class GameGateway
     private readonly socketAuth: SocketAuthService,
     private readonly reconnect: ReconnectService,
     private readonly lobbyChat: LobbyChatService,
+    private readonly gameService: GameService,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
   ) {}
 
@@ -239,11 +242,11 @@ export class GameGateway
   }
 
   @SubscribeMessage('room:start')
-  handleStart(@ConnectedSocket() client: GameSocket) {
+  async handleStart(@ConnectedSocket() client: GameSocket) {
     const playerId = this.getActingPlayerId(client);
     try {
       const room = this.roomService.startGame(playerId);
-      this.server.to(room.id).emit('room:state', room);
+      await this.broadcastGameState(room);
       this.server.to(room.id).emit('game:started', { roomId: room.id });
     } catch (err) {
       this.emitError(client, err);
@@ -306,11 +309,11 @@ export class GameGateway
   }
 
   @SubscribeMessage('sandbox:start')
-  handleSandboxStart(@ConnectedSocket() client: GameSocket) {
+  async handleSandboxStart(@ConnectedSocket() client: GameSocket) {
     const playerId = this.getPlayerId(client);
     try {
       const room = this.roomService.sandboxStart(playerId);
-      this.server.to(room.id).emit('room:state', room);
+      await this.broadcastGameState(room);
       this.server.to(room.id).emit('game:started', { roomId: room.id });
     } catch (err) {
       this.emitError(client, err);
@@ -587,14 +590,201 @@ export class GameGateway
   }
 
   @SubscribeMessage('sandbox:endTurn')
-  handleSandboxEndTurn(@ConnectedSocket() client: GameSocket) {
+  async handleSandboxEndTurn(@ConnectedSocket() client: GameSocket) {
     const socketId = this.getPlayerId(client);
     const actingId = this.getActingPlayerId(client);
     try {
       const room = this.roomService.sandboxEndTurn(socketId, actingId);
-      this.server.to(room.id).emit('room:state', room);
+      await this.broadcastGameState(room);
     } catch (err) {
       this.emitError(client, err);
+    }
+  }
+
+  // ==== 正式房间对局 Gateway 事件 ====
+
+  @SubscribeMessage('game:playCard')
+  async handleGamePlay(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { card: string; handIndex?: number },
+  ) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gamePlayCard(playerId, payload?.card ?? '', payload?.handIndex),
+    );
+  }
+
+  @SubscribeMessage('game:confirmPlay')
+  async handleGameConfirm(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string; choiceId: string },
+  ) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameConfirmPlay(
+        playerId,
+        payload?.promptId ?? '',
+        payload?.choiceId ?? '',
+      ),
+    );
+  }
+
+  @SubscribeMessage('game:selectTargets')
+  async handleGameTargets(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string; targetIds: string[]; zoneCardId?: string },
+  ) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameSelectTargets(
+        playerId,
+        payload?.promptId ?? '',
+        payload?.targetIds ?? [],
+        payload?.zoneCardId,
+      ),
+    );
+  }
+
+  @SubscribeMessage('game:submitResponse')
+  async handleGameResponse(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string; choiceId: string },
+  ) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameSubmitResponse(
+        playerId,
+        payload?.promptId ?? '',
+        payload?.choiceId ?? '',
+      ),
+    );
+  }
+
+  @SubscribeMessage('game:useSkill')
+  async handleGameSkill(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { skillId: string },
+  ) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameUseSkill(playerId, payload?.skillId ?? ''),
+    );
+  }
+
+  @SubscribeMessage('game:rendeGive')
+  async handleGameRende(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody()
+    payload: { targetId: string; cards: string[]; handIndices?: number[] },
+  ) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameRendeGive(
+        playerId,
+        payload?.targetId ?? '',
+        payload?.cards ?? [],
+        payload?.handIndices,
+      ),
+    );
+  }
+
+  @SubscribeMessage('game:rendeFinish')
+  async handleGameRendeFinish(@ConnectedSocket() client: GameSocket) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameRendeFinish(playerId),
+    );
+  }
+
+  @SubscribeMessage('game:zhihengConfirm')
+  async handleGameZhiheng(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { handIndices: number[] },
+  ) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameZhihengConfirm(playerId, payload?.handIndices ?? []),
+    );
+  }
+
+  @SubscribeMessage('game:modifyJudge')
+  async handleGameModifyJudge(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string; handIndex: number },
+  ) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameModifyJudge(
+        playerId,
+        payload?.promptId ?? '',
+        payload?.handIndex ?? -1,
+      ),
+    );
+  }
+
+  @SubscribeMessage('game:skipModifyJudge')
+  async handleGameSkipModifyJudge(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string },
+  ) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameSkipModifyJudge(playerId, payload?.promptId ?? ''),
+    );
+  }
+
+  @SubscribeMessage('game:discardCards')
+  async handleGameDiscard(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string; handIndices: number[] },
+  ) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameDiscardCards(
+        playerId,
+        payload?.promptId ?? '',
+        payload?.handIndices ?? [],
+      ),
+    );
+  }
+
+  @SubscribeMessage('game:cancelDiscard')
+  async handleGameCancelDiscard(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string },
+  ) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameCancelDiscard(playerId, payload?.promptId ?? ''),
+    );
+  }
+
+  @SubscribeMessage('game:selectZoneCard')
+  async handleGameSelectZoneCard(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { promptId: string; choiceId: string },
+  ) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameSelectZoneCard(
+        playerId,
+        payload?.promptId ?? '',
+        payload?.choiceId ?? '',
+      ),
+    );
+  }
+
+  @SubscribeMessage('game:endTurn')
+  async handleGameEndTurn(@ConnectedSocket() client: GameSocket) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameEndTurn(playerId),
+    );
+  }
+
+  @SubscribeMessage('game:sync')
+  async handleGameSync(
+    @ConnectedSocket() client: GameSocket,
+    ack?: (room: import('@tk/shared').Room | null) => void,
+  ) {
+    const playerId = this.getPlayerId(client);
+    try {
+      const room = this.roomService.getRoomByPlayerId(playerId);
+      if (room.status !== 'playing' && room.status !== 'finished') {
+        ack?.(room);
+        return;
+      }
+      const filtered = this.roomService.getFilteredRoomForPlayer(room.id, playerId);
+      ack?.(filtered);
+      if (filtered) client.emit('room:state', filtered);
+    } catch {
+      ack?.(null);
     }
   }
 
@@ -722,10 +912,53 @@ export class GameGateway
     });
   }
 
+  private async dispatchFormalGame(
+    client: GameSocket,
+    action: (playerId: string) => Room | Promise<Room>,
+  ) {
+    const playerId = this.getPlayerId(client);
+    try {
+      const room = await action(playerId);
+      await this.broadcastGameState(room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  private async broadcastGameState(room: import('@tk/shared').Room) {
+    if (room.isSandbox) {
+      this.server.to(room.id).emit('room:state', room);
+      return;
+    }
+    if (room.status === 'playing' || room.status === 'finished') {
+      const sockets = await this.server.in(room.id).fetchSockets();
+      for (const socket of sockets) {
+        const playerId =
+          (socket.data as { playerId?: string }).playerId ??
+          this.socketPlayer.get(socket.id);
+        if (!playerId) continue;
+        const filtered = this.gameService.filterRoomForPlayer(room, playerId);
+        socket.emit('room:state', filtered);
+      }
+      if (room.sandbox?.victory) {
+        this.server.to(room.id).emit('game:finished', {
+          roomId: room.id,
+          victory: room.sandbox.victory,
+        });
+        this.server.to(room.id).emit('game:event', {
+          type: 'victory',
+          message: room.sandbox.victory.message,
+        });
+      }
+      return;
+    }
+    this.server.to(room.id).emit('room:state', room);
+  }
+
   private broadcastRoomState(roomId: string) {
     const room = this.roomService.getRoomById(roomId);
     if (room) {
-      this.server.to(roomId).emit('room:state', room);
+      void this.broadcastGameState(room);
     }
   }
 
