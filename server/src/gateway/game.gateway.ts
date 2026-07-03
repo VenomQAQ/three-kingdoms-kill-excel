@@ -63,7 +63,16 @@ export class GameGateway
             code: 'E_SANDBOX_DISABLED',
             message: '测试房未启用',
           });
-          return; // 不 next
+          // blocking-3 修复：若客户端使用 emit(event, payload, ack)，主动调 ack 避免悬挂
+          const maybeAck = Array.isArray(packet) ? packet[packet.length - 1] : undefined;
+          if (typeof maybeAck === 'function') {
+            try {
+              maybeAck({ ok: false, error: '测试房未启用', code: 'E_SANDBOX_DISABLED' });
+            } catch {
+              // ack 回调异常不影响流程
+            }
+          }
+          return; // 不 next → handler 不会被调
         }
         nextEvent();
       });
@@ -82,8 +91,9 @@ export class GameGateway
     // BE-8：若命中 pending reclaim，认领之前的座位
     if (auth.userId) {
       const cancelled = this.reconnect.cancelReclaim(auth.userId);
+      const alreadyBound = this.roomService.getPlayerIdByUser(auth.userId);
       if (cancelled) {
-        const oldPlayerId = this.roomService.getPlayerIdByUser(auth.userId);
+        const oldPlayerId = alreadyBound;
         if (oldPlayerId) {
           const room = this.roomService.rebindUserPlayer(auth.userId, oldPlayerId, playerId);
           if (room) {
@@ -92,7 +102,12 @@ export class GameGateway
           }
         }
       }
-      this.roomService.bindUserPlayer(auth.userId, playerId);
+      // blocking-2 修复：只在"新建绑定"或"刚 rebind 过（映射已经指到新 playerId）"时才 bind
+      // 若 alreadyBound && !cancelled：说明该账号已有另一 tab 在线且不是断线重连
+      //   保留老映射，不覆盖，避免同账号双 tab 互踢
+      if (!alreadyBound || cancelled) {
+        this.roomService.bindUserPlayer(auth.userId, playerId);
+      }
     }
 
     // 首帧 auth:hello —— 延后一拍，等客户端挂上 listener

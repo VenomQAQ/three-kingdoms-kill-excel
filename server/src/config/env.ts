@@ -13,8 +13,27 @@ const int = (v: string | undefined, def: number): number => {
   return Number.isFinite(n) && n > 0 ? n : def;
 };
 
+const nodeEnv = process.env.NODE_ENV ?? 'development';
+
+// REQ-2026-001 · blocking-1 · 生产环境必须显式设置 JWT_ACCESS_SECRET
+const DEV_JWT_FALLBACK = 'dev-insecure-secret-change-me';
+const rawJwtSecret = process.env.JWT_ACCESS_SECRET;
+if (nodeEnv === 'production' && !rawJwtSecret) {
+  // 立即抛错，避免用硬编码 fallback（可伪造 token）
+  throw new Error(
+    '[env] JWT_ACCESS_SECRET must be set in production. Refusing to start with default secret.',
+  );
+}
+if (!rawJwtSecret) {
+  // dev 环境保留 fallback，但打印明显警告
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[env] ⚠ JWT_ACCESS_SECRET not set, using insecure dev fallback. Do NOT deploy this build to production.`,
+  );
+}
+
 export const env = Object.freeze({
-  nodeEnv: process.env.NODE_ENV ?? 'development',
+  nodeEnv,
 
   port: int(process.env.PORT, 3000),
   corsOrigins: (process.env.CORS_ORIGIN ?? 'http://localhost:5052,http://localhost:5173')
@@ -26,7 +45,7 @@ export const env = Object.freeze({
   sqlitePath: process.env.SQLITE_PATH ?? 'data/app.sqlite',
 
   // Auth
-  jwtAccessSecret: process.env.JWT_ACCESS_SECRET ?? 'dev-insecure-secret-change-me',
+  jwtAccessSecret: rawJwtSecret ?? DEV_JWT_FALLBACK,
   jwtAccessTtlSec: int(process.env.JWT_ACCESS_TTL_SEC, 3600),
   refreshTtlSec: int(process.env.REFRESH_TTL_SEC, 60 * 60 * 24 * 7),
   reconnectGraceSec: int(process.env.RECONNECT_GRACE_SEC, 300),
