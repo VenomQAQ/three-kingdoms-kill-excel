@@ -74,7 +74,13 @@ function App() {
     chatMessages,
     lastError,
     clearError,
+    hydrate,
   } = useAppStore();
+
+  useEffect(() => {
+    // REQ-2026-001 · FE-2/FE-9 · 首屏并发拉 capabilities + me；无论成功失败都不阻塞后续 socket 连接
+    void hydrate();
+  }, [hydrate]);
 
   useEffect(() => {
     connect();

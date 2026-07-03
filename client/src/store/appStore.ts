@@ -11,8 +11,12 @@ import {
 import { create } from 'zustand';
 import { SANDBOX_ROOM_CODE } from '../data/decoy';
 import { sanitizeRoom } from '../utils/display';
+import { AuthApi, AuthUser, CapabilitiesApi, Capabilities, HttpError } from '../api';
 
 type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+
+/** REQ-2026-001 · FE-2 · 认证状态机 */
+export type AuthStatus = 'loading' | 'guest' | 'authed';
 
 interface AppState {
   socket: GameSocket | null;
@@ -24,6 +28,12 @@ interface AppState {
   roomList: RoomListItem[];
   chatMessages: ChatMessage[];
   lastError: string | null;
+
+  // REQ-2026-001 · FE-2 · auth / capabilities / 版本偏好
+  authStatus: AuthStatus;
+  user: AuthUser | null;
+  capabilities: Capabilities | null;
+  currentVersion: string;
 
   setNickname: (nickname: string) => void;
   connect: () => void;
@@ -58,6 +68,15 @@ interface AppState {
   sandboxEndTurn: () => void;
   sendChat: (content: string) => void;
   clearError: () => void;
+
+  // REQ-2026-001 · FE-2 · auth actions
+  hydrate: () => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, nickname: string) => Promise<void>;
+  logout: () => Promise<void>;
+  changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
+  setCurrentVersion: (versionId: string) => void;
+  markUnauthenticated: (reason?: string) => void;
 }
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? '';
@@ -74,6 +93,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   roomList: [],
   chatMessages: [],
   lastError: null,
+
+  // REQ-2026-001 · FE-2 · auth 初值
+  authStatus: 'loading',
+  user: null,
+  capabilities: null,
+  currentVersion: 'standard-2014',
 
   setNickname: (nickname) => {
     localStorage.setItem('tk_nickname', nickname);
@@ -118,6 +143,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     socket.on('game:started', () => {
       void get().fetchRoomList();
+    });
+
+    // REQ-2026-001 · FE-9 · 全局 socket 事件
+    (socket as any).on('auth:hello', (payload: any) => {
+      // 匿名 socket 会收到 userId=null；已 hydrate 拿到 user 的话以 HTTP /me 结果为准
+      // 此事件主要用于断线重连后再次得知服务端观察到的身份
+      if (payload && payload.preferredVersion) {
+        set({ currentVersion: payload.preferredVersion });
+      }
+    });
+    (socket as any).on('auth:invalidated', (payload: any) => {
+      const reason = payload?.reason === 'password-changed' ? '密码已修改，请重新登录' : '登录已失效，请重新登录';
+      get().markUnauthenticated(reason);
+    });
+    (socket as any).on('version:switched', (payload: any) => {
+      if (payload && payload.versionId) {
+        set({ currentVersion: payload.versionId });
+        void get().fetchRoomList();
+      }
     });
 
     set({ socket });
@@ -304,4 +348,80 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   clearError: () => set({ lastError: null }),
+
+  // ==== REQ-2026-001 · FE-2 · auth actions ====
+
+  hydrate: async () => {
+    set({ authStatus: 'loading' });
+    // 并发拉 capabilities + me
+    const [capsRes, meRes] = await Promise.allSettled([
+      CapabilitiesApi.get(),
+      AuthApi.me(),
+    ]);
+    if (capsRes.status === 'fulfilled') {
+      set({ capabilities: capsRes.value });
+    }
+    if (meRes.status === 'fulfilled') {
+      const u = meRes.value;
+      set({
+        authStatus: 'authed',
+        user: u,
+        currentVersion: u.preferredVersion,
+        nickname: u.nickname,
+      });
+    } else {
+      set({ authStatus: 'guest', user: null });
+    }
+  },
+
+  login: async (email, password) => {
+    const u = await AuthApi.login(email, password);
+    set({
+      authStatus: 'authed',
+      user: u,
+      currentVersion: u.preferredVersion,
+      nickname: u.nickname,
+    });
+  },
+
+  register: async (email, password, nickname) => {
+    const u = await AuthApi.register(email, password, nickname);
+    set({
+      authStatus: 'authed',
+      user: u,
+      currentVersion: u.preferredVersion,
+      nickname: u.nickname,
+    });
+  },
+
+  logout: async () => {
+    try {
+      await AuthApi.logout();
+    } catch (err) {
+      // logout 应幂等；忽略网络/500
+      if (!(err instanceof HttpError)) throw err;
+    }
+    set({ authStatus: 'guest', user: null, room: null });
+  },
+
+  changePassword: async (oldPassword, newPassword) => {
+    await AuthApi.changePassword(oldPassword, newPassword);
+    // 服务端已使所有 session 失效并广播 auth:invalidated
+    set({ authStatus: 'guest', user: null, room: null });
+  },
+
+  setCurrentVersion: (versionId: string) => {
+    set({ currentVersion: versionId });
+    get().socket?.emit('version:switch' as any, { versionId, _v: 1 });
+  },
+
+  /** socket 收到 auth:invalidated 时调用 */
+  markUnauthenticated: (reason) => {
+    set({
+      authStatus: 'guest',
+      user: null,
+      room: null,
+      lastError: reason ?? '登录已失效，请重新登录',
+    });
+  },
 }));
