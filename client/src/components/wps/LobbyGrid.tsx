@@ -10,6 +10,8 @@ interface LobbyGridProps {
   playerId: string | null;
   selectedCell: string;
   onSelectCell: (ref: string) => void;
+  isSandbox?: boolean;
+  onToggleReady?: () => void;
   bgColorToken?: string;
 }
 
@@ -23,6 +25,8 @@ export function LobbyGrid({
   playerId,
   selectedCell,
   onSelectCell,
+  isSandbox = false,
+  onToggleReady,
   bgColorToken = '#ffffff',
 }: LobbyGridProps) {
   const cols = COL_LABELS.slice(0, HEADERS.length);
@@ -70,6 +74,9 @@ export function LobbyGrid({
                 const ref = `${col}${rowNum}`;
                 let value = '';
                 let extra = '';
+                const pIdx = rowNum - 4;
+                const rowPlayer =
+                  pIdx >= 0 && pIdx < room.players.length ? room.players[pIdx] : null;
 
                 if (rowNum === 1) {
                   value = HEADERS[ci];
@@ -82,38 +89,35 @@ export function LobbyGrid({
                 } else if (rowNum === 2 && ci === 5) {
                   value = `${room.players.length}/${room.maxPlayers} 人`;
                 } else if (rowNum === 3 && ci === 1) {
-                  value = '等待开局 — 请添加角色后点击「模拟开局」';
+                  value = isSandbox
+                    ? '等待开局 — 请添加角色后点击「模拟开局」'
+                    : '等待开局 — 全员准备后房主点击「开始」';
                 } else {
-                  const pIdx = rowNum - 4;
-                  const player =
-                    pIdx >= 0 && pIdx < room.players.length
-                      ? room.players[pIdx]
-                      : null;
-                  if (player) {
-                    if (player.id === playerId) extra = styles.myRow;
+                  if (rowPlayer) {
+                    if (rowPlayer.id === playerId) extra = styles.myRow;
                     switch (ci) {
                       case 0:
-                        value = String(player.seat ?? pIdx + 1);
+                        value = String(rowPlayer.seat ?? pIdx + 1);
                         break;
                       case 1:
                         value =
-                          player.nickname + (player.isVirtual ? ' (虚拟)' : '');
+                          rowPlayer.nickname + (rowPlayer.isVirtual ? ' (虚拟)' : '');
                         break;
                       case 2:
-                        value = player.general ?? '—';
+                        value = rowPlayer.general ?? '—';
                         break;
                       case 3:
-                        value = player.isVirtual ? '虚拟' : '真人';
+                        value = rowPlayer.isVirtual ? '虚拟' : '真人';
                         break;
                       case 4:
-                        value = player.ready ? '已准备' : '未准备';
-                        extra += player.ready ? ` ${styles.ready}` : '';
+                        value = rowPlayer.ready ? '已准备' : '未准备';
+                        extra += rowPlayer.ready ? ` ${styles.ready}` : '';
                         break;
                       case 5:
-                        value = player.connected ? '在线' : '离线';
+                        value = rowPlayer.connected ? '在线' : '离线';
                         break;
                       case 6:
-                        value = player.id === room.hostId ? '房主' : '';
+                        value = rowPlayer.id === room.hostId ? '房主' : '';
                         break;
                       default:
                         break;
@@ -121,15 +125,28 @@ export function LobbyGrid({
                   }
                 }
 
+                const isMyReadyCell =
+                  !isSandbox &&
+                  !!onToggleReady &&
+                  !!rowPlayer &&
+                  ci === 4 &&
+                  rowPlayer.id === playerId;
+
                 return (
                   <div
                     key={ref}
-                    className={`${styles.cell} ${ref === selectedCell ? styles.selected : ''} ${extra}`}
+                    className={`${styles.cell} ${ref === selectedCell ? styles.selected : ''} ${extra}${
+                      isMyReadyCell ? ` ${styles.linkCell}` : ''
+                    }`}
                     style={{
                       minWidth: COL_WIDTHS[ci],
                       width: COL_WIDTHS[ci],
                     }}
-                    onClick={() => onSelectCell(ref)}
+                    title={isMyReadyCell ? '点击切换准备状态' : undefined}
+                    onClick={() => {
+                      onSelectCell(ref);
+                      if (isMyReadyCell) onToggleReady();
+                    }}
                   >
                     {value}
                   </div>

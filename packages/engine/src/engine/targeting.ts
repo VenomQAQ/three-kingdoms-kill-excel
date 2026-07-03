@@ -29,7 +29,7 @@ export function getAttackRange(player: EnginePlayerState): number {
   return range;
 }
 
-function distanceBetween(
+export function distanceBetween(
   players: EnginePlayerState[],
   from: EnginePlayerState,
   to: EnginePlayerState,
@@ -45,6 +45,15 @@ function distanceBetween(
   if (playerHasSkill(from, 'yicong') && from.hp > 2) d = Math.max(1, d - 1);
   if (playerHasSkill(to, 'yicong') && to.hp <= 2) d += 1;
   return Math.max(1, d);
+}
+
+export function isInAttackRange(
+  players: EnginePlayerState[],
+  attacker: EnginePlayerState,
+  target: EnginePlayerState,
+): boolean {
+  if (attacker.id === target.id) return false;
+  return distanceBetween(players, attacker, target) <= getAttackRange(attacker);
 }
 
 export function getValidTargets(

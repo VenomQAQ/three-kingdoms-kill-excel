@@ -747,6 +747,8 @@ function App() {
           onPlayCard={handlePlayCard}
           onViewSkills={setSkillModalPlayer}
           onViewCard={setDetailCardName}
+          isSandbox={isSandbox}
+          onToggleReady={toggleReady}
         />
         ) : displaySheet === 'sheet1' ? (
           <>

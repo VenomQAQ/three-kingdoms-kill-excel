@@ -16,6 +16,7 @@ export function getEquipSlot(card: CardDefinition): EquipmentSlot | null {
   if (card.subType === 'armor') return 'armor';
   if (card.subType === 'horse_plus') return 'horse_plus';
   if (card.subType === 'horse_minus') return 'horse_minus';
+  if (card.subType === 'treasure') return 'treasure';
   return null;
 }
 
@@ -136,6 +137,30 @@ function slotLabel(slot: EquipmentSlot): string {
     armor: '防具',
     horse_plus: '+1马',
     horse_minus: '-1马',
+    treasure: '宝物',
   };
   return map[slot];
+}
+
+export function playerHasWeapon(player: EnginePlayerState): boolean {
+  return player.equipment.some((name) => {
+    const def = CardRegistry.getByName(name);
+    return def?.subType === 'weapon' || getEquipSlot(def!) === 'weapon';
+  });
+}
+
+export function takeWeaponFromPlayer(
+  from: EnginePlayerState,
+  to: EnginePlayerState,
+  deck: DeckPile | undefined,
+  log: (msg: string) => void,
+): boolean {
+  const weapon = getEquippedInSlot(from, 'weapon');
+  if (!weapon) return false;
+  const idx = from.equipment.indexOf(weapon);
+  if (idx < 0) return false;
+  from.equipment.splice(idx, 1);
+  to.handCards.push(weapon);
+  log(`${to.generalName} 获得 ${from.generalName} 的武器【${weapon}】`);
+  return true;
 }

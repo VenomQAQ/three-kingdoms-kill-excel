@@ -514,6 +514,11 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
       return this.submitDyingRescue(playerId, promptId, choiceId);
     }
 
+    if (prompt.type === 'pick_revealed') {
+      const res = this.cardPlay.submitPickRevealed(this, playerId, promptId, choiceId);
+      return Promise.resolve(res);
+    }
+
     if (prompt.type === 'response') {
       return this.submitResponse(playerId, promptId, choiceId);
     }

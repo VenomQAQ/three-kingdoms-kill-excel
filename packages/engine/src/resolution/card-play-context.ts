@@ -22,6 +22,14 @@ export interface CardPlayContext {
   duelActive?: boolean;
   duelInitiator?: string;
   duelTarget?: string;
+  /** 五谷丰登：亮出的牌 */
+  wuguRevealed?: string[];
+  /** 五谷丰登：待选牌的玩家 id 队列 */
+  wuguPickerQueue?: string[];
+  /** 借刀杀人：持刀者 / 被杀目标 */
+  jiedaoHolderId?: string;
+  jiedaoVictimId?: string;
+  jiedaoActive?: boolean;
 }
 
 export const CARD_PLAY_CTX_KEY = 'cardPlay';

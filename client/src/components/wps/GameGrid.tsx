@@ -17,6 +17,8 @@ interface GameGridProps {
   onPlayCard: (card: string, handIndex?: number) => void;
   onViewSkills: (player: import('@tk/shared').RoomPlayer) => void;
   onViewCard: (cardName: string) => void;
+  isSandbox?: boolean;
+  onToggleReady?: () => void;
 }
 
 export function GameGrid({
@@ -31,6 +33,8 @@ export function GameGrid({
   onPlayCard,
   onViewSkills,
   onViewCard,
+  isSandbox = false,
+  onToggleReady,
 }: GameGridProps) {
   if (room.status === 'playing') {
     return (
@@ -57,6 +61,8 @@ export function GameGrid({
         playerId={playerId}
         selectedCell={selectedCell}
         onSelectCell={onSelectCell}
+        isSandbox={isSandbox}
+        onToggleReady={onToggleReady}
       />
     </div>
   );

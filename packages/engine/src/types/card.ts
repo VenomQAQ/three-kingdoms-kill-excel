@@ -1,5 +1,5 @@
 export type CardType = 'basic' | 'trick' | 'equipment';
-export type EquipmentSlot = 'weapon' | 'armor' | 'horse_plus' | 'horse_minus';
+export type EquipmentSlot = 'weapon' | 'armor' | 'horse_plus' | 'horse_minus' | 'treasure';
 export type TrickSubType = 'instant' | 'delay' | 'aoe' | 'damage';
 
 export type EffectAction =
@@ -17,7 +17,8 @@ export type EffectAction =
   | 'promptResponse'
   | 'giveCards'
   | 'equip'
-  | 'modifyRule';
+  | 'modifyRule'
+  | 'distributeRevealed';
 
 export interface TargetCount {
   min: number;

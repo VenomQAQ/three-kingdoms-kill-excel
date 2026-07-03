@@ -152,7 +152,10 @@ TAKE_DAMAGE 扣至 0 或更低
 | 回合 FSM | ✅ | ✅ TurnRunner |
 | 杀/闪/伤害/奸雄/反馈 | ✅ 硬编码 | ✅ CardPlayService + TAKE_DAMAGE 栈 |
 | 过河拆桥/顺手牵羊 | 自动随机弃/拿 | ✅ 玩家选区域牌 |
-| AOE | ✅ 硬编码 | 🚧 TargetQueue 部分接线 |
+| AOE | ✅ 硬编码 | ✅ TargetQueue + 先消耗锦囊 |
+| 五谷丰登 / 借刀杀人 | ❌ | ✅ pick_revealed / 借刀响应 |
+| 八卦阵 | 遗留 GameEngine | ✅ SangokushiEngine 响应链 |
+| 木牛流马 | ❌ | ✅ 宝物槽装备（粮机制待 M4） |
 | 技能配置加载 | 部分 | ✅ ConfigRuleLoader → RuleManager |
 | 武将 if 分支 | rende/zhiheng 等 | ❌ 禁止（走 Rule + Handler） |
 

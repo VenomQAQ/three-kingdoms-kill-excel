@@ -99,6 +99,29 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? '';
 
 let socketInstance: GameSocket | null = null;
 
+/** 重连后服务端会迁移 playerId，用昵称回对齐本地 id */
+function applyRoomState(
+  room: Room,
+  prev: { playerId: string | null; actingPlayerId: string | null; nickname: string },
+): { room: Room; playerId: string | null; actingPlayerId: string | null } {
+  const sanitized = sanitizeRoom(room);
+  let playerId = prev.playerId;
+  if (!playerId || !sanitized.players.some((p) => p.id === playerId)) {
+    const mine = sanitized.players.find(
+      (p) => !p.isVirtual && p.nickname === prev.nickname,
+    );
+    if (mine) playerId = mine.id;
+  }
+  let actingPlayerId = prev.actingPlayerId;
+  if (
+    actingPlayerId &&
+    !sanitized.players.some((p) => p.id === actingPlayerId)
+  ) {
+    actingPlayerId = playerId;
+  }
+  return { room: sanitized, playerId, actingPlayerId };
+}
+
 /** 根据房间类型路由 sandbox:* 或 game:* 事件 */
 function routeGameEmit(
   socket: GameSocket,
@@ -163,13 +186,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
     socket.on('disconnect', () => set({ connected: false }));
 
-    socket.on('room:created', (room) =>
-      set({ room: sanitizeRoom(room), actingPlayerId: get().playerId }),
-    );
-    socket.on('room:joined', (room) =>
-      set({ room: sanitizeRoom(room), actingPlayerId: get().playerId }),
-    );
-    socket.on('room:state', (room) => set({ room: sanitizeRoom(room) }));
+    socket.on('room:created', (room) => set((s) => applyRoomState(room, s)));
+    socket.on('room:joined', (room) => set((s) => applyRoomState(room, s)));
+    socket.on('room:state', (room) => set((s) => applyRoomState(room, s)));
     socket.on('room:error', ({ code, message }) =>
       set({ lastError: translateError(code, message) }),
     );
@@ -201,8 +220,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     (socket as any).on('auth:hello', (payload: any) => {
       // 匿名 socket 会收到 userId=null；已 hydrate 拿到 user 的话以 HTTP /me 结果为准
       // 此事件主要用于断线重连后再次得知服务端观察到的身份
-      if (payload && payload.preferredVersion) {
+      if (payload?.preferredVersion) {
         set({ currentVersion: payload.preferredVersion });
+      }
+      if (payload?.playerId) {
+        set((s) => ({
+          playerId: payload.playerId,
+          actingPlayerId: s.actingPlayerId ?? payload.playerId,
+        }));
       }
     });
     (socket as any).on('auth:invalidated', (payload: any) => {
@@ -315,10 +340,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleReady: () => {
-    const { socket, room, actingPlayerId, playerId } = get();
-    const id = actingPlayerId ?? playerId;
-    if (!socket || !room || !id) return;
-    const me = room.players.find((p) => p.id === id);
+    const { socket, room, playerId, nickname } = get();
+    if (!socket || !room) return;
+    const me =
+      (playerId ? room.players.find((p) => p.id === playerId) : undefined) ??
+      room.players.find((p) => !p.isVirtual && p.nickname === nickname);
     socket.emit('room:ready', { ready: !me?.ready });
   },
 

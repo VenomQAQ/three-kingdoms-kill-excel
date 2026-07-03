@@ -128,6 +128,7 @@ export class RoomService implements OnModuleInit {
     this.roomsById.set(room.id, room);
     this.roomIdByCode.set(code, room.id);
     this.playerRoom.set(hostId, room.id);
+    this.actingPlayerBySocket.set(hostId, hostId);
     return room;
   }
 
@@ -149,6 +150,7 @@ export class RoomService implements OnModuleInit {
     if (existing) {
       existing.connected = true;
       existing.nickname = nickname.trim() || existing.nickname;
+      this.actingPlayerBySocket.set(playerId, playerId);
       return room;
     }
     const rejoin = room.players.find(
@@ -158,6 +160,7 @@ export class RoomService implements OnModuleInit {
       rejoin.id = playerId;
       rejoin.connected = true;
       this.playerRoom.set(playerId, room.id);
+      this.actingPlayerBySocket.set(playerId, playerId);
       return room;
     }
     room.players.push({
@@ -167,10 +170,12 @@ export class RoomService implements OnModuleInit {
       connected: true,
     });
     this.playerRoom.set(playerId, room.id);
+    this.actingPlayerBySocket.set(playerId, playerId);
     return room;
   }
 
   leaveRoom(playerId: string): { room: Room | null; removed: boolean } {
+    this.actingPlayerBySocket.delete(playerId);
     const roomId = this.playerRoom.get(playerId);
     if (!roomId) return { room: null, removed: false };
     const room = this.roomsById.get(roomId);

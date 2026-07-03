@@ -116,10 +116,14 @@ export class GameGateway
     // 首帧 auth:hello —— 延后一拍，等客户端挂上 listener
     setImmediate(() => {
       if (client.connected) {
+        const boundPlayerId = auth.userId
+          ? this.roomService.getPlayerIdByUser(auth.userId) ?? playerId
+          : playerId;
         (client as any).emit('auth:hello', {
           userId: auth.userId,
           nickname: auth.nickname,
           preferredVersion: auth.preferredVersion,
+          playerId: boundPlayerId,
           _v: 1,
         });
       }
@@ -232,7 +236,7 @@ export class GameGateway
     @ConnectedSocket() client: GameSocket,
     @MessageBody() payload: { ready: boolean },
   ) {
-    const playerId = this.getActingPlayerId(client);
+    const playerId = this.getPlayerId(client);
     try {
       const room = this.roomService.setReady(playerId, !!payload?.ready);
       this.broadcastRoomState(room.id);
@@ -243,7 +247,7 @@ export class GameGateway
 
   @SubscribeMessage('room:start')
   async handleStart(@ConnectedSocket() client: GameSocket) {
-    const playerId = this.getActingPlayerId(client);
+    const playerId = this.getPlayerId(client);
     try {
       const room = this.roomService.startGame(playerId);
       await this.broadcastGameState(room);

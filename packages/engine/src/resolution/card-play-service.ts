@@ -21,9 +21,15 @@ import {
 } from '../engine/timing-runner';
 import {
   getValidTargets,
+  isInAttackRange,
   needsTargetSelection,
   sortAoeTargets,
 } from '../engine/targeting';
+import {
+  hasBaguaFormation,
+  playerHasWeapon,
+  takeWeaponFromPlayer,
+} from '../engine/equipment-zone';
 import { nextPromptId } from '../utils/prompt-id';
 import {
   type CardPlayContext,
@@ -195,6 +201,24 @@ export class CardPlayService {
       };
     }
 
+    if (card?.id === 'jiedao_sharen' && targetIds.length === 2) {
+      const players = host.getState().players;
+      const holder = players.find((p) => p.id === targetIds[0]);
+      const victim = players.find((p) => p.id === targetIds[1]);
+      if (!holder || !victim) {
+        return { ok: false, error: '目标无效' };
+      }
+      if (!playerHasWeapon(holder)) {
+        return { ok: false, error: '第一名目标必须装备武器' };
+      }
+      if (holder.id === victim.id) {
+        return { ok: false, error: '两名目标不能相同' };
+      }
+      if (!isInAttackRange(players, holder, victim)) {
+        return { ok: false, error: '第二名目标须在持刀者攻击范围内' };
+      }
+    }
+
     if (zoneCardId) {
       if (!getZonePickAction(card!)) {
         return { ok: false, error: '当前卡牌不需要选择区域牌' };
@@ -299,7 +323,12 @@ export class CardPlayService {
       required > 1 ? `（需 ${required} 张【${label}】，已 ${count}/${required}）` : '';
 
     const duelActive = context.duelActive === true;
-    const message = duelActive
+    const jiedaoVictim = context.jiedaoVictimId
+      ? host.getState().players.find((player) => player.id === context.jiedaoVictimId)
+      : undefined;
+    const message = context.jiedaoActive
+      ? `${target.generalName}：【借刀杀人】请对 ${jiedaoVictim?.generalName ?? '目标'} 使用一张【杀】，否则失去武器`
+      : duelActive
       ? `${target.generalName}：请打出【${label}】继续决斗（不出则受到 1 点伤害）`
       : `${target.generalName}：请打出【${label}】响应【${card.name}】${hint}`;
     const passLabel = duelActive ? '不出（承受伤害）' : '不出（承受效果）';
@@ -319,6 +348,9 @@ export class CardPlayService {
           label: `打出【${validCard}】`,
         })),
         { id: 'pass', label: passLabel },
+        ...(hasBaguaFormation(target) && responseType === 'shan'
+          ? [{ id: 'bagua', label: '发动【八卦阵】判定' }]
+          : []),
       ],
     });
     return { ok: true, paused: true };
@@ -370,6 +402,35 @@ export class CardPlayService {
     const required = context.responsesRequired;
     const aoeActive = context.isAoe === true;
     const duelActive = context.duelActive === true;
+    const jiedaoActive = context.jiedaoActive === true;
+
+    if (choiceId === 'bagua') {
+      const suits = ['♠', '♥', '♣', '♦'];
+      const suit = suits[Math.floor(Math.random() * 4)]!;
+      const isRed = suit === '♥' || suit === '♦';
+      host.log(
+        `${responder.generalName} 【八卦阵】判定：${suit} → ${isRed ? '视为【闪】' : '无效'}`,
+      );
+      if (isRed) {
+        context.responseCount += 1;
+        setCardPlayContext(host.getState().resolution.context, context);
+        if (context.responseCount < required) {
+          return this.promptResponse(host, card, source, responder, context);
+        }
+        host.setPrompt(null);
+        if (aoeActive) {
+          host.log(`【${card.name}】对 ${responder.generalName} 被抵消`);
+          host.completeTargetResolve?.();
+          await host.drainStack?.();
+          if (host.getState().resolution.targetQueue == null) this.clearCardPlay(host);
+          return { ok: true, paused: host.getState().prompt != null };
+        }
+        this.clearCardPlay(host);
+        host.log(`【${card.name}】被抵消`);
+        return { ok: true };
+      }
+      return { ok: true, paused: true };
+    }
 
     if (choiceId.startsWith('card:')) {
       const cardName = choiceId.slice(5);
@@ -404,6 +465,19 @@ export class CardPlayService {
         `${responder.generalName} 打出【${cardName}】（${context.responseCount}/${required}）`,
       );
       setCardPlayContext(host.getState().resolution.context, context);
+
+      if (jiedaoActive && context.jiedaoHolderId === responder.id) {
+        const victim = host
+          .getState()
+          .players.find((player) => player.id === context.jiedaoVictimId);
+        host.setPrompt(null);
+        host.log(
+          `${responder.generalName} 对 ${victim?.generalName ?? '目标'} 使用【杀】（借刀杀人）`,
+        );
+        this.clearCardPlay(host);
+        return { ok: true };
+      }
+
       if (context.responseCount < required) {
         return this.promptResponse(host, card, source, responder, context);
       }
@@ -422,6 +496,19 @@ export class CardPlayService {
 
     if (choiceId === 'pass') {
       host.log(`${responder.generalName} 未响应【${card.name}】`);
+
+      if (jiedaoActive && context.jiedaoHolderId === responder.id) {
+        host.setPrompt(null);
+        takeWeaponFromPlayer(
+          responder,
+          source,
+          host.getDeck(),
+          (message) => host.log(message),
+        );
+        this.clearCardPlay(host);
+        return { ok: true };
+      }
+
       const onFail = getOnFailEffects(card);
       const damageEffect = onFail.find((effect) => effect.action === 'damage');
       const amount = this.applyDamageBuffs(
@@ -617,9 +704,30 @@ export class CardPlayService {
       applyLockedModifiers(timingContext);
       context.responsesRequired = timingContext.responsesRequired ?? 1;
       setCardPlayContext(host.getState().resolution.context, context);
+      this.commitPlayedCard(host, source, card, context, finalTargets);
       host.setPrompt(null);
       host.scheduleAoeTargets(source.id, context.targetPlayerIds);
       return { ok: true, scheduleAoe: true };
+    }
+
+    if (card.id === 'jiedao_sharen' && finalTargets.length >= 2) {
+      const holder = finalTargets[0]!;
+      const victim = finalTargets[1]!;
+      context.jiedaoHolderId = holder.id;
+      context.jiedaoVictimId = victim.id;
+      context.jiedaoActive = true;
+      context.responseType = 'sha';
+      context.responsesRequired = 1;
+      context.responseCount = 0;
+      context.awaitingResponseFrom = holder.id;
+      setCardPlayContext(host.getState().resolution.context, context);
+      this.commitPlayedCard(host, source, card, context, finalTargets);
+      return this.promptResponse(host, card, source, holder, context);
+    }
+
+    if (card.effects.some((effect) => effect.action === 'distributeRevealed')) {
+      this.commitPlayedCard(host, source, card, context, finalTargets);
+      return this.startWuguDistribution(host, source, context);
     }
 
     if (responseType && finalTargets.length > 0) {
@@ -913,6 +1021,99 @@ export class CardPlayService {
 
   private clearCardPlay(host: CardPlayHost): void {
     setCardPlayContext(host.getState().resolution.context, undefined);
+  }
+
+  private startWuguDistribution(
+    host: CardPlayHost,
+    source: EnginePlayerState,
+    context: CardPlayContext,
+  ): { ok: boolean; paused?: boolean } {
+    const alive = host
+      .getState()
+      .players.filter((player) => player.hp > 0)
+      .sort((a, b) => a.seat - b.seat);
+    const revealCount = alive.length;
+    const revealed = host.getDeck().drawMany(revealCount);
+    if (revealed.length === 0) {
+      host.log('牌堆已空，【五谷丰登】无牌可亮');
+      this.clearCardPlay(host);
+      host.setPrompt(null);
+      return { ok: true };
+    }
+    context.wuguRevealed = revealed;
+    context.wuguPickerQueue = sortAoeTargets(host.getState().players, source, alive).map(
+      (player) => player.id,
+    );
+    setCardPlayContext(host.getState().resolution.context, context);
+    host.log(
+      `【五谷丰登】亮出 ${revealed.length} 张牌：${revealed.map((card) => `【${card}】`).join(' ')}`,
+    );
+    return this.promptNextWuguPick(host, context);
+  }
+
+  private promptNextWuguPick(
+    host: CardPlayHost,
+    context: CardPlayContext,
+  ): { ok: boolean; paused?: boolean } {
+    const queue = context.wuguPickerQueue ?? [];
+    const revealed = context.wuguRevealed ?? [];
+    if (queue.length === 0 || revealed.length === 0) {
+      this.clearCardPlay(host);
+      host.setPrompt(null);
+      host.log('【五谷丰登】分配完毕');
+      return { ok: true };
+    }
+    const pickerId = queue[0]!;
+    const picker = host.getState().players.find((player) => player.id === pickerId);
+    if (!picker || picker.hp <= 0) {
+      context.wuguPickerQueue = queue.slice(1);
+      setCardPlayContext(host.getState().resolution.context, context);
+      return this.promptNextWuguPick(host, context);
+    }
+    host.setPrompt({
+      id: nextPromptId(),
+      type: 'pick_revealed',
+      playerId: picker.id,
+      cardName: '五谷丰登',
+      message: `${picker.generalName}：请从亮出的牌中选择一张获得`,
+      options: revealed.map((cardName, index) => ({
+        id: `revealed:${index}`,
+        label: `获得【${cardName}】`,
+      })),
+    });
+    return { ok: true, paused: true };
+  }
+
+  submitPickRevealed(
+    host: CardPlayHost,
+    playerId: string,
+    promptId: string,
+    choiceId: string,
+  ): { ok: boolean; error?: string; paused?: boolean } {
+    const prompt = host.getState().prompt;
+    const context = this.requireCardPlay(host);
+    if (!prompt || prompt.id !== promptId || !context) {
+      return { ok: false, error: '提示已失效' };
+    }
+    if (prompt.type !== 'pick_revealed' || prompt.playerId !== playerId) {
+      return { ok: false, error: '当前不能选牌' };
+    }
+    const match = choiceId.match(/^revealed:(\d+)$/);
+    if (!match) return { ok: false, error: '请选择一张亮出的牌' };
+    const index = Number(match[1]);
+    const revealed = context.wuguRevealed ?? [];
+    if (index < 0 || index >= revealed.length) {
+      return { ok: false, error: '所选牌无效' };
+    }
+    const picker = host.getState().players.find((player) => player.id === playerId);
+    if (!picker) return { ok: false, error: '玩家不存在' };
+    const picked = revealed.splice(index, 1)[0]!;
+    picker.handCards.push(picked);
+    host.log(`${picker.generalName} 从【五谷丰登】中获得【${picked}】`);
+    context.wuguRevealed = revealed;
+    context.wuguPickerQueue = (context.wuguPickerQueue ?? []).slice(1);
+    setCardPlayContext(host.getState().resolution.context, context);
+    return this.promptNextWuguPick(host, context);
   }
 
   private promptZoneCardPick(

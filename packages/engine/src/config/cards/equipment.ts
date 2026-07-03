@@ -141,4 +141,14 @@ export const EQUIPMENT_CARDS: CardDefinition[] = [
     targeting: { selector: 'self' },
     effects: [{ action: 'equip', params: { slot: 'horse_minus' } }],
   },
+  {
+    id: 'muniu_liuma',
+    name: '木牛流马',
+    type: 'equipment',
+    subType: 'treasure',
+    description: '宝物。可将一张手牌扣置于木牛下称为「粮」；可移动给其他角色装备。',
+    canInitiate: true,
+    targeting: { selector: 'self' },
+    effects: [{ action: 'equip', params: { slot: 'treasure' } }],
+  },
 ];

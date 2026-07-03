@@ -14,6 +14,8 @@ const DECK_COUNTS: Record<string, number> = {
   南蛮入侵: 3,
   万箭齐发: 1,
   桃园结义: 1,
+  五谷丰登: 2,
+  借刀杀人: 2,
   无懈可击: 4,
   乐不思蜀: 3,
   兵粮寸断: 2,
@@ -32,6 +34,7 @@ const DECK_COUNTS: Record<string, number> = {
   赤兔: 1,
   大宛: 1,
   紫骍: 1,
+  木牛流马: 1,
 };
 
 export function buildStandardDeck(): string[] {

@@ -92,6 +92,32 @@ export const TRICK_CARDS: CardDefinition[] = [
     ],
   },
   {
+    id: 'wugu_fengdeng',
+    name: '五谷丰登',
+    type: 'trick',
+    subType: 'instant',
+    description: '亮出牌堆顶等于存活角色数的牌，每名角色选一张获得。',
+    canInitiate: true,
+    targeting: { selector: 'all' },
+    effects: [{ action: 'distributeRevealed' }],
+  },
+  {
+    id: 'jiedao_sharen',
+    name: '借刀杀人',
+    type: 'trick',
+    subType: 'instant',
+    description:
+      '令一名有武器的其他角色对攻击范围内另一名其他角色使用一张【杀】，否则你获得其武器。',
+    canInitiate: true,
+    targeting: {
+      selector: 'choose',
+      count: { min: 2, max: 2 },
+      filter: { relation: ['other'], alive: true },
+      range: { type: 'unlimited' },
+    },
+    effects: [{ action: 'promptResponse', params: { responseType: 'sha', jiedao: true } }],
+  },
+  {
     id: 'taoyuan_jieyi',
     name: '桃园结义',
     type: 'trick',

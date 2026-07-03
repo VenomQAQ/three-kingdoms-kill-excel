@@ -8,7 +8,8 @@ export type PromptType =
   | 'dying_rescue'
   | 'discard_cards'
   | 'modify_judge'
-  | 'select_zone_card';
+  | 'select_zone_card'
+  | 'pick_revealed';
 
 export interface PromptSkillInfo {
   id: string;

@@ -198,6 +198,9 @@ export function GamePromptModal({
     if (prompt.type === 'response') {
       return '请进行响应';
     }
+    if (prompt.type === 'pick_revealed') {
+      return '五谷丰登 · 选牌';
+    }
     if (prompt.type === 'dying_rescue') {
       return '濒死救助';
     }

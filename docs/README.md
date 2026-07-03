@@ -14,6 +14,8 @@
 | [gameplay.md](./gameplay.md) | 身份局玩法规则、阶段流程、胜负条件 |
 | [ui-disguise.md](./ui-disguise.md) | WPS Excel 伪装 UI 设计规范 |
 | [development.md](./development.md) | 本地开发、API、组件与测试房说明 |
+| [qa/formal-room-test-plan.md](./qa/formal-room-test-plan.md) | 正式房大厅 + 身份局 + M3 手工验收用例 |
+| [reqs/REQ-2026-002-game-core-m3/](./reqs/REQ-2026-002-game-core-m3/) | M3 锦囊/装备 + 正式房等待大厅 PRD 与设计 |
 | [cards/identity.md](./cards/identity.md) | 身份牌收录（10 张） |
 | [cards/characters.md](./cards/characters.md) | 武将牌收录（界限突破 30 将） |
 | [cards/basic.md](./cards/basic.md) | 基本牌收录（杀/闪/桃） |
@@ -51,6 +53,10 @@
 | 测试房：过河拆桥/顺手牵羊选区域牌（手牌匿名，日志不泄露暗牌） | ✅ |
 | 测试房：弹窗交互、自动切控、断线重连、名称净化显示、处理中弹窗折叠恢复 | ✅ |
 | 测试房：无懈可击、延时锦囊按花色判定、卡牌说明弹窗 | ✅ |
-| AOE TargetQueue 完整接线 | 🚧 |
+| AOE TargetQueue + 锦囊消耗 + 阵亡跳过 | ✅ |
+| M3 锦囊：五谷丰登 / 借刀杀人 | ✅ |
+| M3 装备：八卦阵判定闪 / 木牛流马宝物槽 | ✅ |
+| 正式房：等待大厅准备/开始 | ✅ |
+| 正式房间对局 Gateway（game:*） | 🚧 |
 | 30 将技能全量接线 | 🚧 |
-| 正式房间对局（非 sandbox） | 🔲 |
+| 观战模式 | 🔲（延后） |

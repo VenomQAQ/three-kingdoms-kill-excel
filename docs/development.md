@@ -41,6 +41,7 @@
 | `room:ready` | C→S | 准备 |
 | `room:start` | C→S | 开局 |
 | `room:state` | S→C | 房间状态广播 |
+| `auth:hello` | S→C | 连接后身份帧（含 `playerId`，用于重连对齐座位） |
 | `room:error` | S→C | 操作失败（含引擎异常信息） |
 | `chat:send` | C→S | 发送聊天 |
 | `chat:message` | S→C | 聊天消息 |
@@ -91,6 +92,7 @@
 | `RoomListGrid` | `RoomListGrid.tsx` | 房间列表 Sheet |
 | `BattleGrid` | `BattleGrid.tsx` | 对局战场表格，右侧含操作区日志与聊天区 |
 | `GameGrid` | `GameGrid.tsx` | 按 `room.status` 切换 Lobby/Battle |
+| `LobbyGrid` | `LobbyGrid.tsx` | 正式房等待大厅表格；本人「准备」列可单击切换 |
 
 ## 测试房常量
 
@@ -102,7 +104,9 @@
 
 - `client/src/utils/display.ts` 统一处理“界”前缀剥离、日志/Prompt 文案净化、房间数据展示态清洗
 - `appStore.connect()` 会复用已有 socket 实例，避免重复创建连接
-- `room:created`、`room:joined`、`room:state` 均先经过 `sanitizeRoom()` 再进入前端状态
+- `room:created`、`room:joined`、`room:state` 均经 `sanitizeRoom()` + `applyRoomState()` 写入状态；若本地 `playerId` 与房间座位不一致，按昵称回对齐
+- `auth:hello.playerId` 在 socket 重连后刷新客户端 `playerId`，避免 Ribbon「准备」与表格点击失效
+- 正式房等待大厅：Ribbon「准备」、公式栏 `/ready`、本人行「准备」列单击均可切换准备状态（测试房禁用 Ribbon 准备）
 
 ## 本地调试建议
 
@@ -118,6 +122,6 @@
 |------|------|------|
 | M1 | WPS 壳、房间、聊天、房间列表、测试房 UI | ✅ |
 | M2 | `@tk/engine` 配置驱动引擎、测试房完整交互 | ✅ |
-| M3 | 标准锦囊全套 + 装备 + AOE TargetQueue | 🚧 |
+| M3 | 标准锦囊全套 + 装备 + AOE TargetQueue | ✅ |
 | M4 | 界限突破 30 将技能接线 | 🚧 |
-| M5 | 正式房间对局、断线重连、观战 | 🔲 |
+| M5 | 正式房间对局打磨、断线重连、观战（观战延后） | 🚧 |
