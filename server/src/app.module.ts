@@ -7,7 +7,10 @@ import { RoomModule } from './modules/room/room.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CapabilitiesModule } from './modules/capabilities/capabilities.module';
+import { LobbyChatModule } from './modules/lobby-chat/lobby-chat.module';
+import { DebugModule } from './modules/debug/debug.module';
 import { GameGateway } from './gateway/game.gateway';
+import { User } from './modules/auth/entities/user.entity';
 
 const sqlitePath = isAbsolute(env.sqlitePath)
   ? env.sqlitePath
@@ -27,6 +30,9 @@ mkdirSync(dirname(sqlitePath), { recursive: true });
     CapabilitiesModule,
     RoomModule,
     ChatModule,
+    LobbyChatModule,
+    TypeOrmModule.forFeature([User]), // gateway 用（version:switch 需更新 preferredVersion）
+    ...(env.debugClockEnabled ? [DebugModule] : []),
   ],
   providers: [GameGateway],
 })

@@ -98,6 +98,7 @@ export class SocketAuthService {
 
   /**
    * 强断某用户的所有 socket。
+   * 打上 forceEvict 标记，让 gateway 的 handleDisconnect 立即回收（不走 5min 保坐）。
    */
   disconnectByUser(userId: string): number {
     if (!this.server) return 0;
@@ -107,6 +108,7 @@ export class SocketAuthService {
     for (const sid of Array.from(set)) {
       const socket = this.server.sockets.sockets.get(sid);
       if (socket) {
+        (socket.data as any).forceEvict = true;
         socket.disconnect(true);
         count += 1;
       }

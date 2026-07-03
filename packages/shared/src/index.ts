@@ -97,6 +97,8 @@ export interface Room {
   code: string;
   hostId: string;
   maxPlayers: number;
+  /** 三国杀版本 id（REQ-2026-001）；老 room 兼容默认 'standard-2014' */
+  versionId?: string;
   players: RoomPlayer[];
   status: RoomStatus;
   settings: RoomSettings;
@@ -111,6 +113,7 @@ export interface RoomListItem {
   playerCount: number;
   maxPlayers: number;
   hostNickname: string;
+  versionId?: string;
   isSandbox?: boolean;
 }
 

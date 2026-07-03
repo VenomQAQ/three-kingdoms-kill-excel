@@ -2,7 +2,8 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { SangokushiEngine } from '@tk/engine';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  MAX_ROOM_PLAYERS,
+  DEFAULT_VERSION_ID,
+  findVersion,
   Room,
   RoomListItem,
   RoomPlayer,
@@ -20,6 +21,8 @@ export class RoomService implements OnModuleInit {
   private readonly roomsById = new Map<string, Room>();
   private readonly roomIdByCode = new Map<string, string>();
   private readonly playerRoom = new Map<string, string>();
+  /** userId → playerId（当前活跃的 socket-scoped id） */
+  private readonly userPlayer = new Map<string, string>();
 
   constructor(private readonly gameService: GameService) {}
 
@@ -27,13 +30,81 @@ export class RoomService implements OnModuleInit {
     this.ensureSandboxRoom();
   }
 
-  createRoom(hostId: string, nickname: string): Room {
+  /**
+   * BE-8：断线保坐用。给 gateway/reconnect.service 调用的最小接口。
+   */
+  getRoomOfPlayer(playerId: string): Room | null {
+    const roomId = this.playerRoom.get(playerId);
+    if (!roomId) return null;
+    return this.roomsById.get(roomId) ?? null;
+  }
+  markPlayerDisconnected(playerId: string): void {
+    const room = this.getRoomOfPlayer(playerId);
+    if (!room) return;
+    const p = room.players.find((x) => x.id === playerId);
+    if (p) p.connected = false;
+  }
+  bindUserPlayer(userId: string, playerId: string): void {
+    this.userPlayer.set(userId, playerId);
+  }
+  unbindUserPlayer(userId: string): void {
+    this.userPlayer.delete(userId);
+  }
+  getPlayerIdByUser(userId: string): string | null {
+    return this.userPlayer.get(userId) ?? null;
+  }
+  /**
+   * 5min 到期或改密强制回收：将 userId 对应的座位真正 leaveRoom。
+   */
+  evictByUser(userId: string): { room: Room | null; removed: boolean } {
+    const playerId = this.userPlayer.get(userId);
+    if (!playerId) return { room: null, removed: false };
+    this.userPlayer.delete(userId);
+    return this.leaveRoom(playerId);
+  }
+  /**
+   * 重连时把老 playerId 的座位迁移到新 playerId 上。
+   * 若老 playerId 已不在房间（可能已被 evict），返回 null 让上层走"重新加入"。
+   */
+  rebindUserPlayer(userId: string, oldPlayerId: string, newPlayerId: string): Room | null {
+    if (oldPlayerId === newPlayerId) {
+      this.userPlayer.set(userId, newPlayerId);
+      return this.roomsById.get(this.playerRoom.get(newPlayerId) ?? '') ?? null;
+    }
+    const roomId = this.playerRoom.get(oldPlayerId);
+    if (!roomId) return null;
+    const room = this.roomsById.get(roomId);
+    if (!room) return null;
+    const player = room.players.find((p) => p.id === oldPlayerId);
+    if (!player) return null;
+    player.id = newPlayerId;
+    player.connected = true;
+    this.playerRoom.delete(oldPlayerId);
+    this.playerRoom.set(newPlayerId, roomId);
+    if (room.hostId === oldPlayerId) room.hostId = newPlayerId;
+    this.userPlayer.set(userId, newPlayerId);
+    // sandbox 引擎里的 playerId 也要迁移
+    if (room.isSandbox && room.status === 'playing') {
+      this.gameService.remapSandboxPlayerId(room.id, oldPlayerId, newPlayerId);
+      const engine = this.gameService.getSandboxEngine(room.id);
+      if (engine) this.gameService.syncRoomFromEngine(room, engine);
+    }
+    return room;
+  }
+
+  createRoom(hostId: string, nickname: string, versionId: string = DEFAULT_VERSION_ID): Room {
+    const version = findVersion(versionId);
+    if (!version) {
+      throw new RoomError('VERSION_UNKNOWN', `未知版本 ${versionId}`);
+    }
+    const maxPlayers = version.maxPlayers;
     const code = this.generateUniqueCode();
     const room: Room = {
       id: uuidv4(),
       code,
       hostId,
-      maxPlayers: MAX_ROOM_PLAYERS,
+      maxPlayers,
+      versionId: version.id,
       players: [
         {
           id: hostId,
@@ -43,7 +114,7 @@ export class RoomService implements OnModuleInit {
         },
       ],
       status: 'waiting',
-      settings: { maxPlayers: MAX_ROOM_PLAYERS },
+      settings: { maxPlayers },
       createdAt: Date.now(),
     };
     this.roomsById.set(room.id, room);
@@ -155,14 +226,17 @@ export class RoomService implements OnModuleInit {
   ensureSandboxRoom(): Room {
     const existing = this.getRoomByCode(SANDBOX_ROOM_CODE);
     if (existing) return existing;
+    const version = findVersion(DEFAULT_VERSION_ID)!;
+    const maxPlayers = version.maxPlayers;
     const room: Room = {
       id: uuidv4(),
       code: SANDBOX_ROOM_CODE,
       hostId: '',
-      maxPlayers: MAX_ROOM_PLAYERS,
+      maxPlayers,
+      versionId: version.id,
       players: [],
       status: 'waiting',
-      settings: { maxPlayers: MAX_ROOM_PLAYERS },
+      settings: { maxPlayers },
       createdAt: Date.now(),
       isSandbox: true,
       sandbox: { phase: 'lobby', turnIndex: 0, round: 1, log: [] },
@@ -576,10 +650,11 @@ export class RoomService implements OnModuleInit {
     return room;
   }
 
-  listPublicRooms(): RoomListItem[] {
+  listPublicRooms(versionFilter?: string): RoomListItem[] {
     this.ensureSandboxRoom();
     return [...this.roomsById.values()]
       .filter((r) => r.players.length > 0 || r.isSandbox)
+      .filter((r) => !versionFilter || (r.versionId ?? DEFAULT_VERSION_ID) === versionFilter)
       .map((r) => ({
         code: r.code,
         status: r.status,
@@ -587,6 +662,7 @@ export class RoomService implements OnModuleInit {
         maxPlayers: r.maxPlayers,
         hostNickname:
           r.players.find((p) => p.id === r.hostId)?.nickname ?? '—',
+        versionId: r.versionId ?? DEFAULT_VERSION_ID,
         isSandbox: r.isSandbox,
       }))
       .sort((a, b) => {

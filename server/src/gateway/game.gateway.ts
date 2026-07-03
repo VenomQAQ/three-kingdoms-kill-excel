@@ -16,9 +16,16 @@ import {
   RoomJoinAck,
   ServerToClientEvents,
 } from '@tk/shared';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { findVersion } from '@tk/shared';
+import { env } from '../config/env';
 import { ChatError, ChatService } from '../modules/chat/chat.service';
 import { RoomError, RoomService } from '../modules/room/room.service';
+import { ReconnectService } from '../modules/room/reconnect.service';
 import { SocketAuthService } from '../modules/auth/socket-auth.service';
+import { LobbyChatService } from '../modules/lobby-chat/lobby-chat.service';
+import { User } from '../modules/auth/entities/user.entity';
 
 type GameSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
@@ -40,10 +47,28 @@ export class GameGateway
     private readonly roomService: RoomService,
     private readonly chatService: ChatService,
     private readonly socketAuth: SocketAuthService,
+    private readonly reconnect: ReconnectService,
+    private readonly lobbyChat: LobbyChatService,
+    @InjectRepository(User) private readonly userRepo: Repository<User>,
   ) {}
 
   afterInit() {
     this.socketAuth.bindServer(this.server as unknown as Server);
+    // BE-11：sandbox 门控 —— SANDBOX_ENABLED=false 时拦所有 sandbox:* 事件
+    (this.server as unknown as Server).use((socket, next) => {
+      socket.use((packet: any, nextEvent) => {
+        const eventName = Array.isArray(packet) ? String(packet[0] ?? '') : '';
+        if (!env.sandboxEnabled && eventName.startsWith('sandbox:')) {
+          (socket as any).emit('room:error', {
+            code: 'E_SANDBOX_DISABLED',
+            message: '测试房未启用',
+          });
+          return; // 不 next
+        }
+        nextEvent();
+      });
+      next();
+    });
   }
 
   async handleConnection(client: GameSocket) {
@@ -53,6 +78,23 @@ export class GameGateway
 
     // 认证（无 tk_at 或无效 → 匿名连接）
     const auth = await this.socketAuth.authenticate(client as unknown as Socket);
+
+    // BE-8：若命中 pending reclaim，认领之前的座位
+    if (auth.userId) {
+      const cancelled = this.reconnect.cancelReclaim(auth.userId);
+      if (cancelled) {
+        const oldPlayerId = this.roomService.getPlayerIdByUser(auth.userId);
+        if (oldPlayerId) {
+          const room = this.roomService.rebindUserPlayer(auth.userId, oldPlayerId, playerId);
+          if (room) {
+            void client.join(room.id);
+            client.emit('room:state', room);
+          }
+        }
+      }
+      this.roomService.bindUserPlayer(auth.userId, playerId);
+    }
+
     // 首帧 auth:hello（事件不在既有 typed events 中，用 any 逃避类型）
     (client as any).emit('auth:hello', {
       userId: auth.userId,
@@ -64,6 +106,24 @@ export class GameGateway
 
   handleDisconnect(client: GameSocket) {
     const playerId = this.getPlayerId(client);
+    const userId = (client.data as any).userId as string | undefined;
+    const forceEvict = (client.data as any).forceEvict === true;
+
+    if (userId && !forceEvict) {
+      // BE-8：已认证 socket 断线 → 5min 保坐
+      const inRoom = !!this.roomService.getPlayerIdByUser(userId);
+      if (inRoom) {
+        this.reconnect.scheduleReclaim(userId);
+        this.roomService.markPlayerDisconnected(playerId);
+        const roomState = this.roomService.getRoomOfPlayer(playerId);
+        if (roomState) this.broadcastRoomState(roomState.id);
+      }
+      this.socketPlayer.delete(client.id);
+      this.socketAuth.onDisconnect(client as unknown as Socket);
+      return;
+    }
+
+    // 匿名 or forceEvict → 立即离房
     try {
       const { room, removed } = this.roomService.leaveRoom(playerId);
       if (room) {
@@ -76,6 +136,10 @@ export class GameGateway
     } catch {
       // player was not in a room
     }
+    if (userId && forceEvict) {
+      // 立即清 userId 索引，避免残留
+      this.roomService.unbindUserPlayer(userId);
+    }
     this.socketPlayer.delete(client.id);
     this.socketAuth.onDisconnect(client as unknown as Socket);
   }
@@ -83,7 +147,7 @@ export class GameGateway
   @SubscribeMessage('room:create')
   handleCreate(
     @ConnectedSocket() client: GameSocket,
-    @MessageBody() payload: { nickname: string },
+    @MessageBody() payload: { nickname: string; versionId?: string },
     ack?: (res: RoomCreateAck) => void,
   ) {
     const playerId = this.getPlayerId(client);
@@ -91,6 +155,7 @@ export class GameGateway
       const room = this.roomService.createRoom(
         playerId,
         payload?.nickname ?? '',
+        payload?.versionId,
       );
       void client.join(room.id);
       client.emit('room:created', room);
@@ -519,6 +584,17 @@ export class GameGateway
     @ConnectedSocket() client: GameSocket,
     @MessageBody() payload: { content: string },
   ) {
+    // BE-10：匿名不允许发言
+    const userId = (client.data as any).userId as string | undefined;
+    if (!userId) {
+      (client as any).emit('chat:error', {
+        code: 'E_UNAUTHORIZED',
+        message: '请先登录',
+        scope: 'room',
+        _v: 1,
+      });
+      return;
+    }
     const playerId = this.getPlayerId(client);
     try {
       const room = this.roomService.getRoomByPlayerId(playerId);
@@ -529,7 +605,7 @@ export class GameGateway
         player?.nickname ?? '玩家',
         payload?.content ?? '',
       );
-      this.server.to(room.id).emit('chat:message', message);
+      this.server.to(room.id).emit('chat:message', { ...message, _v: 1 } as any);
     } catch (err) {
       this.emitError(client, err);
     }
@@ -547,6 +623,78 @@ export class GameGateway
     } catch {
       ack?.([]);
     }
+  }
+
+  // ==== BE-9 · 大厅聊天 ====
+
+  @SubscribeMessage('lobby:chat:send')
+  async handleLobbyChatSend(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { content: string },
+  ) {
+    const userId = (client.data as any).userId as string | undefined;
+    const nickname = ((client.data as any).nickname as string | undefined) ?? '玩家';
+    if (!userId) {
+      (client as any).emit('chat:error', {
+        code: 'E_CHAT_MUTED',
+        message: '请先登录后发送',
+        scope: 'lobby',
+        _v: 1,
+      });
+      return;
+    }
+    const result = await this.lobbyChat.send(userId, nickname, payload?.content ?? '');
+    if (!result.ok) {
+      (client as any).emit('chat:error', {
+        code: result.code,
+        message: result.message,
+        scope: 'lobby',
+        _v: 1,
+      });
+      return;
+    }
+    // 广播全体（含匿名订阅者）
+    this.server.emit('lobby:chat:message' as any, result.message);
+  }
+
+  @SubscribeMessage('lobby:chat:snapshot')
+  async handleLobbyChatSnapshot(
+    @ConnectedSocket() _client: GameSocket,
+    ack?: (messages: unknown[]) => void,
+  ) {
+    const rows = await this.lobbyChat.snapshot();
+    ack?.(rows);
+  }
+
+  // ==== BE-13 · 版本切换 ====
+
+  @SubscribeMessage('version:switch')
+  async handleVersionSwitch(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { versionId: string },
+  ) {
+    const userId = (client.data as any).userId as string | undefined;
+    if (!userId) {
+      (client as any).emit('room:error', {
+        code: 'E_UNAUTHORIZED',
+        message: '请先登录',
+      });
+      return;
+    }
+    const version = findVersion(payload?.versionId ?? '');
+    if (!version) {
+      (client as any).emit('room:error', {
+        code: 'E_VERSION_UNKNOWN',
+        message: '未知版本',
+      });
+      return;
+    }
+    await this.userRepo.update({ id: userId }, { preferredVersion: version.id });
+    // 广播到该 userId 的所有 socket（包括自己）
+    this.socketAuth.emitToUser(userId, 'version:switched', {
+      versionId: version.id,
+      _v: 1,
+    });
   }
 
   private broadcastRoomState(roomId: string) {
