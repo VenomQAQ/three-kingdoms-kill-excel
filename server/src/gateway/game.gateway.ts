@@ -3,6 +3,7 @@ import {
   MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
@@ -17,6 +18,7 @@ import {
 } from '@tk/shared';
 import { ChatError, ChatService } from '../modules/chat/chat.service';
 import { RoomError, RoomService } from '../modules/room/room.service';
+import { SocketAuthService } from '../modules/auth/socket-auth.service';
 
 type GameSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
@@ -26,7 +28,9 @@ type GameSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
     credentials: true,
   },
 })
-export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class GameGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server!: Server<ClientToServerEvents, ServerToClientEvents>;
 
@@ -35,12 +39,27 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly roomService: RoomService,
     private readonly chatService: ChatService,
+    private readonly socketAuth: SocketAuthService,
   ) {}
 
-  handleConnection(client: GameSocket) {
+  afterInit() {
+    this.socketAuth.bindServer(this.server as unknown as Server);
+  }
+
+  async handleConnection(client: GameSocket) {
     const playerId = uuidv4();
     this.socketPlayer.set(client.id, playerId);
     client.data.playerId = playerId;
+
+    // 认证（无 tk_at 或无效 → 匿名连接）
+    const auth = await this.socketAuth.authenticate(client as unknown as Socket);
+    // 首帧 auth:hello（事件不在既有 typed events 中，用 any 逃避类型）
+    (client as any).emit('auth:hello', {
+      userId: auth.userId,
+      nickname: auth.nickname,
+      preferredVersion: auth.preferredVersion,
+      _v: 1,
+    });
   }
 
   handleDisconnect(client: GameSocket) {
@@ -58,6 +77,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // player was not in a room
     }
     this.socketPlayer.delete(client.id);
+    this.socketAuth.onDisconnect(client as unknown as Socket);
   }
 
   @SubscribeMessage('room:create')

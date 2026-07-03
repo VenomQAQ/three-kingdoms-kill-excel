@@ -198,3 +198,5 @@ export const WS_EVENTS = {
 
 export const MAX_ROOM_PLAYERS = 10;
 export const ROOM_CODE_LENGTH = 8;
+
+export * from './versions';

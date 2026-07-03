@@ -1,15 +1,20 @@
+import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { env } from './config/env';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: false });
   app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',') ?? ['http://localhost:5173'],
+    origin: env.corsOrigins,
     credentials: true,
   });
-  const port = process.env.PORT ?? 3000;
-  await app.listen(port);
-  console.log(`Server listening on http://localhost:${port}`);
+  app.use(cookieParser());
+  await app.listen(env.port);
+  console.log(`[server] listening on http://localhost:${env.port}`);
+  console.log(`[server] sqlite = ${env.sqlitePath}`);
+  console.log(`[server] sandboxEnabled = ${env.sandboxEnabled}, debugClock = ${env.debugClockEnabled}`);
 }
 
 bootstrap();

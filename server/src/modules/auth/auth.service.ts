@@ -1,0 +1,187 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ulid } from 'ulid';
+import { ErrorCodes } from '../../common/error-codes';
+import { User } from './entities/user.entity';
+import { PasswordService } from './password.service';
+import { TokenService } from './token.service';
+import { LoginRateLimiter } from './login-rate-limiter';
+import { SocketAuthService } from './socket-auth.service';
+
+const QQ_EMAIL_RE = /^\d{5,11}@qq\.com$/i;
+const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9!@#$%^&*_.-]{8,32}$/;
+
+function throwCode(exception: 'bad' | 'conflict' | 'unauth', code: string, message: string): never {
+  if (exception === 'bad') throw new BadRequestException({ ok: false, code, message, _v: 1 });
+  if (exception === 'conflict') throw new ConflictException({ ok: false, code, message, _v: 1 });
+  throw new UnauthorizedException({ ok: false, code, message, _v: 1 });
+}
+
+export interface RegisterInput {
+  email: string;
+  password: string;
+  nickname: string;
+}
+
+export interface LoginInput {
+  email: string;
+  password: string;
+  ip: string;
+}
+
+export interface AuthPair {
+  userId: string;
+  email: string;
+  nickname: string;
+  preferredVersion: string;
+  accessToken: string;
+  accessExpiresIn: number;
+  refreshToken: string;
+  refreshExpiresAt: Date;
+}
+
+@Injectable()
+export class AuthService {
+  private readonly logger = new Logger('AuthService');
+
+  constructor(
+    @InjectRepository(User) private readonly userRepo: Repository<User>,
+    private readonly pwd: PasswordService,
+    private readonly tokens: TokenService,
+    private readonly limiter: LoginRateLimiter,
+    private readonly socketAuth: SocketAuthService,
+  ) {}
+
+  // ---- Register ----
+
+  async register(input: RegisterInput): Promise<AuthPair> {
+    const email = typeof input?.email === 'string' ? input.email.trim().toLowerCase() : '';
+    const nickname = typeof input?.nickname === 'string' ? input.nickname.trim() : '';
+    const password = typeof input?.password === 'string' ? input.password : '';
+
+    if (!QQ_EMAIL_RE.test(email)) {
+      throwCode('bad', ErrorCodes.INVALID_EMAIL, '邮箱必须为 QQ 邮箱（数字@qq.com）');
+    }
+    if (!PASSWORD_RE.test(password)) {
+      throwCode('bad', ErrorCodes.WEAK_PASSWORD, '密码需 8-32 位，且同时包含字母和数字');
+    }
+    if (nickname.length < 1 || nickname.length > 20) {
+      throwCode('bad', ErrorCodes.WEAK_PASSWORD, '昵称长度需 1-20 字符');
+    }
+
+    const exists = await this.userRepo.findOne({ where: { email } });
+    if (exists) {
+      throwCode('conflict', ErrorCodes.USER_EXISTS, '该邮箱已注册');
+    }
+
+    const passwordHash = await this.pwd.hash(password);
+    const user = await this.userRepo.save(
+      this.userRepo.create({
+        id: ulid(),
+        email,
+        passwordHash,
+        nickname,
+        preferredVersion: 'standard-2014',
+        lastLoginAt: new Date(),
+      }),
+    );
+    this.logger.log(`register user=${user.id} email=${email}`);
+    return this.issuePair(user);
+  }
+
+  // ---- Login ----
+
+  async login(input: LoginInput): Promise<AuthPair> {
+    const email = typeof input?.email === 'string' ? input.email.trim().toLowerCase() : '';
+    const password = typeof input?.password === 'string' ? input.password : '';
+    const ip = input?.ip ?? 'unknown';
+    if (!email || !password) {
+      throwCode('unauth', ErrorCodes.BAD_CREDENTIALS, '邮箱或密码错误');
+    }
+    if (this.limiter.isBlocked(ip, email)) {
+      throwCode('unauth', ErrorCodes.LOGIN_RATE_LIMIT, '登录尝试过于频繁，请稍后再试');
+    }
+
+    const user = await this.userRepo.findOne({ where: { email } });
+    const ok = user ? await this.pwd.verify(user.passwordHash, password) : false;
+    if (!user || !ok) {
+      this.limiter.recordFailure(ip, email);
+      throwCode('unauth', ErrorCodes.BAD_CREDENTIALS, '邮箱或密码错误');
+    }
+
+    this.limiter.recordSuccess(ip, email);
+    user.lastLoginAt = new Date();
+    await this.userRepo.save(user);
+    this.logger.log(`login user=${user.id}`);
+    return this.issuePair(user);
+  }
+
+  // ---- Logout ----
+
+  async logout(refreshToken?: string): Promise<void> {
+    if (!refreshToken) return;
+    await this.tokens.revokeByToken(refreshToken, 'logout');
+  }
+
+  // ---- Change Password ----
+
+  async changePassword(userId: string, oldPassword: string, newPassword: string): Promise<void> {
+    const oldPwd = typeof oldPassword === 'string' ? oldPassword : '';
+    const newPwd = typeof newPassword === 'string' ? newPassword : '';
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throwCode('unauth', ErrorCodes.UNAUTHORIZED, '会话已失效');
+    const ok = await this.pwd.verify(user!.passwordHash, oldPwd);
+    if (!ok) throwCode('bad', ErrorCodes.PASSWORD_MISMATCH, '原密码错误');
+    if (!PASSWORD_RE.test(newPwd)) {
+      throwCode('bad', ErrorCodes.WEAK_PASSWORD, '密码需 8-32 位，且同时包含字母和数字');
+    }
+    user!.passwordHash = await this.pwd.hash(newPwd);
+    await this.userRepo.save(user!);
+    await this.tokens.revokeAllByUser(userId, 'password-changed');
+
+    // 广播 auth:invalidated 并强断所有该账号的 socket
+    this.socketAuth.emitToUser(userId, 'auth:invalidated', {
+      reason: 'password-changed',
+      _v: 1,
+    });
+    this.socketAuth.disconnectByUser(userId);
+
+    this.logger.log(`change-password user=${userId}, all refresh revoked`);
+  }
+
+  // ---- Refresh ----
+
+  async refresh(rawRefresh: string) {
+    return this.tokens.rotate(rawRefresh);
+  }
+
+  // ---- Me ----
+
+  async findById(userId: string): Promise<User | null> {
+    return this.userRepo.findOne({ where: { id: userId } });
+  }
+
+  // ---- helpers ----
+
+  private async issuePair(user: User): Promise<AuthPair> {
+    const { token: accessToken, expiresInSec: accessExpiresIn } = this.tokens.signAccess(user.id);
+    const rt = await this.tokens.issueRefresh(user.id);
+    return {
+      userId: user.id,
+      email: user.email,
+      nickname: user.nickname,
+      preferredVersion: user.preferredVersion,
+      accessToken,
+      accessExpiresIn,
+      refreshToken: rt.token,
+      refreshExpiresAt: rt.expiresAt,
+    };
+  }
+}

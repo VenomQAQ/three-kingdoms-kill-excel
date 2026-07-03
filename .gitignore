@@ -8,3 +8,4 @@ build/
 .cursor/
 assets/
 *.tsbuildinfo
+server/data/
