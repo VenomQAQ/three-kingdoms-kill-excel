@@ -95,12 +95,16 @@ export class GameGateway
       this.roomService.bindUserPlayer(auth.userId, playerId);
     }
 
-    // 首帧 auth:hello（事件不在既有 typed events 中，用 any 逃避类型）
-    (client as any).emit('auth:hello', {
-      userId: auth.userId,
-      nickname: auth.nickname,
-      preferredVersion: auth.preferredVersion,
-      _v: 1,
+    // 首帧 auth:hello —— 延后一拍，等客户端挂上 listener
+    setImmediate(() => {
+      if (client.connected) {
+        (client as any).emit('auth:hello', {
+          userId: auth.userId,
+          nickname: auth.nickname,
+          preferredVersion: auth.preferredVersion,
+          _v: 1,
+        });
+      }
     });
   }
 
@@ -658,12 +662,9 @@ export class GameGateway
   }
 
   @SubscribeMessage('lobby:chat:snapshot')
-  async handleLobbyChatSnapshot(
-    @ConnectedSocket() _client: GameSocket,
-    ack?: (messages: unknown[]) => void,
-  ) {
-    const rows = await this.lobbyChat.snapshot();
-    ack?.(rows);
+  async handleLobbyChatSnapshot(): Promise<unknown[]> {
+    // Nest 里 return 会自动作为 ack payload 返回给客户端
+    return this.lobbyChat.snapshot();
   }
 
   // ==== BE-13 · 版本切换 ====
