@@ -644,6 +644,15 @@ export class GameGateway
     }
   }
 
+  // ==== BE-8 · 房间列表（契约 §6.1） ====
+
+  @SubscribeMessage('room:list')
+  handleRoomList(
+    @MessageBody() payload: { versionId?: string },
+  ): ReturnType<RoomService['listPublicRooms']> {
+    return this.roomService.listPublicRooms(payload?.versionId);
+  }
+
   // ==== BE-9 · 大厅聊天 ====
 
   @SubscribeMessage('lobby:chat:send')

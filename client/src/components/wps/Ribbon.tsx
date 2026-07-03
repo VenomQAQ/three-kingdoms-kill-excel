@@ -1,7 +1,9 @@
 import { CharacterRegistry, GameTiming } from '@tk/engine';
 import type { RoomPlayer } from '@tk/shared';
 import { useMemo, useState } from 'react';
+import type { VersionInfo } from '../../api';
 import { stripGeneralPrefixInText } from '../../utils/display';
+import { VersionMenu } from './VersionMenu';
 import styles from './Ribbon.module.css';
 
 export type RibbonTab =
@@ -41,6 +43,10 @@ interface RibbonProps {
   turnPhase?: string;
   canUseSkills?: boolean;
   onUseSkill?: (skillId: string) => void;
+  versions?: VersionInfo[];
+  currentVersionId?: string;
+  onVersionSelect?: (versionId: string) => void;
+  versionDisabled?: boolean;
 }
 
 const SUPPORTED_SKILLS = new Set(['rende', 'zhiheng']);
@@ -52,6 +58,10 @@ export function Ribbon({
   turnPhase,
   canUseSkills = false,
   onUseSkill,
+  versions = [],
+  currentVersionId = 'standard-2014',
+  onVersionSelect,
+  versionDisabled,
 }: RibbonProps) {
   const [tab, setTab] = useState<RibbonTab>('home');
   const currentSkills = useMemo(() => {
@@ -90,6 +100,19 @@ export function Ribbon({
             </button>
           </div>
           <div className={styles.groupDivider} />
+          {versions.length > 0 && onVersionSelect && (
+            <>
+              <div className={styles.group}>
+                <VersionMenu
+                  versions={versions}
+                  currentVersionId={currentVersionId}
+                  disabled={versionDisabled}
+                  onSelect={onVersionSelect}
+                />
+              </div>
+              <div className={styles.groupDivider} />
+            </>
+          )}
           <div className={styles.group}>
             {actions.map((action) => (
               <button

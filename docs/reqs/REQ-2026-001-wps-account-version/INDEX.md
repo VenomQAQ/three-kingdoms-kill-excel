@@ -14,9 +14,9 @@
 | 前端技术方案 | **v1** | [design/frontend-tech-design.v1.md](./design/frontend-tech-design.v1.md) | 消费冻结契约 |
 | 后端任务清单 | **v1** | [tasks/backend-tasks.v1.yaml](./tasks/backend-tasks.v1.yaml) | 13 条 |
 | 前端任务清单 | **v1** | [tasks/frontend-tasks.v1.yaml](./tasks/frontend-tasks.v1.yaml) | 11 条 |
-| 后端代码评审 | — | — | |
-| 前端代码评审 | — | — | |
-| 联调签核 | — | — | |
+| 后端代码评审 | **v2** | [code-review/backend.v2.md](./code-review/backend.v2.md) | pass |
+| 前端代码评审 | **v2** | [code-review/frontend.v2.md](./code-review/frontend.v2.md) | pass |
+| 联调签核 | **v1** | [integration-signoff.v1.yaml](./integration-signoff.v1.yaml) | pass |
 | 测试计划 | **v1** | [qa/test-plan.v1.md](./qa/test-plan.v1.md) | ②③预备完成 |
 | 测试用例 | **v1** | [qa/test-cases.v1.yaml](./qa/test-cases.v1.yaml) | 62 条（P0 40 / P1 20） |
 | 测试报告 | — | — | |
@@ -26,7 +26,7 @@
 
 - **v1** · 2026-07-02 · prd-author 起草 PRD + 三方评审并行签核（均 pass-with-conditions，共 9 条）
 - **v2** · 2026-07-02 · prd-author 消解 9 条条件（未登录只读 / sandbox 生产关 / JWT 双 token 5min 保坐 / 改密全失效 / 大厅 1000-100-1-200 / Ribbon 版本主 / SQLite / R-2 三档基线）→ 三方 v2 复核全 pass → 翻至 **②已通过**
-- **③开发 · v1** · 2026-07-02 · backend-design 出 API 契约（frozen） + 后端技术方案；frontend-design 消费无异议；前后端任务清单落地（BE 13 / FE 11）；qa-test-designer 预备测试计划 + 62 条用例
+- **③开发 · v2** · 2026-07-03 · FE-3~FE-11 全量交付 + 前后端 code-review pass + 联调双签 → 翻至 **③已完成**
 
 ## 需求点索引（供 tasks / test-cases 追溯 ref_req）
 

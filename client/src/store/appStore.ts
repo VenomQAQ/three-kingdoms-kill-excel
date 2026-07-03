@@ -10,8 +10,16 @@ import {
 } from '@tk/shared';
 import { create } from 'zustand';
 import { SANDBOX_ROOM_CODE } from '../data/decoy';
+import { translateError } from '../data/errorMessages';
 import { sanitizeRoom } from '../utils/display';
 import { AuthApi, AuthUser, CapabilitiesApi, Capabilities, HttpError } from '../api';
+import {
+  appendLobbyMessage,
+  ChatChannel,
+  LobbyChatMessage,
+  mergeLobbyMessages,
+} from './chatSlice';
+import { useToastStore } from './toastStore';
 
 type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -28,6 +36,10 @@ interface AppState {
   roomList: RoomListItem[];
   chatMessages: ChatMessage[];
   lastError: string | null;
+
+  // REQ-2026-001 · FE-7 · 大厅聊天
+  lobbyMessages: LobbyChatMessage[];
+  chatChannel: ChatChannel;
 
   // REQ-2026-001 · FE-2 · auth / capabilities / 版本偏好
   authStatus: AuthStatus;
@@ -68,6 +80,10 @@ interface AppState {
   sandboxEndTurn: () => void;
   sendChat: (content: string) => void;
   clearError: () => void;
+  subscribeLobbyChat: () => void;
+  unsubscribeLobbyChat: () => void;
+  sendLobbyChat: (content: string) => void;
+  showError: (code?: string | null, fallback?: string) => void;
 
   // REQ-2026-001 · FE-2 · auth actions
   hydrate: () => Promise<void>;
@@ -93,6 +109,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   roomList: [],
   chatMessages: [],
   lastError: null,
+  lobbyMessages: [],
+  chatChannel: null,
 
   // REQ-2026-001 · FE-2 · auth 初值
   authStatus: 'loading',
@@ -136,13 +154,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ room: sanitizeRoom(room), actingPlayerId: get().playerId }),
     );
     socket.on('room:state', (room) => set({ room: sanitizeRoom(room) }));
-    socket.on('room:error', ({ message }) => set({ lastError: message }));
+    socket.on('room:error', ({ code, message }) =>
+      set({ lastError: translateError(code, message) }),
+    );
     socket.on('sandbox:actor', ({ actingPlayerId }) => set({ actingPlayerId }));
     socket.on('chat:message', (msg) =>
       set((s) => ({ chatMessages: [...s.chatMessages, msg] })),
     );
     socket.on('game:started', () => {
       void get().fetchRoomList();
+    });
+
+    (socket as any).on('lobby:chat:message', (msg: LobbyChatMessage) => {
+      if (get().chatChannel !== 'lobby') return;
+      set((s) => ({ lobbyMessages: appendLobbyMessage(s.lobbyMessages, msg) }));
+    });
+    (socket as any).on('chat:error', (payload: { code?: string; message?: string; scope?: string }) => {
+      if (payload?.scope === 'lobby') {
+        set({ lastError: translateError(payload.code, payload.message) });
+      }
     });
 
     // REQ-2026-001 · FE-9 · 全局 socket 事件
@@ -161,6 +191,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (payload && payload.versionId) {
         set({ currentVersion: payload.versionId });
         void get().fetchRoomList();
+        const name =
+          get().capabilities?.versions.find((v) => v.id === payload.versionId)?.name ??
+          payload.versionId;
+        useToastStore.getState().show(`已切换至 ${name}`);
       }
     });
 
@@ -168,31 +202,43 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchRoomList: async () => {
-    try {
-      const res = await fetch('/rooms');
-      if (!res.ok) return;
-      const list = (await res.json()) as RoomListItem[];
-      set({ roomList: list });
-    } catch {
-      // server offline
-    }
+    const { socket, currentVersion } = get();
+    if (!socket) return;
+    return new Promise<void>((resolve) => {
+      socket.emit(
+        'room:list' as any,
+        { versionId: currentVersion, _v: 1 },
+        (list?: RoomListItem[]) => {
+          if (Array.isArray(list)) set({ roomList: list });
+          resolve();
+        },
+      );
+      // 无 ack 时避免悬挂
+      setTimeout(resolve, 3000);
+    });
   },
 
   createRoom: async () => {
-    const { socket, nickname } = get();
+    const { socket, nickname, currentVersion } = get();
     if (!socket) return;
     return new Promise((resolve, reject) => {
-      socket.emit('room:create', { nickname }, (ack?: RoomCreateAck) => {
+      socket.emit(
+        'room:create',
+        { nickname, versionId: currentVersion } as { nickname: string },
+        (ack?: RoomCreateAck) => {
         if (!ack?.ok) {
-          set({ lastError: ack?.error ?? '创建失败' });
+          const code = (ack as { code?: string } | undefined)?.code;
+          set({ lastError: translateError(code, ack?.error ?? '创建失败') });
           reject(new Error(ack?.error));
           return;
         }
+        get().unsubscribeLobbyChat();
         set({
           room: sanitizeRoom(ack.room),
           playerId: ack.playerId,
           actingPlayerId: ack.playerId,
           chatMessages: [],
+          chatChannel: 'room',
         });
         socket.emit('chat:history', (history) => {
           if (history?.length) set({ chatMessages: history });
@@ -215,15 +261,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     return new Promise((resolve, reject) => {
       socket.emit('room:join', { code: trimmed, nickname }, (ack?: RoomJoinAck) => {
         if (!ack?.ok) {
-          set({ lastError: ack?.error ?? '加入失败' });
+          const codeErr = (ack as { code?: string } | undefined)?.code;
+          set({ lastError: translateError(codeErr, ack?.error ?? '加入失败') });
           reject(new Error(ack?.error));
           return;
         }
+        get().unsubscribeLobbyChat();
         set({
           room: sanitizeRoom(ack.room),
           playerId: ack.playerId,
           actingPlayerId: ack.playerId,
           chatMessages: [],
+          chatChannel: 'room',
         });
         socket.emit('chat:history', (history) => {
           if (history?.length) set({ chatMessages: history });
@@ -239,7 +288,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   leaveRoom: () => {
     const { socket } = get();
     socket?.emit('room:leave');
-    set({ room: null, chatMessages: [], playerId: null, actingPlayerId: null });
+    set({ room: null, chatMessages: [], playerId: null, actingPlayerId: null, chatChannel: null });
     void get().fetchRoomList();
   },
 
@@ -349,6 +398,37 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   clearError: () => set({ lastError: null }),
 
+  showError: (code, fallback) => {
+    set({ lastError: translateError(code, fallback) });
+  },
+
+  subscribeLobbyChat: () => {
+    const { socket } = get();
+    if (!socket) return;
+    set({ chatChannel: 'lobby', lobbyMessages: [] });
+    socket.emit('lobby:chat:snapshot' as any, { _v: 1 }, (messages?: LobbyChatMessage[]) => {
+      if (get().chatChannel !== 'lobby') return;
+      if (messages?.length) {
+        set((s) => ({ lobbyMessages: mergeLobbyMessages(s.lobbyMessages, messages) }));
+      }
+    });
+  },
+
+  unsubscribeLobbyChat: () => {
+    set({ chatChannel: null, lobbyMessages: [] });
+  },
+
+  sendLobbyChat: (content) => {
+    const trimmed = content.trim();
+    if (!trimmed) return;
+    const maxLen = get().capabilities?.chatLimits.maxLength ?? 200;
+    if (trimmed.length > maxLen) {
+      set({ lastError: translateError('E_CHAT_TOO_LONG') });
+      return;
+    }
+    get().socket?.emit('lobby:chat:send' as any, { content: trimmed, _v: 1 });
+  },
+
   // ==== REQ-2026-001 · FE-2 · auth actions ====
 
   hydrate: async () => {
@@ -359,7 +439,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       AuthApi.me(),
     ]);
     if (capsRes.status === 'fulfilled') {
-      set({ capabilities: capsRes.value });
+      const caps = capsRes.value;
+      set({
+        capabilities: caps,
+        currentVersion:
+          get().user?.preferredVersion ??
+          caps.versions.find((v) => v.default)?.id ??
+          get().currentVersion,
+      });
     }
     if (meRes.status === 'fulfilled') {
       const u = meRes.value;
@@ -401,17 +488,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       // logout 应幂等；忽略网络/500
       if (!(err instanceof HttpError)) throw err;
     }
-    set({ authStatus: 'guest', user: null, room: null });
+    set({ authStatus: 'guest', user: null, room: null, chatChannel: null });
   },
 
   changePassword: async (oldPassword, newPassword) => {
     await AuthApi.changePassword(oldPassword, newPassword);
     // 服务端已使所有 session 失效并广播 auth:invalidated
-    set({ authStatus: 'guest', user: null, room: null });
+    set({ authStatus: 'guest', user: null, room: null, chatChannel: null });
   },
 
   setCurrentVersion: (versionId: string) => {
-    set({ currentVersion: versionId });
     get().socket?.emit('version:switch' as any, { versionId, _v: 1 });
   },
 
@@ -421,7 +507,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       authStatus: 'guest',
       user: null,
       room: null,
-      lastError: reason ?? '登录已失效，请重新登录',
+      chatChannel: null,
+      lastError: reason ?? translateError('E_UNAUTHORIZED'),
     });
   },
 }));

@@ -16,6 +16,10 @@ import { DecoyGrid } from './components/wps/DecoyGrid';
 import { RoomListGrid } from './components/wps/RoomListGrid';
 import { GameGrid } from './components/wps/GameGrid';
 import { ChatPanel } from './components/wps/ChatPanel';
+import { LobbyChatPanel } from './components/wps/LobbyChatPanel';
+import { LoginDialog } from './components/wps/LoginDialog';
+import { ChangePasswordDialog } from './components/wps/ChangePasswordDialog';
+import { Toast } from './components/wps/Toast';
 import {
   DEFAULT_FILE_NAMES,
   GAME_SHEET_ID,
@@ -23,7 +27,9 @@ import {
   SheetId,
 } from './data/decoy';
 import { useAppStore } from './store/appStore';
+import { useToastStore } from './store/toastStore';
 import { formatGeneralName } from './utils/display';
+import gridStyles from './components/wps/SpreadsheetGrid.module.css';
 import styles from './App.module.css';
 
 function App() {
@@ -36,6 +42,10 @@ function App() {
   const [skillModalPlayer, setSkillModalPlayer] = useState<RoomPlayer | null>(null);
   const [detailCardName, setDetailCardName] = useState<string | null>(null);
   const [promptCollapsed, setPromptCollapsed] = useState(false);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
+
+  const showToast = useToastStore((s) => s.show);
 
   const {
     connect,
@@ -75,6 +85,16 @@ function App() {
     lastError,
     clearError,
     hydrate,
+    authStatus,
+    user,
+    capabilities,
+    currentVersion,
+    setCurrentVersion,
+    logout,
+    lobbyMessages,
+    subscribeLobbyChat,
+    unsubscribeLobbyChat,
+    sendLobbyChat,
   } = useAppStore();
 
   useEffect(() => {
@@ -85,6 +105,31 @@ function App() {
   useEffect(() => {
     connect();
   }, [connect]);
+
+  const isAuthed = authStatus === 'authed';
+  const isGuest = authStatus === 'guest';
+  const sandboxEnabled = capabilities?.sandboxEnabled ?? true;
+  const versions = capabilities?.versions ?? [];
+  const bgColorToken = capabilities?.bgColorToken ?? '#ffffff';
+  const onLobbySheet = !room && activeSheet === 'sheet1';
+
+  useEffect(() => {
+    if (authStatus === 'guest' && !room) {
+      setShowLoginDialog(true);
+    }
+  }, [authStatus, room]);
+
+  useEffect(() => {
+    if (onLobbySheet && !bossMode) {
+      subscribeLobbyChat();
+      return () => unsubscribeLobbyChat();
+    }
+    return undefined;
+  }, [onLobbySheet, bossMode, subscribeLobbyChat, unsubscribeLobbyChat]);
+
+  useEffect(() => {
+    if (lastError) showToast(lastError);
+  }, [lastError, showToast]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -236,9 +281,43 @@ function App() {
 
   const sandboxGenerals = useMemo(() => CharacterRegistry.getAll(), []);
 
+  const requireAuth = useCallback(
+    (action: () => void | Promise<void>) => {
+      if (!isAuthed) {
+        showToast('请先登录');
+        setShowLoginDialog(true);
+        return;
+      }
+      void action();
+    },
+    [isAuthed, showToast],
+  );
+
+  const handleVersionSelect = useCallback(
+    (versionId: string) => {
+      if (!isAuthed) {
+        showToast('请先登录');
+        setShowLoginDialog(true);
+        return;
+      }
+      if (versionId === currentVersion) return;
+      setCurrentVersion(versionId);
+    },
+    [isAuthed, currentVersion, setCurrentVersion, showToast],
+  );
+
   const handleRibbonAction = useCallback(
     async (id: string) => {
       clearError();
+      if (isGuest && ['create', 'joinSandbox', 'ready', 'start'].includes(id)) {
+        showToast('请先登录');
+        setShowLoginDialog(true);
+        return;
+      }
+      if (id === 'joinSandbox' && !sandboxEnabled) {
+        showToast('测试房未启用');
+        return;
+      }
       switch (id) {
         case 'create':
           await createRoom();
@@ -288,6 +367,9 @@ function App() {
     },
     [
       clearError,
+      isGuest,
+      sandboxEnabled,
+      showToast,
       createRoom,
       joinSandbox,
       leaveRoom,
@@ -335,8 +417,10 @@ function App() {
     }
 
     const base: RibbonAction[] = [
-      { id: 'create', label: '创建房间', icon: '➕', disabled: inRoom },
-      { id: 'joinSandbox', label: '测试房', icon: '🧪', disabled: inRoom },
+      { id: 'create', label: '创建房间', icon: '➕', disabled: inRoom || isGuest },
+      ...(sandboxEnabled
+        ? [{ id: 'joinSandbox', label: '测试房', icon: '🧪', disabled: inRoom || isGuest }]
+        : []),
       { id: 'leave', label: '离开', icon: '🚪', disabled: !inRoom },
       {
         id: 'ready',
@@ -358,7 +442,7 @@ function App() {
       );
     }
     return base;
-  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand]);
+  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled]);
 
   const handleFormulaSubmit = useCallback(async () => {
     const raw = formulaInput.trim();
@@ -372,16 +456,54 @@ function App() {
 
       switch (cmd.toLowerCase()) {
         case 'nick':
-          setNickname(arg || nickname);
+          if (isAuthed) setNickname(arg || nickname);
+          else showToast('请先登录后修改显示昵称');
           break;
+        case 'version': {
+          if (!isAuthed) {
+            showToast('请先登录');
+            setShowLoginDialog(true);
+            break;
+          }
+          const vid = arg.trim();
+          if (!vid) {
+            showToast(`当前版本：${currentVersion}`);
+            break;
+          }
+          if (!versions.some((v) => v.id === vid)) {
+            useAppStore.getState().showError('E_VERSION_UNKNOWN');
+            break;
+          }
+          handleVersionSelect(vid);
+          break;
+        }
         case 'create':
+          if (!isAuthed) {
+            showToast('请先登录');
+            setShowLoginDialog(true);
+            break;
+          }
           await createRoom();
           break;
         case 'join':
+          if (!isAuthed) {
+            showToast('请先登录');
+            setShowLoginDialog(true);
+            break;
+          }
           await joinRoom(arg);
           break;
         case 'sandbox':
         case 'test':
+          if (!sandboxEnabled) {
+            showToast('测试房未启用');
+            break;
+          }
+          if (!isAuthed) {
+            showToast('请先登录');
+            setShowLoginDialog(true);
+            break;
+          }
           await joinSandbox();
           break;
         case 'leave':
@@ -414,6 +536,13 @@ function App() {
         default:
           if (room) sendChat(raw);
       }
+    } else if (onLobbySheet) {
+      if (!isAuthed) {
+        showToast('请先登录');
+        setShowLoginDialog(true);
+      } else {
+        sendLobbyChat(raw);
+      }
     } else if (isPlaying && isSandbox) {
       const hand = actingPlayer?.handCards ?? [];
       const matchedIndex = hand.findIndex((card) => card === raw);
@@ -430,8 +559,17 @@ function App() {
   }, [
     formulaInput,
     clearError,
+    isAuthed,
+    isGuest,
+    sandboxEnabled,
+    showToast,
     setNickname,
     nickname,
+    currentVersion,
+    versions,
+    handleVersionSelect,
+    onLobbySheet,
+    sendLobbyChat,
     createRoom,
     joinRoom,
     joinSandbox,
@@ -477,6 +615,10 @@ function App() {
         turnPhase={turnPhase}
         canUseSkills={canOperateTurn && !gamePrompt}
         onUseSkill={(id) => sandboxUseSkill(id)}
+        versions={versions}
+        currentVersionId={currentVersion}
+        onVersionSelect={handleVersionSelect}
+        versionDisabled={!isAuthed}
       />
       <InfoBar
         nickname={nickname}
@@ -485,6 +627,11 @@ function App() {
         roomStatus={room ? roomStatusLabel : undefined}
         actingName={formatGeneralName(actingPlayer)}
         turnName={formatGeneralName(turnPlayer)}
+        email={user?.email}
+        isAuthed={isAuthed}
+        onLoginClick={() => setShowLoginDialog(true)}
+        onChangePassword={() => setShowChangePasswordDialog(true)}
+        onLogout={() => void logout()}
       />
       {isPlaying && isSandbox && room && (
         <PlayControlBar
@@ -538,9 +685,15 @@ function App() {
               : gamePrompt
                 ? '请按弹窗完成操作（响应/选目标/确认）'
                 : `请切换操控到「${turnPlayer?.nickname}」再出牌`
-            : room
-              ? '聊天或 /ready /start /add 角色名'
-              : '/create · /join 房间号 · /sandbox 测试房'
+            : onLobbySheet
+              ? isAuthed
+                ? '大厅聊天或 /create · /join 房间号 · /version 版本号'
+                : '登录后可发送消息 · /create · /join 需登录'
+              : room
+                ? '聊天或 /ready /start /add 角色名'
+                : sandboxEnabled
+                  ? '/create · /join 房间号 · /sandbox 测试房'
+                  : '/create · /join 房间号'
         }
       />
       {lastError && (
@@ -561,7 +714,11 @@ function App() {
       )}
       <div
         className={
-          room && !bossMode && !isPlaying ? styles.mainWithChat : styles.main
+          onLobbySheet && !bossMode
+            ? gridStyles.boardLayout
+            : room && !bossMode && !isPlaying
+              ? styles.mainWithChat
+              : styles.main
         }
       >
         {displaySheet === GAME_SHEET_ID && room ? (
@@ -579,12 +736,31 @@ function App() {
           onViewCard={setDetailCardName}
         />
         ) : displaySheet === 'sheet1' ? (
-          <RoomListGrid
-            rooms={roomList}
-            selectedCell={selectedCell}
-            onSelectCell={setSelectedCell}
-            onJoinRoom={(code) => void joinRoom(code)}
-          />
+          <>
+            <div className={gridStyles.gridPane}>
+              <RoomListGrid
+                rooms={roomList}
+                selectedCell={selectedCell}
+                onSelectCell={setSelectedCell}
+                onJoinRoom={(code) => requireAuth(() => joinRoom(code))}
+                isGuest={isGuest}
+                onGuestAction={() => {
+                  showToast('请先登录');
+                  setShowLoginDialog(true);
+                }}
+                bgColorToken={bgColorToken}
+              />
+              <LoginDialog open={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
+            </div>
+            {!bossMode && (
+              <LobbyChatPanel
+                messages={lobbyMessages}
+                visible
+                canSend={isAuthed}
+                onSend={sendLobbyChat}
+              />
+            )}
+          </>
         ) : (
           <DecoyGrid selectedCell={selectedCell} onSelectCell={setSelectedCell} />
         )}
@@ -602,6 +778,12 @@ function App() {
         connected={connected}
         playerCount={room?.players.length}
         zoom={100}
+      />
+      <Toast />
+      <ChangePasswordDialog
+        open={showChangePasswordDialog}
+        onClose={() => setShowChangePasswordDialog(false)}
+        onSuccess={() => setShowLoginDialog(true)}
       />
       {skillModalPlayer && (
         <CharacterSkillModal

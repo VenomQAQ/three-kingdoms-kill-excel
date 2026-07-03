@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import styles from './InfoBar.module.css';
 
 interface InfoBarProps {
@@ -7,6 +8,11 @@ interface InfoBarProps {
   roomStatus?: string;
   actingName?: string;
   turnName?: string;
+  email?: string | null;
+  isAuthed?: boolean;
+  onLoginClick?: () => void;
+  onChangePassword?: () => void;
+  onLogout?: () => void;
 }
 
 export function InfoBar({
@@ -16,12 +22,69 @@ export function InfoBar({
   roomStatus,
   actingName,
   turnName,
+  email,
+  isAuthed,
+  onLoginClick,
+  onChangePassword,
+  onLogout,
 }: InfoBarProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [menuOpen]);
+
   return (
     <div className={styles.bar}>
-      <span>
-        操作员 <strong>{nickname}</strong>
-      </span>
+      {isAuthed && email ? (
+        <span className={styles.authWrap} ref={wrapRef}>
+          已登录{' '}
+          <button
+            type="button"
+            className={styles.emailBtn}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            {email}
+          </button>
+          {menuOpen && (
+            <div className={styles.dropdown} role="menu">
+              <button
+                type="button"
+                className={styles.menuItem}
+                onClick={() => {
+                  setMenuOpen(false);
+                  onChangePassword?.();
+                }}
+              >
+                修改密码
+              </button>
+              <button
+                type="button"
+                className={styles.menuItem}
+                onClick={() => {
+                  setMenuOpen(false);
+                  onLogout?.();
+                }}
+              >
+                登出
+              </button>
+            </div>
+          )}
+        </span>
+      ) : (
+        <span className={styles.authWrap}>
+          操作员 <strong>{nickname}</strong>
+          <button type="button" className={styles.authBtn} onClick={onLoginClick}>
+            登录
+          </button>
+        </span>
+      )}
       <span className={styles.sep}>|</span>
       <span>
         连接{' '}

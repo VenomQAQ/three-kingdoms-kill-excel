@@ -3,6 +3,7 @@ import type { ChatMessage } from '@tk/shared';
 import type { HandCardPick } from '../../types/hand';
 import { BattleGrid } from './BattleGrid';
 import { LobbyGrid } from './LobbyGrid';
+import gridStyles from './SpreadsheetGrid.module.css';
 
 interface GameGridProps {
   room: Room;
@@ -50,11 +51,13 @@ export function GameGrid({
   }
 
   return (
-    <LobbyGrid
-      room={room}
-      playerId={playerId}
-      selectedCell={selectedCell}
-      onSelectCell={onSelectCell}
-    />
+    <div className={gridStyles.gridPane}>
+      <LobbyGrid
+        room={room}
+        playerId={playerId}
+        selectedCell={selectedCell}
+        onSelectCell={onSelectCell}
+      />
+    </div>
   );
 }

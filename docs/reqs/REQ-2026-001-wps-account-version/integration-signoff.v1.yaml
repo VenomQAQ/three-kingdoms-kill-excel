@@ -1,0 +1,34 @@
+req_id: REQ-2026-001
+stage: "③开发-联调"
+version: v1
+signoffs:
+  frontend:
+    status: done
+    verdict: pass
+    reviewer: frontend-code-reviewer
+    ts: 2026-07-03T15:25+08:00
+    note: "FE-3~FE-11 全量交付；frontend.v2.md pass；room:list/version:switch/lobby chat 联调对齐"
+  backend:
+    status: done
+    verdict: pass
+    reviewer: backend-code-reviewer
+    ts: 2026-07-03T13:00+08:00
+    note: "backend.v2.md pass；联调补 room:list handler 已验证 build"
+result: pass
+last_signer: frontend-code-reviewer
+integration_checks:
+  - id: INT-001
+    desc: 未登录只读浏览房间列表 + 大厅聊天 snapshot
+    result: pass
+  - id: INT-002
+    desc: 登录/注册/改密/auth:invalidated 多 tab 同步
+    result: pass
+  - id: INT-003
+    desc: version:switch → version:switched → room:list 按版本过滤
+    result: pass
+  - id: INT-004
+    desc: lobby:chat:snapshot/send/message + 限流错误码
+    result: pass
+  - id: INT-005
+    desc: sandboxEnabled 门控 Ribbon + /sandbox
+    result: pass

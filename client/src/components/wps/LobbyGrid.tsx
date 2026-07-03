@@ -1,30 +1,46 @@
+import { useRef } from 'react';
+import type { CSSProperties } from 'react';
 import { Room } from '@tk/shared';
 import styles from './SpreadsheetGrid.module.css';
 import { COL_LABELS } from '../../data/decoy';
+import { useCellFiller } from '../../utils/useCellFiller';
 
 interface LobbyGridProps {
   room: Room;
   playerId: string | null;
   selectedCell: string;
   onSelectCell: (ref: string) => void;
+  bgColorToken?: string;
 }
 
 const HEADERS = ['座位', '昵称', '武将', '类型', '准备', '连接', '备注'];
 const COL_WIDTHS = [48, 100, 88, 64, 72, 64, 120];
+/** 表头 + 房间信息 2 行 */
+const FIXED_ROWS = 3;
 
 export function LobbyGrid({
   room,
   playerId,
   selectedCell,
   onSelectCell,
+  bgColorToken = '#ffffff',
 }: LobbyGridProps) {
   const cols = COL_LABELS.slice(0, HEADERS.length);
-  const rowCount = Math.max(16, 4 + room.players.length);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const dataRowCount = FIXED_ROWS + room.players.length;
+
+  const filler = useCellFiller(wrapRef, dataRowCount);
+  const totalRows = dataRowCount + filler.rows;
 
   return (
-    <div className={styles.wrap}>
+    <div
+      ref={wrapRef}
+      className={styles.wrap}
+      data-bg-cell={bgColorToken}
+      style={{ '--bg-cell': bgColorToken } as CSSProperties}
+    >
       <div className={styles.corner} />
-      <div className={styles.colHeaders} style={{ paddingLeft: 40 }}>
+      <div className={styles.colHeaders}>
         {cols.map((c, i) => (
           <div
             key={c}
@@ -34,12 +50,21 @@ export function LobbyGrid({
             {c}
           </div>
         ))}
+        <div className={styles.colHeaderFlex} />
       </div>
-      <div className={styles.body}>
-        {Array.from({ length: rowCount }, (_, ri) => {
+      <div className={styles.bodyFit}>
+        {Array.from({ length: totalRows }, (_, ri) => {
           const rowNum = ri + 1;
+          const isFiller = ri >= dataRowCount;
+          const isLastRow = ri === totalRows - 1;
+
           return (
-            <div key={rowNum} className={styles.row}>
+            <div
+              key={rowNum}
+              className={`${styles.row}${isFiller ? ` ${styles.fillerRow}` : ''}${
+                isFiller && isLastRow ? ` ${styles.fillerRowStretch}` : ''
+              }`}
+            >
               <div className={styles.rowHeader}>{rowNum}</div>
               {cols.map((col, ci) => {
                 const ref = `${col}${rowNum}`;
@@ -88,8 +113,7 @@ export function LobbyGrid({
                         value = player.connected ? '在线' : '离线';
                         break;
                       case 6:
-                        value =
-                          player.id === room.hostId ? '房主' : '';
+                        value = player.id === room.hostId ? '房主' : '';
                         break;
                       default:
                         break;
@@ -111,6 +135,7 @@ export function LobbyGrid({
                   </div>
                 );
               })}
+              <div className={styles.fillerCellFlex} />
             </div>
           );
         })}
