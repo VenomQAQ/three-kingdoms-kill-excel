@@ -1,0 +1,93 @@
+req_id: REQ-2026-003
+version: v1
+stage: "②评审会签"
+prd_ref: prd/prd.v1.md
+signoffs:
+  frontend-feasibility:
+    status: signed
+    verdict: pass-with-conditions
+    reviewer: frontend-feasibility
+    ts: 2026-07-03T17:35+08:00
+    ref: review/frontend-feasibility.v1.md
+    complexity: L
+    cost_person_day: "5-8"
+    scope:
+      - client/src/App.tsx
+      - client/src/store/appStore.ts
+      - client/src/components/wps/LoginDialog.tsx
+      - client/src/components/wps/ChatPanel.tsx
+      - client/src/components/wps/RoomListGrid.tsx
+      - client/src/components/wps/LobbyGrid.tsx
+      - client/src/components/wps/BattleGrid.tsx
+      - client/src/components/wps/GeneralSelectPanel.tsx
+      - client/src/utils/display.ts
+    depends_on_backend:
+      - selecting 阶段状态与候选武将下发
+      - room:join/rejoin 保坐重绑
+      - 改昵称 API + user:nicknameChanged 广播
+    conditions:
+      - selecting 字段落点（room.status vs sandbox.phase）由 design 定稿
+      - 候选武将列表服务端权威下发
+      - 对局日志昵称/武将名展示格式与 display.ts 对齐
+  backend-feasibility:
+    status: signed
+    verdict: pass-with-conditions
+    reviewer: backend-feasibility
+    ts: 2026-07-03T17:35+08:00
+    ref: review/backend-feasibility.v1.md
+    complexity: L
+    cost_person_day: "6-9"
+    scope:
+      - server/src/modules/room/room.service.ts
+      - server/src/gateway/game.gateway.ts
+      - server/src/modules/auth/auth.service.ts
+      - server/src/modules/game/game.service.ts
+      - packages/engine/src/resolution/card-play-service.ts
+      - packages/engine/src/core/identity.ts
+      - packages/shared/src/index.ts
+    interfaces_to_frontend:
+      - "约 4-6 条 socket 事件（rejoin/选将/昵称）"
+      - room.status 扩展 selecting
+    conditions:
+      - 明确 sandbox 是否走选将阶段
+      - room:rejoin 与 room:join 合并策略定稿
+      - 选将超时默认第一张的下标约定
+  qa-testability:
+    status: signed
+    verdict: pass
+    reviewer: qa-testability
+    ts: 2026-07-03T17:35+08:00
+    ref: review/qa-testability.v1.md
+    per_requirement:
+      "R-CF-01": { testable: yes, note: "沿用 TR-01" }
+      "R-CF-02": { testable: yes, note: "合并 ENG-01" }
+      "R-CF-03": { testable: yes, note: "AOE-05" }
+      "R-CF-04": { testable: yes, note: "LOBBY 系列" }
+      "R-UX-01": { testable: yes, note: "" }
+      "R-UX-02": { testable: yes, note: "" }
+      "R-ACCT-01": { testable: yes, note: "" }
+      "R-ACCT-02": { testable: yes, note: "" }
+      "R-ACCT-03": { testable: yes, note: "" }
+      "R-ENG-01": { testable: yes, note: "P0 缺陷" }
+      "R-ENG-02": { testable: yes, note: "7 项清单" }
+      "R-UI-01": { testable: yes, note: "新 game-sheet 基线" }
+      "R-GAME-01": { testable: yes, note: "" }
+      "R-GAME-02": { testable: yes, note: "需 dev 缩时" }
+      "R-CHAT-01": { testable: yes, note: "" }
+    seed_or_stub_needed: true
+    cost_person_day_for_qa: "2-4"
+    conditions: []
+result: pass-with-conditions
+last_signer: qa-testability
+merged_conditions:
+  - selecting 阶段字段命名（前后端 design 对齐）
+  - sandbox 是否走选将流程（建议 PRD 补一句，backend 建议与正式房一致）
+  - room:rejoin 与 room:join 合并策略
+  - 对局区 qa/baseline/game-sheet/ 视觉基线
+  - selectingTimeoutSec 测试环境可配置
+suggested_next:
+  agent: lifecycle-orchestrator
+  reason: |
+    三维签核完成：qa pass，前后端 pass-with-conditions。
+    合并 5 条条件可在 ③ backend-design / frontend-design 契约中消解；
+    建议直接进入 ③ 详细技术方案，无需 prd v2（条件不阻断产品意图）。

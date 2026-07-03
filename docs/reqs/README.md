@@ -2,6 +2,14 @@
 
 每个需求一个目录：`REQ-YYYY-NNN-短标题-kebab/`。所有 agent 的产物**只写进自己的子目录**，禁止跨目录改文件。
 
+## 当前活跃需求
+
+| REQ | 阶段 | 说明 |
+|---|---|---|
+| [REQ-2026-001-wps-account-version](./REQ-2026-001-wps-account-version/INDEX.md) | ①已定稿 | 账号/大厅/单元格填满 |
+| [REQ-2026-002-game-core-m3](./REQ-2026-002-game-core-m3/INDEX.md) | ③开发中 | M3 锦囊/正式房大厅 |
+| **[REQ-2026-003-ux-gameplay-polish](./REQ-2026-003-ux-gameplay-polish/INDEX.md)** | **②已通过** | **本轮 SSOT：UX + 选将 + 引擎修复** |
+
 ## 目录约定
 
 ```

@@ -1,0 +1,17 @@
+req_id: REQ-2026-003
+title: UX 与玩法体验补全
+stage: "②已通过"
+prd_ref: prd/prd.v1.md
+prd_version: v1
+status: approved
+history:
+  - ts: 2026-07-03T17:30+08:00
+    from: "①起草"
+    to: "②评审会签"
+    actor: prd-author
+    note: prd.v1 定稿，发起三维会签
+  - ts: 2026-07-03T17:40+08:00
+    from: "②评审会签"
+    to: "②已通过"
+    actor: lifecycle-orchestrator
+    note: 三维签核 qa=pass，前后端=pass-with-conditions；合并条件在 ③ design 消解
