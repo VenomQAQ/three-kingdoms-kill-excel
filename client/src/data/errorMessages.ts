@@ -1,0 +1,35 @@
+/**
+ * REQ-2026-001 · FE-10 · 契约错误码 → 中文提示
+ * 对齐 design/api-contract.v1.md §0.4
+ */
+
+export const ERROR_MESSAGES: Record<string, string> = {
+  E_UNAUTHORIZED: '请先登录',
+  E_FORBIDDEN: '当前操作没有权限',
+  E_BAD_CREDENTIALS: '邮箱或密码错误',
+  E_USER_EXISTS: '该邮箱已注册',
+  E_INVALID_EMAIL: '请使用 QQ 邮箱（数字@qq.com）',
+  E_WEAK_PASSWORD: '密码需 8-32 位，且同时包含字母和数字',
+  E_PASSWORD_MISMATCH: '原密码错误 / 两次输入不一致',
+  E_REFRESH_EXPIRED: '登录已过期，请重新登录',
+  E_REFRESH_REUSED: '登录状态异常，请重新登录',
+  E_LOGIN_RATE_LIMIT: '登录尝试过于频繁，请稍后再试',
+  E_ROOM_NOT_FOUND: '房间不存在',
+  E_ROOM_FULL: '房间已满',
+  E_ROOM_STARTED: '对局已开始，无法加入',
+  E_ROOM_VERSION_MISMATCH: '房间版本与当前不一致',
+  E_VERSION_UNKNOWN: '未知的三国杀版本',
+  E_CHAT_RATE_LIMIT: '发送过快，请稍后再试',
+  E_CHAT_TOO_LONG: '单条消息不能超过 200 字',
+  E_CHAT_MUTED: '请先登录后发送',
+  E_SANDBOX_DISABLED: '测试房未启用',
+  E_INTERNAL: '服务开小差了，请稍后再试',
+};
+
+/**
+ * 把错误码翻译成中文；无匹配时兜底。
+ */
+export function translateError(code: string | undefined | null, fallback = '发生了错误'): string {
+  if (!code) return fallback;
+  return ERROR_MESSAGES[code] ?? fallback;
+}

@@ -1,10 +1,15 @@
 .boardLayout {
+  /* REQ-2026-001 · FE-8 · 背景色 token（QA 像素扫描判据） */
+  --bg-cell: #ffffff;
+  --bg-cell-alt: #fafafa;
+
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
   width: 100%;
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  background: var(--bg-cell);
 }
 
 .boardLayout.sideCollapsed {
@@ -485,4 +490,28 @@
   line-height: 1.5;
   white-space: normal;
   word-break: break-word;
+}
+
+/* ============================================================
+ * REQ-2026-001 · FE-8 · 单元格填满自适应
+ * fillerRow：占位空行；fillerCell：占位空列
+ * 视口高/宽变化时由组件根据 ResizeObserver 动态生成
+ * 空 cell 保留边框以维持"网格延伸"视觉
+ * ============================================================ */
+.fillerRow {
+  display: flex;
+  min-height: 22px;
+  flex: 0 0 auto;
+  background: var(--bg-cell);
+}
+.fillerRow .rowHeader {
+  color: #999;
+}
+.fillerCell {
+  min-width: 88px;
+  width: 88px;
+  border-right: 1px solid #e5e5e5;
+  border-bottom: 1px solid #e5e5e5;
+  background: var(--bg-cell);
+  flex-shrink: 0;
 }

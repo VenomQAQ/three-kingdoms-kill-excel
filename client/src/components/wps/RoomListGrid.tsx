@@ -1,9 +1,12 @@
+import { useRef } from 'react';
 import { RoomListItem } from '@tk/shared';
 import styles from './SpreadsheetGrid.module.css';
 import { COL_LABELS } from '../../data/decoy';
+import { useCellFiller } from '../../utils/useCellFiller';
 
-const HEADERS = ['房间号', '状态', '玩家人数', '房主', '备注'];
-const COL_WIDTHS = [100, 88, 88, 100, 120];
+// REQ-2026-001 · FE-6/FE-8：新增"版本"列
+const HEADERS = ['房间号', '状态', '玩家人数', '房主', '版本', '备注'];
+const COL_WIDTHS = [100, 88, 88, 100, 132, 120];
 
 interface RoomListGridProps {
   rooms: RoomListItem[];
@@ -25,9 +28,12 @@ export function RoomListGrid({
   onJoinRoom,
 }: RoomListGridProps) {
   const cols = COL_LABELS.slice(0, HEADERS.length);
-  const dataRows = rooms.length > 0 ? rooms : [];
-  const emptyRows = Math.max(0, 12 - dataRows.length);
-  const rowCount = 1 + dataRows.length + emptyRows;
+  const dataRows = rooms;
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+
+  // 数据本身占了 1 (header) + N 行；列固定 HEADERS.length
+  const filler = useCellFiller(bodyRef, 1 + dataRows.length, HEADERS.length);
+  const totalRows = 1 + dataRows.length + filler.rows;
 
   return (
     <div className={styles.wrap}>
@@ -42,15 +48,23 @@ export function RoomListGrid({
             {c}
           </div>
         ))}
+        {/* FE-8：视口右侧补空 colHeader，保持视觉延伸 */}
+        {Array.from({ length: filler.cols }, (_, i) => (
+          <div key={`fh-${i}`} className={styles.colHeader} />
+        ))}
       </div>
-      <div className={styles.body}>
-        {Array.from({ length: rowCount }, (_, ri) => {
+      <div className={styles.body} ref={bodyRef}>
+        {Array.from({ length: totalRows }, (_, ri) => {
           const rowNum = ri + 1;
           const room = ri > 0 && ri <= dataRows.length ? dataRows[ri - 1] : null;
           const isHeader = ri === 0;
+          const isFiller = ri > dataRows.length; // 数据后面全是 filler
 
           return (
-            <div key={rowNum} className={styles.row}>
+            <div
+              key={rowNum}
+              className={`${styles.row}${isFiller ? ' ' + styles.fillerRow : ''}`}
+            >
               <div className={styles.rowHeader}>{rowNum}</div>
               {cols.map((col, ci) => {
                 const ref = `${col}${rowNum}`;
@@ -67,7 +81,10 @@ export function RoomListGrid({
                       break;
                     case 1:
                       value = statusLabel(room.status);
-                      extraClass += room.status === 'playing' ? ` ${styles.playing}` : ` ${styles.waiting}`;
+                      extraClass +=
+                        room.status === 'playing'
+                          ? ` ${styles.playing}`
+                          : ` ${styles.waiting}`;
                       break;
                     case 2:
                       value = `${room.playerCount}/${room.maxPlayers}`;
@@ -76,6 +93,9 @@ export function RoomListGrid({
                       value = room.hostNickname;
                       break;
                     case 4:
+                      value = room.versionId ?? 'standard-2014';
+                      break;
+                    case 5:
                       value = room.isSandbox ? '模拟测试房' : '';
                       break;
                     default:
@@ -92,7 +112,9 @@ export function RoomListGrid({
                 return (
                   <div
                     key={ref}
-                    className={`${styles.cell} ${ref === selectedCell ? styles.selected : ''} ${extraClass}`}
+                    className={`${styles.cell} ${
+                      ref === selectedCell ? styles.selected : ''
+                    } ${extraClass}`}
                     style={{ minWidth: COL_WIDTHS[ci], width: COL_WIDTHS[ci] }}
                     onClick={onClick}
                     title={ci === 0 && room ? '双击或点击加入房间' : undefined}
@@ -101,6 +123,10 @@ export function RoomListGrid({
                   </div>
                 );
               })}
+              {/* FE-8：右侧补空 cell 到视口边缘 */}
+              {Array.from({ length: filler.cols }, (_, i) => (
+                <div key={`fc-${rowNum}-${i}`} className={styles.fillerCell} />
+              ))}
             </div>
           );
         })}

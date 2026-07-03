@@ -334,6 +334,9 @@ export function GamePromptModal({
                 : prompt.message}
             </p>
           )} */}
+          {/* 保留引用避免 noUnusedLocals；上方 JSX 已注释 */}
+          {void isWuxieResponse}
+          {void wuxieTargetNames}
 
           {actingPlayer && (
             <section className={styles.section}>
