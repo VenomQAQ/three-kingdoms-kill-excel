@@ -1,6 +1,6 @@
 req_id: REQ-2026-004
 title: 规则完备、房间生命周期与 Sheet 架构拆分
-stage: "③详细技术方案"
+stage: "④开发中"
 prd_ref: prd/prd.v1.md
 prd_version: v1
 status: approved
@@ -25,3 +25,8 @@ history:
     to: "③详细技术方案/已签"
     actor: codex
     note: design signoff 已确认三份设计彼此对齐、无遗留冲突。
+  - ts: 2026-07-04T14:30:00+08:00
+    from: "③详细技术方案/已签"
+    to: "④开发中"
+    actor: codex
+    note: Phase 2 首批规则修复已落地：闪电轮转、界张飞【替身】、判定牌稳定解析；引擎测试 22 例通过。

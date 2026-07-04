@@ -16,6 +16,14 @@ export function randomPoint(): number {
 }
 
 export function createCardInstance(name: string): CardInstance {
+  const parsed = name.match(/^([♠♥♣♦])(\d{1,2})【(.+)】$/);
+  if (parsed) {
+    return {
+      suit: parsed[1] as Suit,
+      point: Number(parsed[2]),
+      name: parsed[3]!,
+    };
+  }
   return { name, suit: randomSuit(), point: randomPoint() };
 }
 

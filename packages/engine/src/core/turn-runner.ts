@@ -9,7 +9,7 @@ import {
   describeJudgeResult,
   type PendingJudge,
 } from '../engine/judge-runner';
-import { createCardInstance, formatCardInstance } from '../engine/card-instance';
+import { createCardInstance, formatCardInstance, judgeDelayEffect } from '../engine/card-instance';
 import { cardNameFromHandEntry } from '../engine/card-label';
 import { nextPromptId } from '../utils/prompt-id';
 import {
@@ -66,7 +66,10 @@ export class TurnRunner {
     const cur = this.currentPlayer();
     if (!cur) return;
 
-    const offers = collectOptionalSkillOffers(cur, GameTiming.TURN_START);
+    const offers = collectOptionalSkillOffers(cur, GameTiming.TURN_START).filter((offer) => {
+      if (offer.skill.id !== 'tishen') return true;
+      return cur.lastTurnEndHp != null && cur.hp < cur.lastTurnEndHp;
+    });
     if (offers.length > 0) {
       this.host.setPrompt({
         id: nextPromptId(),
@@ -126,9 +129,7 @@ export class TurnRunner {
     }
 
     const drawn = this.host.getDeck().drawOne();
-    const result = createCardInstance(
-      drawn ? cardNameFromHandEntry(drawn) : '杀',
-    );
+    const result = createCardInstance(drawn ?? '杀');
     this.host.log(describeJudgeResult(player, item.cardName, result));
 
     const modifyQueue = collectModifyJudgePlayers(
@@ -271,6 +272,7 @@ export class TurnRunner {
       (c) => cardNameFromHandEntry(c) === pending.judgeCardName,
     );
     if (idx >= 0) player.judgeCards.splice(idx, 1);
+    const judgeCardEntry = idx >= 0 ? pending.judgeCardName : undefined;
 
     const effect = applyJudgeEffect(
       player,
@@ -295,6 +297,17 @@ export class TurnRunner {
       this.host.log(
         `${player.generalName} 受到 ${effect.lightningDamage} 点雷电伤害（${player.hp}/${player.maxHp}）`,
       );
+    }
+    if (
+      pending.judgeCardName === '闪电' &&
+      judgeCardEntry &&
+      !judgeDelayEffect(pending.judgeCardName, pending.result)
+    ) {
+      const nextPlayer = this.nextAlivePlayerAfter(player);
+      if (nextPlayer) {
+        nextPlayer.judgeCards.push(judgeCardEntry);
+        this.host.log(`【闪电】未生效，移入 ${nextPlayer.generalName} 的判定区`);
+      }
     }
 
     this.host.setPendingJudge(null);
@@ -490,6 +503,11 @@ export class TurnRunner {
 
   private finishTurnAfterDiscard(): void {
     const s = this.host.getState();
+    const cur = this.currentPlayer();
+    if (cur) {
+      cur.lastTurnEndHp = cur.hp;
+      if (cur.skillUseCount['_luoyi_damage_plus']) delete cur.skillUseCount['_luoyi_damage_plus'];
+    }
     this.advanceToNextAlivePlayer();
     this.host.getFsm().set('judge');
     s.turn.phase = 'judge';
@@ -513,6 +531,21 @@ export class TurnRunner {
     }
 
     state.turn.index = nextIndex;
+  }
+
+  private nextAlivePlayerAfter(player: EnginePlayerState): EnginePlayerState | undefined {
+    const players = this.host.getState().players;
+    if (players.length <= 1) return undefined;
+
+    const sorted = [...players].sort((left, right) => left.seat - right.seat);
+    const startIndex = sorted.findIndex((candidate) => candidate.id === player.id);
+    if (startIndex < 0) return undefined;
+
+    for (let offset = 1; offset < sorted.length; offset += 1) {
+      const candidate = sorted[(startIndex + offset) % sorted.length]!;
+      if (candidate.hp > 0 && !candidate.dead) return candidate;
+    }
+    return undefined;
   }
 
   dealOpeningHands(count = 4): void {

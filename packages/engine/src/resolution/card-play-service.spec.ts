@@ -25,6 +25,8 @@ function player(
     shaUsedCount: 0,
     skillUseCount: {},
     skillTargetUseCount: {},
+    usedLimitedSkills: {},
+    lastTurnEndHp: 4,
     dead: false,
   };
 }

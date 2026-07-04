@@ -79,6 +79,10 @@ export interface EnginePlayerState {
   skillUseCount: Record<string, number>;
   /** 本回合各技能已指定过的目标 skillId -> playerIds */
   skillTargetUseCount: Record<string, string[]>;
+  /** 已发动过的限定技 skillId -> true */
+  usedLimitedSkills?: Record<string, boolean>;
+  /** 上个回合结束时的体力，用于【替身】等准备阶段技能 */
+  lastTurnEndHp?: number;
 }
 
 export interface EngineSnapshot {

@@ -12,6 +12,11 @@ export class DeckPile {
     this.discard = [];
   }
 
+  /** 测试/脚本专用：按传入顺序压到牌堆顶，数组第一张会最先被摸到。 */
+  stackTop(cards: string[]): void {
+    this.draw.push(...[...cards].reverse());
+  }
+
   drawOne(): string | undefined {
     if (this.draw.length === 0) {
       if (this.discard.length === 0) return undefined;

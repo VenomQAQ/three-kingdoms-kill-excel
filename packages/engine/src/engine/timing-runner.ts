@@ -31,7 +31,15 @@ export function skillsAtTiming(
   if (!ch) return [];
   return ch.skills.filter((s) => {
     if (!s.timings.includes(timing)) return false;
-    if (opts?.activeOnly && s.type !== 'active' && s.type !== 'lord') return false;
+    if (
+      opts?.activeOnly &&
+      s.type !== 'active' &&
+      s.type !== 'lord' &&
+      s.type !== 'limited'
+    ) {
+      return false;
+    }
+    if (s.type === 'limited' && player.usedLimitedSkills?.[s.id]) return false;
     if (s.limitPerTurn != null && (player.skillUseCount[s.id] ?? 0) >= s.limitPerTurn) {
       return false;
     }

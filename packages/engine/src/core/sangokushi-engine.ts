@@ -97,6 +97,8 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
         shaUsedCount: 0,
         skillUseCount: {},
         skillTargetUseCount: {},
+        usedLimitedSkills: {},
+        lastTurnEndHp: p.hp ?? maxHp,
         dead: false,
       };
     });
@@ -134,6 +136,10 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
 
   startJudgePhase(): void {
     this.turnRunner.startJudgePhase();
+  }
+
+  beginTurnForTest(): void {
+    this.turnRunner.beginTurn();
   }
 
   getState(): GameState {
@@ -303,6 +309,31 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
           const offer = offers.find((item) => item.skill.id === skillId);
           if (!offer) {
             return { ok: false, error: '当前时机不能发动此技能' };
+          }
+          if (skillId === 'tishen') {
+            const lastTurnEndHp = currentPlayer.lastTurnEndHp;
+            if (lastTurnEndHp == null || currentPlayer.hp >= lastTurnEndHp) {
+              return { ok: false, error: '当前不满足【替身】发动条件' };
+            }
+            const recover = Math.min(currentPlayer.maxHp, lastTurnEndHp) - currentPlayer.hp;
+            if (recover <= 0) {
+              return { ok: false, error: '当前不满足【替身】发动条件' };
+            }
+            currentPlayer.hp += recover;
+            const drawn = this.deck.drawMany(recover);
+            currentPlayer.handCards.push(...drawn);
+            currentPlayer.usedLimitedSkills = {
+              ...(currentPlayer.usedLimitedSkills ?? {}),
+              tishen: true,
+            };
+            currentPlayer.skillUseCount[skillId] =
+              (currentPlayer.skillUseCount[skillId] ?? 0) + 1;
+            this.log(
+              `${currentPlayer.generalName} 发动【${offer.skill.name}】，回复 ${recover} 点体力并摸 ${drawn.length} 张牌（${currentPlayer.hp}/${currentPlayer.maxHp}）`,
+            );
+            this.setPrompt(null);
+            this.turnRunner.startJudgePhase();
+            return { ok: true };
           }
           currentPlayer.skillUseCount[skillId] =
             (currentPlayer.skillUseCount[skillId] ?? 0) + 1;

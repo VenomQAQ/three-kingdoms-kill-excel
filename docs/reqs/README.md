@@ -9,7 +9,7 @@
 | [REQ-2026-001-wps-account-version](./REQ-2026-001-wps-account-version/INDEX.md) | ①已定稿 | 账号/大厅/单元格填满 |
 | [REQ-2026-002-game-core-m3](./REQ-2026-002-game-core-m3/INDEX.md) | ③开发中 | M3 锦囊/正式房大厅 |
 | [REQ-2026-003-ux-gameplay-polish](./REQ-2026-003-ux-gameplay-polish/INDEX.md) | ③开发中 | UX + 选将 + 引擎修复 |
-| **[REQ-2026-004-rules-progression-room-routing](./REQ-2026-004-rules-progression-room-routing/INDEX.md)** | **①产品设计** | **本轮 SSOT：Sheet 架构 + 房间生命周期 + 规则完备** |
+| **[REQ-2026-004-rules-progression-room-routing](./REQ-2026-004-rules-progression-room-routing/INDEX.md)** | **④开发中** | **Phase 2 部分规则修复已落地：闪电轮转、张飞【替身】、判定牌稳定解析** |
 
 ## 目录约定
 
