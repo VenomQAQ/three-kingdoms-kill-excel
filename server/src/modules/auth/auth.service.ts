@@ -47,6 +47,9 @@ export interface AuthPair {
   email: string;
   nickname: string;
   preferredVersion: string;
+  coins: number;
+  experience: number;
+  level: number;
   accessToken: string;
   accessExpiresIn: number;
   refreshToken: string;
@@ -97,8 +100,11 @@ export class AuthService {
         email,
         passwordHash,
         nickname,
-        preferredVersion: 'standard-2014',
-        lastLoginAt: new Date(),
+      preferredVersion: 'standard-2014',
+      coins: 100,
+      experience: 0,
+      level: 1,
+      lastLoginAt: new Date(),
       }),
     );
     this.logger.log(`register user=${user.id} email=${email}`);
@@ -214,6 +220,9 @@ export class AuthService {
       email: user.email,
       nickname: user.nickname,
       preferredVersion: user.preferredVersion,
+      coins: user.coins,
+      experience: user.experience,
+      level: user.level,
       accessToken,
       accessExpiresIn,
       refreshToken: rt.token,

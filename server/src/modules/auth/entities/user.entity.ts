@@ -28,6 +28,15 @@ export class User {
   @Column('varchar', { length: 32, default: 'standard-2014' })
   preferredVersion!: string;
 
+  @Column('int', { default: 100 })
+  coins!: number;
+
+  @Column('int', { default: 0 })
+  experience!: number;
+
+  @Column('int', { default: 1 })
+  level!: number;
+
   @CreateDateColumn({ type: 'datetime' })
   createdAt!: Date;
 

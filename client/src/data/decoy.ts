@@ -24,11 +24,11 @@ export type SheetId = (typeof DECOY_SHEET_IDS)[number] | typeof GAME_SHEET_ID;
 export const SHEET_LABELS: Record<SheetId, string> = {
   sheet1: '房间列表',
   sheet2: '区域销售',
-  game: '2024汇总',
+  game: '当前房间',
 };
 
 export const DEFAULT_FILE_NAMES: Record<SheetId, string> = {
   sheet1: '房间列表.xlsx',
   sheet2: '区域销售汇总.xlsx',
-  game: '2024汇总.xlsx',
+  game: '当前房间.xlsx',
 };

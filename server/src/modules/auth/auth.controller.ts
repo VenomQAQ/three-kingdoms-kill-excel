@@ -39,6 +39,27 @@ interface UpdateProfileDto {
   nickname?: string;
 }
 
+function publicUser(user: {
+  id?: string;
+  userId?: string;
+  email: string;
+  nickname: string;
+  preferredVersion: string;
+  coins?: number;
+  experience?: number;
+  level?: number;
+}) {
+  return {
+    userId: user.userId ?? user.id,
+    email: user.email,
+    nickname: user.nickname,
+    preferredVersion: user.preferredVersion,
+    coins: user.coins ?? 100,
+    experience: user.experience ?? 0,
+    level: user.level ?? 1,
+  };
+}
+
 @Controller('api/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -53,7 +74,7 @@ export class AuthController {
     this.setAuthCookies(res, pair.accessToken, pair.accessExpiresIn, pair.refreshToken, pair.refreshExpiresAt);
     return {
       ok: true,
-      data: { userId: pair.userId, email: pair.email, nickname: pair.nickname, preferredVersion: pair.preferredVersion },
+      data: publicUser(pair),
       _v: 1,
     };
   }
@@ -70,7 +91,7 @@ export class AuthController {
     this.setAuthCookies(res, pair.accessToken, pair.accessExpiresIn, pair.refreshToken, pair.refreshExpiresAt);
     return {
       ok: true,
-      data: { userId: pair.userId, email: pair.email, nickname: pair.nickname, preferredVersion: pair.preferredVersion },
+      data: publicUser(pair),
       _v: 1,
     };
   }
@@ -110,12 +131,7 @@ export class AuthController {
     const user = await this.authService.updateProfile(req.user!.userId, body);
     return {
       ok: true,
-      data: {
-        userId: user.id,
-        email: user.email,
-        nickname: user.nickname,
-        preferredVersion: user.preferredVersion,
-      },
+      data: publicUser(user),
       _v: 1,
     };
   }
@@ -148,12 +164,7 @@ export class AuthController {
     }
     return {
       ok: true,
-      data: {
-        userId: user.id,
-        email: user.email,
-        nickname: user.nickname,
-        preferredVersion: user.preferredVersion,
-      },
+      data: publicUser(user),
       _v: 1,
     };
   }

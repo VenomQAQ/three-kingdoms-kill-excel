@@ -6,14 +6,12 @@ interface VersionMenuProps {
   versions: VersionInfo[];
   currentVersionId: string;
   disabled?: boolean;
-  onSelect: (versionId: string) => void;
 }
 
 export function VersionMenu({
   versions,
   currentVersionId,
   disabled,
-  onSelect,
 }: VersionMenuProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -34,7 +32,7 @@ export function VersionMenu({
         type="button"
         className={`${styles.versionBtn} ${open ? styles.versionBtnOpen : ''}`}
         disabled={disabled}
-        title="切换三国杀版本"
+        title="查看版本信息"
         onClick={() => setOpen((v) => !v)}
       >
         <span className={styles.versionIcon}>📦</span>
@@ -43,18 +41,13 @@ export function VersionMenu({
       {open && (
         <div className={styles.menu} role="menu">
           {versions.map((v) => (
-            <button
+            <div
               key={v.id}
-              type="button"
               role="menuitem"
               className={`${styles.menuItem} ${v.id === currentVersionId ? styles.menuItemActive : ''}`}
-              onClick={() => {
-                onSelect(v.id);
-                setOpen(false);
-              }}
             >
               {v.name}
-            </button>
+            </div>
           ))}
         </div>
       )}

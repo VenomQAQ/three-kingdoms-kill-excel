@@ -10,6 +10,7 @@ import {
   findVersion,
   Room,
   RoomListItem,
+  RoomLeaveReason,
   RoomPlayer,
   SANDBOX_ROOM_CODE,
   SandboxGameState,
@@ -22,6 +23,17 @@ const CODE_MAX = 99_999_999;
 const MAX_CODE_RETRIES = 10;
 const LORD_GENERAL_OPTION_COUNT = 5;
 const GENERAL_OPTION_COUNT = 3;
+const MANUAL_LEAVE_PENALTY = 5;
+
+export interface LeaveRoomResult {
+  room: Room | null;
+  removed: boolean;
+  disbanded: boolean;
+  previousRoomId?: string;
+  previousHostId?: string;
+  newHostId?: string;
+  penalty?: number;
+}
 
 @Injectable()
 export class RoomService implements OnModuleInit {
@@ -52,11 +64,12 @@ export class RoomService implements OnModuleInit {
     if (!roomId) return null;
     return this.roomsById.get(roomId) ?? null;
   }
-  markPlayerDisconnected(playerId: string): void {
+  markPlayerDisconnected(playerId: string): Room | null {
     const room = this.getRoomOfPlayer(playerId);
-    if (!room) return;
+    if (!room) return null;
     const p = room.players.find((x) => x.id === playerId);
     if (p) p.connected = false;
+    return room;
   }
   bindUserPlayer(userId: string, playerId: string): void {
     this.userPlayer.set(userId, playerId);
@@ -83,11 +96,11 @@ export class RoomService implements OnModuleInit {
   /**
    * 5min 到期或改密强制回收：将 userId 对应的座位真正 leaveRoom。
    */
-  evictByUser(userId: string): { room: Room | null; removed: boolean } {
+  evictByUser(userId: string): LeaveRoomResult {
     const playerId = this.userPlayer.get(userId);
-    if (!playerId) return { room: null, removed: false };
+    if (!playerId) return { room: null, removed: false, disbanded: false };
     this.userPlayer.delete(userId);
-    return this.leaveRoom(playerId);
+    return this.leaveRoom(playerId, 'evict');
   }
   /**
    * 重连时把老 playerId 的座位迁移到新 playerId 上。
@@ -138,6 +151,7 @@ export class RoomService implements OnModuleInit {
       hostId,
       maxPlayers,
       versionId: version.id,
+      versionName: version.name,
       players: [
         {
           id: hostId,
@@ -234,33 +248,77 @@ export class RoomService implements OnModuleInit {
     return room;
   }
 
-  leaveRoom(playerId: string): { room: Room | null; removed: boolean } {
+  leaveRoom(playerId: string, reason: RoomLeaveReason = 'manual'): LeaveRoomResult {
     this.actingPlayerBySocket.delete(playerId);
     const roomId = this.playerRoom.get(playerId);
-    if (!roomId) return { room: null, removed: false };
+    if (!roomId) return { room: null, removed: false, disbanded: false };
     const room = this.roomsById.get(roomId);
     if (!room) {
       this.playerRoom.delete(playerId);
-      return { room: null, removed: false };
+      return { room: null, removed: false, disbanded: false };
     }
     const idx = room.players.findIndex((p) => p.id === playerId);
-    if (idx === -1) return { room, removed: false };
+    if (idx === -1) return { room, removed: false, disbanded: false };
 
-    if (room.status === 'waiting') {
-      room.players.splice(idx, 1);
-      this.playerRoom.delete(playerId);
-      if (room.players.length === 0) {
-        this.deleteRoom(room);
-        return { room: null, removed: true };
-      }
-      if (room.hostId === playerId) {
-        room.hostId = room.players[0].id;
-      }
-      return { room, removed: true };
+    if (reason === 'disconnect') {
+      room.players[idx].connected = false;
+      return { room, removed: false, disbanded: false, previousRoomId: room.id };
     }
 
-    room.players[idx].connected = false;
-    return { room, removed: false };
+    const previousHostId = room.hostId;
+    const shouldRemove =
+      room.status === 'waiting' || reason === 'manual' || reason === 'evict' || reason === 'room-disband';
+
+    if (!shouldRemove) {
+      room.players[idx].connected = false;
+      return { room, removed: false, disbanded: false, previousRoomId: room.id, previousHostId };
+    }
+
+    room.players.splice(idx, 1);
+    this.playerRoom.delete(playerId);
+    this.clearSelectingPlayer(room, playerId);
+
+    if (room.players.length === 0) {
+      this.deleteRoom(room);
+      return {
+        room: null,
+        removed: true,
+        disbanded: true,
+        previousRoomId: room.id,
+        previousHostId,
+      };
+    }
+
+    let newHostId: string | undefined;
+    if (previousHostId === playerId) {
+      newHostId = this.transferHost(room);
+      if (!newHostId) {
+        this.deleteRoom(room);
+        return {
+          room: null,
+          removed: true,
+          disbanded: true,
+          previousRoomId: room.id,
+          previousHostId,
+        };
+      }
+    }
+
+    if (room.status === 'selecting') {
+      this.rebuildGeneralSelectionAfterLeave(room);
+    }
+
+    return {
+      room,
+      removed: true,
+      disbanded: false,
+      previousRoomId: room.id,
+      previousHostId,
+      newHostId,
+      penalty: reason === 'manual' && (room.status === 'selecting' || room.status === 'playing')
+        ? MANUAL_LEAVE_PENALTY
+        : 0,
+    };
   }
 
   setReady(playerId: string, ready: boolean): Room {
@@ -338,6 +396,7 @@ export class RoomService implements OnModuleInit {
       hostId: '',
       maxPlayers,
       versionId: version.id,
+      versionName: version.name,
       players: [],
       status: 'waiting',
       settings: { maxPlayers },
@@ -1042,6 +1101,8 @@ export class RoomService implements OnModuleInit {
           ownerNickname:
             r.players.find((p) => p.id === r.hostId)?.nickname ?? '—',
           versionId: r.versionId ?? DEFAULT_VERSION_ID,
+          versionName:
+            r.versionName ?? findVersion(r.versionId ?? DEFAULT_VERSION_ID)?.name ?? '未知版本',
           isSandbox: r.isSandbox,
           isMember,
           joinLabel: isMember ? ('返回' as const) : ('加入' as const),
@@ -1079,6 +1140,24 @@ export class RoomService implements OnModuleInit {
 
   getActingPlayerId(socketPlayerId: string): string {
     return this.resolveActingPlayerId(socketPlayerId);
+  }
+
+  completeFinishedRoom(roomId: string): Room | null {
+    const room = this.roomsById.get(roomId);
+    if (!room) return null;
+    if (room.status !== 'finished') return room;
+
+    room.status = 'waiting';
+    room.players.forEach((player) => {
+      player.ready = false;
+    });
+    if (room.sandbox) {
+      room.sandbox.phase = 'lobby';
+      room.sandbox.turnPhase = undefined;
+      room.sandbox.prompt = null;
+      room.sandbox.victory = null;
+    }
+    return room;
   }
 
   private setupGeneralSelection(room: Room): void {
@@ -1251,6 +1330,46 @@ export class RoomService implements OnModuleInit {
         item.playerId === oldPlayerId ? { ...item, playerId: newPlayerId } : item,
       );
     }
+  }
+
+  private clearSelectingPlayer(room: Room, playerId: string): void {
+    const options = this.generalOptionsByRoom.get(room.id);
+    options?.delete(playerId);
+    if (room.generalSelection) {
+      room.generalSelection.selected = room.generalSelection.selected.filter(
+        (item) => item.playerId !== playerId,
+      );
+    }
+  }
+
+  private rebuildGeneralSelectionAfterLeave(room: Room): void {
+    if (room.players.length === 0) return;
+    if (!room.generalSelection) {
+      this.setupGeneralSelection(room);
+      return;
+    }
+
+    const currentExists = room.players.some((p) => p.id === room.generalSelection?.currentPlayerId);
+    const next = currentExists
+      ? room.players.find((p) => p.id === room.generalSelection?.currentPlayerId)
+      : this.nextSelectingPlayer(room) ?? room.players[0];
+
+    if (!next) return;
+    room.generalSelection = {
+      ...room.generalSelection,
+      currentPlayerId: next.id,
+      currentPlayerNickname: next.nickname,
+      deadlineAt: Date.now() + env.selectingTimeoutSec * 1000,
+      timeoutSec: env.selectingTimeoutSec,
+    };
+    this.scheduleSelectingTimeout(room);
+  }
+
+  private transferHost(room: Room): string | undefined {
+    const next = room.players.find((p) => !p.isVirtual && p.connected) ?? room.players.find((p) => !p.isVirtual);
+    if (!next) return undefined;
+    room.hostId = next.id;
+    return next.id;
   }
 
   private shuffle<T>(arr: T[]): T[] {

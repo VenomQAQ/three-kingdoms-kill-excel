@@ -5,6 +5,7 @@ import {
   Room,
   RoomCreateAck,
   RoomJoinAck,
+  RoomLeaveReason,
   RoomListItem,
   ServerToClientEvents,
 } from '@tk/shared';
@@ -53,7 +54,7 @@ interface AppState {
   createRoom: () => Promise<void>;
   joinRoom: (code: string) => Promise<void>;
   joinSandbox: () => Promise<void>;
-  leaveRoom: () => void;
+  leaveRoom: (reason?: RoomLeaveReason) => void;
   toggleReady: () => void;
   startGame: () => void;
   selectGeneral: (generalId: string) => void;
@@ -252,6 +253,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         user: s.user ? { ...s.user, nickname } : s.user,
       }));
     });
+    socket.on('user:walletChanged', ({ coins, experience, level }) => {
+      set((s) => ({
+        user: s.user ? { ...s.user, coins, experience, level } : s.user,
+      }));
+    });
     (socket as any).on('version:switched', (payload: any) => {
       if (payload && payload.versionId) {
         set({ currentVersion: payload.versionId });
@@ -350,9 +356,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   joinSandbox: async () => get().joinRoom(SANDBOX_ROOM_CODE),
 
-  leaveRoom: () => {
-    const { socket } = get();
-    socket?.emit('room:leave');
+  leaveRoom: (reason = 'manual') => {
+    const { socket, room } = get();
+    socket?.emit('room:leave', { code: room?.code, reason, _v: 1 } as Parameters<ClientToServerEvents['room:leave']>[0]);
     set({ room: null, chatMessages: [], playerId: null, actingPlayerId: null, chatChannel: null });
     void get().fetchRoomList();
   },

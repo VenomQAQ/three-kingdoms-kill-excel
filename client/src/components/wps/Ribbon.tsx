@@ -45,7 +45,6 @@ interface RibbonProps {
   onUseSkill?: (skillId: string) => void;
   versions?: VersionInfo[];
   currentVersionId?: string;
-  onVersionSelect?: (versionId: string) => void;
   versionDisabled?: boolean;
 }
 
@@ -60,7 +59,6 @@ export function Ribbon({
   onUseSkill,
   versions = [],
   currentVersionId = 'standard-2014',
-  onVersionSelect,
   versionDisabled,
 }: RibbonProps) {
   const [tab, setTab] = useState<RibbonTab>('home');
@@ -100,14 +98,13 @@ export function Ribbon({
             </button>
           </div>
           <div className={styles.groupDivider} />
-          {versions.length > 0 && onVersionSelect && (
+          {versions.length > 0 && (
             <>
               <div className={styles.group}>
                 <VersionMenu
                   versions={versions}
                   currentVersionId={currentVersionId}
                   disabled={versionDisabled}
-                  onSelect={onVersionSelect}
                 />
               </div>
               <div className={styles.groupDivider} />

@@ -112,4 +112,41 @@ describe('RoomService formal general selection', () => {
       vi.useRealTimers();
     }
   });
+
+  it('removes a manual leaver during selection and transfers host when needed', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主');
+    service.joinRoom(room.code, 'p2', '玩家二');
+    service.joinRoom(room.code, 'p3', '玩家三');
+    room.players.forEach((p) => service.setReady(p.id, true));
+
+    service.startGame('host');
+
+    const result = service.leaveRoom('host', 'manual');
+
+    expect(result.removed).toBe(true);
+    expect(result.disbanded).toBe(false);
+    expect(result.penalty).toBe(5);
+    expect(room.players.map((p) => p.id)).toEqual(['p2', 'p3']);
+    expect(room.hostId).toBe('p2');
+    expect(room.generalSelection?.currentPlayerId).not.toBe('host');
+    expect(optionIds(service, room.id, 'host')).toHaveLength(0);
+    expect(service.getRoomOfPlayer('host')).toBeNull();
+  });
+
+  it('keeps a disconnected player seated without penalty', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主');
+    service.joinRoom(room.code, 'p2', '玩家二');
+    service.setReady('host', true);
+    service.setReady('p2', true);
+    service.startGame('host');
+
+    const result = service.leaveRoom('p2', 'disconnect');
+
+    expect(result.removed).toBe(false);
+    expect(result.penalty).toBeUndefined();
+    expect(room.players.find((p) => p.id === 'p2')?.connected).toBe(false);
+    expect(service.getRoomOfPlayer('p2')).toBe(room);
+  });
 });

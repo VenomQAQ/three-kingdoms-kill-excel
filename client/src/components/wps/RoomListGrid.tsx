@@ -104,7 +104,7 @@ export function RoomListGrid({
                       value = room.ownerNickname;
                       break;
                     case 4:
-                      value = room.versionId ?? 'standard-2014';
+                      value = room.versionName ?? room.versionId ?? 'standard-2014';
                       break;
                     case 5:
                       value = room.joinLabel ?? (room.isSandbox ? '测试房' : '加入');

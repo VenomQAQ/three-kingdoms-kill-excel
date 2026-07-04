@@ -90,7 +90,6 @@ function App() {
     authStatus,
     capabilities,
     currentVersion,
-    setCurrentVersion,
     logout,
     lobbyMessages,
     subscribeLobbyChat,
@@ -113,6 +112,7 @@ function App() {
   const versions = capabilities?.versions ?? [];
   const bgColorToken = capabilities?.bgColorToken ?? '#ffffff';
   const onLobbySheet = activeSheet === 'sheet1';
+  const onCurrentRoomSheet = activeSheet === GAME_SHEET_ID;
 
   useEffect(() => {
     if (!room || bossMode || typeof window === 'undefined') return;
@@ -328,19 +328,6 @@ function App() {
     [isAuthed, showToast],
   );
 
-  const handleVersionSelect = useCallback(
-    (versionId: string) => {
-      if (!isAuthed) {
-        showToast('请先登录');
-        setShowLoginDialog(true);
-        return;
-      }
-      if (versionId === currentVersion) return;
-      setCurrentVersion(versionId);
-    },
-    [isAuthed, currentVersion, setCurrentVersion, showToast],
-  );
-
   const handleChangeNickname = useCallback(async () => {
     if (!isAuthed) {
       showToast('请先登录后修改显示昵称');
@@ -360,6 +347,22 @@ function App() {
       );
     }
   }, [isAuthed, nickname, setNickname, showToast]);
+
+  const handleLeaveRoom = useCallback(() => {
+    if (!room) return;
+    if (
+      !room.isSandbox &&
+      (room.status === 'selecting' || room.status === 'playing') &&
+      typeof window !== 'undefined'
+    ) {
+      const ok = window.confirm('确认离开将扣除 5 金币，最低扣至 0；取消则继续留在房间。');
+      if (!ok) return;
+    }
+    leaveRoom('manual');
+    if (typeof window !== 'undefined') window.sessionStorage.removeItem('roomContext');
+    setActiveSheet('sheet1');
+    setSelectedHand(null);
+  }, [leaveRoom, room]);
 
   const handleRibbonAction = useCallback(
     async (id: string) => {
@@ -381,10 +384,7 @@ function App() {
           await joinSandbox();
           break;
         case 'leave':
-          leaveRoom();
-          if (typeof window !== 'undefined') window.sessionStorage.removeItem('roomContext');
-          setActiveSheet('sheet1');
-          setSelectedHand(null);
+          handleLeaveRoom();
           break;
         case 'ready':
           toggleReady();
@@ -428,7 +428,7 @@ function App() {
       showToast,
       createRoom,
       joinSandbox,
-      leaveRoom,
+      handleLeaveRoom,
       toggleReady,
       startGame,
       sandboxStart,
@@ -448,6 +448,19 @@ function App() {
   const ribbonActions: RibbonAction[] = useMemo(() => {
     const inRoom = !!room;
     const playing = isPlaying;
+
+    if (onLobbySheet) {
+      return [
+        { id: 'create', label: '创建房间', icon: '➕', disabled: inRoom || isGuest },
+        ...(sandboxEnabled
+          ? [{ id: 'joinSandbox', label: '测试房', icon: '🧪', disabled: inRoom || isGuest }]
+          : []),
+      ];
+    }
+
+    if (!onCurrentRoomSheet) {
+      return [];
+    }
 
     if (playing) {
       const actions: RibbonAction[] = [
@@ -476,10 +489,6 @@ function App() {
     }
 
     const base: RibbonAction[] = [
-      { id: 'create', label: '创建房间', icon: '➕', disabled: inRoom || isGuest },
-      ...(sandboxEnabled
-        ? [{ id: 'joinSandbox', label: '测试房', icon: '🧪', disabled: inRoom || isGuest }]
-        : []),
       { id: 'leave', label: '离开', icon: '🚪', disabled: !inRoom },
       {
         id: 'ready',
@@ -501,7 +510,7 @@ function App() {
       );
     }
     return base;
-  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled]);
+  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet]);
 
   const handleFormulaSubmit = useCallback(async () => {
     const raw = formulaInput.trim();
@@ -530,24 +539,6 @@ function App() {
             );
           }
           break;
-        case 'version': {
-          if (!isAuthed) {
-            showToast('请先登录');
-            setShowLoginDialog(true);
-            break;
-          }
-          const vid = arg.trim();
-          if (!vid) {
-            showToast(`当前版本：${currentVersion}`);
-            break;
-          }
-          if (!versions.some((v) => v.id === vid)) {
-            useAppStore.getState().showError('E_VERSION_UNKNOWN');
-            break;
-          }
-          handleVersionSelect(vid);
-          break;
-        }
         case 'create':
           if (!isAuthed) {
             showToast('请先登录');
@@ -578,10 +569,7 @@ function App() {
           await joinSandbox();
           break;
         case 'leave':
-          leaveRoom();
-          if (typeof window !== 'undefined') window.sessionStorage.removeItem('roomContext');
-          setActiveSheet('sheet1');
-          setSelectedHand(null);
+          handleLeaveRoom();
           break;
         case 'ready':
           toggleReady();
@@ -637,15 +625,13 @@ function App() {
     showToast,
     setNickname,
     nickname,
-    currentVersion,
     versions,
-    handleVersionSelect,
     onLobbySheet,
     sendLobbyChat,
     createRoom,
     joinRoom,
     joinSandbox,
-    leaveRoom,
+    handleLeaveRoom,
     toggleReady,
     startGame,
     sandboxStart,
@@ -691,7 +677,6 @@ function App() {
         onUseSkill={(id) => sandboxUseSkill(id)}
         versions={versions}
         currentVersionId={currentVersion}
-        onVersionSelect={handleVersionSelect}
         versionDisabled={!isAuthed}
       />
       <InfoBar
@@ -765,7 +750,7 @@ function App() {
                     : `当前回合：${turnPlayer?.nickname}`
             : onLobbySheet
               ? isAuthed
-                ? '大厅聊天或 /create · /join 房间号 · /version 版本号'
+                ? '大厅聊天或 /create · /join 房间号'
                 : '登录后可发送消息 · /create · /join 需登录'
               : room
                 ? '聊天或 /ready /start /add 角色名'

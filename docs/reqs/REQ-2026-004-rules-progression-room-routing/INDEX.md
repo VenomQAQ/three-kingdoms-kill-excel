@@ -4,8 +4,12 @@
 
 | 产物 | 版本 | 路径 | 备注 |
 |---|---|---|---|
-| PRD | **v1** | [prd/prd.v1.md](./prd/prd.v1.md) | prd-author 定稿候选，待三方评审 |
-| 会签聚合 | **v1** | [review/review-signoff.v1.yaml](./review/review-signoff.v1.yaml) | pending |
+| PRD | **v1** | [prd/prd.v1.md](./prd/prd.v1.md) | 评审会签已收口，进入 design |
+| 会签聚合 | **v1** | [review/review-signoff.v1.yaml](./review/review-signoff.v1.yaml) | pass-with-conditions |
+| API 契约 | **v1** | [design/api-contract.v1.md](./design/api-contract.v1.md) | 新增 |
+| 后端技术方案 | **v1** | [design/backend-tech-design.v1.md](./design/backend-tech-design.v1.md) | 新增 |
+| 前端技术方案 | **v1** | [design/frontend-tech-design.v1.md](./design/frontend-tech-design.v1.md) | 新增 |
+| design signoff | **v1** | [design/design-signoff.v1.yaml](./design/design-signoff.v1.yaml) | pending |
 
 ## 前置需求（只读引用）
 
@@ -26,4 +30,3 @@
 - **R-RULE-01~08** · 规则 SSOT、卡牌效果完整、闪电轮转、选将不重复、全技能真实结算、张飞【替身】修复
 - **R-UI-01~05** · 玩家/角色展示文案、技能详情文案、手牌数、玩家信息弹窗、版本详情弹窗
 - **R-PROG-01~04** · 经验金币、每日签到、配置化奖励、后续入场券扩展口（延期设计）
-

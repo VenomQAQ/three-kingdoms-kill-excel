@@ -48,6 +48,8 @@ export interface RoomPlayer {
   judgeCards?: string[];
 }
 
+export type RoomLeaveReason = 'manual' | 'disconnect' | 'host-transfer' | 'room-disband' | 'evict';
+
 export type TurnPhase =
   | 'prepare'
   | 'judge'
@@ -125,6 +127,8 @@ export interface Room {
   maxPlayers: number;
   /** 三国杀版本 id（REQ-2026-001）；老 room 兼容默认 'standard-2014' */
   versionId?: string;
+  /** 三国杀版本中文名 */
+  versionName?: string;
   players: RoomPlayer[];
   status: RoomStatus;
   settings: RoomSettings;
@@ -141,6 +145,7 @@ export interface RoomListItem {
   maxPlayers: number;
   ownerNickname: string;
   versionId?: string;
+  versionName: string;
   isSandbox?: boolean;
   isMember?: boolean;
   joinLabel?: '加入' | '返回';
@@ -163,7 +168,7 @@ export interface ClientToServerEvents {
     payload: { code: string; nickname?: string; _v?: 1 },
     ack?: (res: RoomJoinAck) => void,
   ) => void;
-  'room:leave': () => void;
+  'room:leave': (payload?: { code?: string; reason?: RoomLeaveReason; _v?: 1 }) => void;
   'room:ready': (payload: { ready: boolean }) => void;
   'room:start': () => void;
   'general:select': (payload: { roomCode: string; generalId: string; _v?: 1 }) => void;
@@ -237,6 +242,13 @@ export interface ServerToClientEvents {
   'game:finished': (payload: { roomId: string; victory: { winners: string[]; message: string } }) => void;
   'game:event': (payload: { type: string; message: string }) => void;
   'user:nicknameChanged': (payload: { userId: string; nickname: string; _v: 1 }) => void;
+  'user:walletChanged': (payload: {
+    coins: number;
+    experience: number;
+    level: number;
+    reason?: string;
+    _v: 1;
+  }) => void;
   'sandbox:actor': (payload: { actingPlayerId: string }) => void;
 }
 

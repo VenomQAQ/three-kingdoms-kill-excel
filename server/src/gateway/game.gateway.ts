@@ -15,6 +15,7 @@ import {
   Room,
   RoomCreateAck,
   RoomJoinAck,
+  RoomLeaveReason,
   ServerToClientEvents,
 } from '@tk/shared';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -148,8 +149,7 @@ export class GameGateway
       const inRoom = !!this.roomService.getPlayerIdByUser(userId);
       if (inRoom) {
         this.reconnect.scheduleReclaim(userId);
-        this.roomService.markPlayerDisconnected(playerId);
-        const roomState = this.roomService.getRoomOfPlayer(playerId);
+        const roomState = this.roomService.markPlayerDisconnected(playerId);
         if (roomState) this.broadcastRoomState(roomState.id);
       }
       this.socketPlayer.delete(client.id);
@@ -159,10 +159,12 @@ export class GameGateway
 
     // 匿名 or forceEvict → 立即离房
     try {
-      const { room, removed } = this.roomService.leaveRoom(playerId);
+      const { room, removed, previousRoomId } = this.roomService.leaveRoom(playerId, 'disconnect');
       if (room) {
         client.to(room.id).emit('room:playerLeft', { playerId });
         this.broadcastRoomState(room.id);
+      } else if (previousRoomId) {
+        this.server.to(previousRoomId).emit('room:playerLeft', { playerId });
       }
       if (room && removed) {
         this.chatService.clearRoom(room.id);
@@ -231,14 +233,33 @@ export class GameGateway
   }
 
   @SubscribeMessage('room:leave')
-  handleLeave(@ConnectedSocket() client: GameSocket) {
+  async handleLeave(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload?: { code?: string; reason?: RoomLeaveReason },
+  ) {
     const playerId = this.getPlayerId(client);
+    const reason = payload?.reason ?? 'manual';
     try {
-      const { room } = this.roomService.leaveRoom(playerId);
+      const before = this.roomService.getRoomOfPlayer(playerId);
+      if (payload?.code && before && before.code !== payload.code) {
+        throw new RoomError('E_ROOM_NOT_FOUND', '房间不匹配');
+      }
+      const statusBefore = before?.status;
+      const { room, previousRoomId, penalty } = this.roomService.leaveRoom(playerId, reason);
+      const charged =
+        reason === 'manual' &&
+        (statusBefore === 'selecting' || statusBefore === 'playing') &&
+        (penalty ?? 0) > 0;
+      if (charged) {
+        await this.chargeManualLeavePenalty(client, penalty ?? 0);
+      }
       if (room) {
         void client.leave(room.id);
         client.to(room.id).emit('room:playerLeft', { playerId });
         this.broadcastRoomState(room.id);
+      } else if (previousRoomId) {
+        void client.leave(previousRoomId);
+        this.server.to(previousRoomId).emit('room:playerLeft', { playerId });
       }
     } catch (err) {
       this.emitError(client, err);
@@ -993,6 +1014,21 @@ export class GameGateway
           message: room.sandbox.victory.message,
         });
       }
+      if (room.status === 'finished') {
+        const recovered = this.roomService.completeFinishedRoom(room.id);
+        if (recovered) {
+          const refreshedSockets = await this.server.in(room.id).fetchSockets();
+          for (const socket of refreshedSockets) {
+            const playerId =
+              (socket.data as { playerId?: string }).playerId ??
+              this.socketPlayer.get(socket.id);
+            if (!playerId) continue;
+            const filtered = this.roomService.getFilteredRoomForPlayer(room.id, playerId);
+            if (!filtered) continue;
+            socket.emit('room:state', filtered);
+          }
+        }
+      }
       return;
     }
     this.server.to(room.id).emit('room:state', room);
@@ -1002,6 +1038,27 @@ export class GameGateway
     const room = this.roomService.getRoomById(roomId);
     if (room) {
       void this.broadcastGameState(room);
+    }
+  }
+
+  private async chargeManualLeavePenalty(client: GameSocket, amount: number): Promise<void> {
+    const userId = (client.data as any).userId as string | undefined;
+    if (!userId || amount <= 0) return;
+    await this.userRepo
+      .createQueryBuilder()
+      .update(User)
+      .set({ coins: () => `MAX(coins - ${amount}, 0)` })
+      .where('id = :userId', { userId })
+      .execute();
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (user) {
+      this.socketAuth.emitToUser(userId, 'user:walletChanged', {
+        coins: user.coins,
+        experience: user.experience,
+        level: user.level,
+        reason: 'manual-leave',
+        _v: 1,
+      });
     }
   }
 

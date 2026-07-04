@@ -9,6 +9,9 @@ export interface AuthUser {
   email: string;
   nickname: string;
   preferredVersion: string;
+  coins: number;
+  experience: number;
+  level: number;
 }
 
 export const AuthApi = {

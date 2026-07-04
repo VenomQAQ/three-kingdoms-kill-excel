@@ -1,0 +1,14 @@
+req_id: REQ-2026-004
+version: v1
+stage: "③详细技术方案"
+prd_ref: prd/prd.v1.md
+signoffs:
+  backend-design:
+    status: signed
+    ref: design/backend-tech-design.v1.md
+    note: "版本口径、SSOT、生命周期、选将流程已收敛"
+  frontend-design:
+    status: signed
+    ref: design/frontend-tech-design.v1.md
+    note: "三层页面壳、Ribbon 上下文、恢复策略已收敛"
+result: pass
