@@ -1,13 +1,17 @@
 req_id: REQ-2026-004
 title: 规则完备、房间生命周期与 Sheet 架构拆分
-stage: "①产品设计"
+stage: "②评审会签"
 prd_ref: prd/prd.v1.md
 prd_version: v1
-status: drafted
+status: reviewing
 history:
   - ts: 2026-07-04T11:30:00+08:00
     from: "起草"
     to: "①产品设计"
     actor: prd-author
     note: 根据用户 14 项需求与补充问答起草 PRD v1；待产品确认后进入三方评审。
-
+  - ts: 2026-07-04T12:05:00+08:00
+    from: "①产品设计"
+    to: "②评审会签"
+    actor: prd-author
+    note: 完成 frontend-feasibility / backend-feasibility / qa-testability 三审，结论均为 pass-with-conditions，待归纳问题并逐项解决。

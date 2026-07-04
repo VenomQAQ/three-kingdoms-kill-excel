@@ -1,22 +1,71 @@
 req_id: REQ-2026-004
+version: v1
 stage: "②评审会签"
 prd_ref: prd/prd.v1.md
+based_on: review/review-signoff.v1.yaml
 signoffs:
   frontend-feasibility:
-    status: pending
-    verdict: ""
-    reviewer: ""
-    ts: ""
+    status: signed
+    verdict: pass-with-conditions
+    reviewer: frontend-feasibility
+    ts: 2026-07-04T11:50+08:00
+    ref: review/frontend-feasibility.v1.md
+    complexity: L
+    cost_person_day: "3-5"
+    conditions:
+      - Sheet 初始三入口要与现有 sheet1/sheet2/game 路由清晰切分，不能继续混用。
+      - 版本详情弹窗需要明确入口与返回路径。
+    resolved_by_prd:
+      - Sheet 初始三入口已收敛为「房间列表 / 当前房间 / 区域销售」三级壳。
+      - 版本详情保持只读入口，属于版本文本浏览，不进入切换流程。
+    risks:
+      - 页面壳重构期间 Ribbon 与 SheetTabs 容易出现状态分叉。
+      - 房间列表和当前房间的上下文切换会引发布局抖动。
   backend-feasibility:
-    status: pending
-    verdict: ""
-    reviewer: ""
-    ts: ""
+    status: signed
+    verdict: pass-with-conditions
+    reviewer: backend-feasibility
+    ts: 2026-07-04T11:50+08:00
+    ref: review/backend-feasibility.v1.md
+    complexity: L
+    cost_person_day: "5-8"
+    conditions:
+      - 先统一 `standard-2014` 的人数上限，PRD 与 shared/versions.ts 必须同口径。
+      - `docs/cards/*.md` 的规则 SSOT 需要补齐或改成真实存在的目录。
+      - 房间结束、托管、保坐、重连的优先级要先冻结。
+    resolved_by_prd:
+      - `standard-2014` 现已统一为 2-8 人。
+      - 规则 SSOT 以 `docs/cards/*.md`、`docs/gameplay.md` 与 `packages/shared/src/versions.ts` 为准。
+      - 房间状态语义已明确：`waiting / selecting / playing / finished / disconnected / 托管 / 主动退出`。
+    risks:
+      - 房间生命周期回写点太多，可能产生重复广播。
+      - 规则矩阵缺失会让后续引擎修复没有统一落点。
   qa-testability:
-    status: pending
-    verdict: ""
-    reviewer: ""
-    ts: ""
-result: pending
-last_signer: ""
-
+    status: signed
+    verdict: pass-with-conditions
+    reviewer: qa-testability
+    ts: 2026-07-04T11:50+08:00
+    ref: review/qa-testability.v1.md
+    per_requirement:
+      R-SHEET-01: { testable: yes, note: "入口可观察" }
+      R-ROOM-04: { testable: yes, note: "扣费弹窗可断言" }
+      R-ROOM-05: { testable: conditional, note: "需先定义托管/保坐状态" }
+      R-RULE-01: { testable: conditional, note: "规则 SSOT 未落地" }
+      R-RULE-09: { testable: yes, note: "候选顺序需稳定" }
+      R-PROG-01: { testable: conditional, note: "延期设计不纳入当前主验收" }
+    conditions:
+      - 先统一规则 SSOT 与版本人数口径。
+      - 延期设计和 P0/P1 主验收拆开。
+    resolved_by_prd:
+      - 版本人数口径已统一为 2-8 人。
+      - 成长经济已明确为延期设计，不纳入本轮主验收。
+      - 房间状态语义已统一，便于写出可判定用例。
+    seed_or_stub_needed: true
+    cost_person_day_for_qa: "2-4"
+result: pass-with-conditions
+last_signer: qa-testability
+last_signer_ts: 2026-07-04T11:50+08:00
+suggested_next:
+  agent: lifecycle-orchestrator
+  reason: |
+    三方均为 pass-with-conditions，当前需要先消解版本人数、规则 SSOT、房间生命周期边界三类条件，再进入 design。

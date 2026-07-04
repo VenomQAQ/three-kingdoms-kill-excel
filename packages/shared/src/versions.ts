@@ -16,7 +16,7 @@ export const VERSIONS: readonly GameVersion[] = Object.freeze([
     id: 'standard-2014',
     name: '三国杀标准版·界限突破',
     minPlayers: 2,
-    maxPlayers: 10,
+    maxPlayers: 8,
     default: true,
   },
 ]);
