@@ -28,6 +28,7 @@ import {
 } from './data/decoy';
 import { useAppStore } from './store/appStore';
 import { useToastStore } from './store/toastStore';
+import { HttpError } from './api';
 import { formatGeneralName } from './utils/display';
 import gridStyles from './components/wps/SpreadsheetGrid.module.css';
 import styles from './App.module.css';
@@ -63,6 +64,7 @@ function App() {
     leaveRoom,
     toggleReady,
     startGame,
+    selectGeneral,
     sandboxAddPlayer,
     sandboxRemoveLastVirtual,
     sandboxSwitchActor,
@@ -86,7 +88,6 @@ function App() {
     clearError,
     hydrate,
     authStatus,
-    user,
     capabilities,
     currentVersion,
     setCurrentVersion,
@@ -111,7 +112,35 @@ function App() {
   const sandboxEnabled = capabilities?.sandboxEnabled ?? true;
   const versions = capabilities?.versions ?? [];
   const bgColorToken = capabilities?.bgColorToken ?? '#ffffff';
-  const onLobbySheet = !room && activeSheet === 'sheet1';
+  const onLobbySheet = activeSheet === 'sheet1';
+
+  useEffect(() => {
+    if (!room || bossMode || typeof window === 'undefined') return;
+    window.sessionStorage.setItem(
+      'roomContext',
+      JSON.stringify({ roomCode: room.code, activeSheet, enteredAt: Date.now() }),
+    );
+  }, [room?.code, activeSheet, bossMode]);
+
+  useEffect(() => {
+    if (authStatus !== 'authed' || !connected || room || bossMode || typeof window === 'undefined') return;
+    const raw = window.sessionStorage.getItem('roomContext');
+    if (!raw) return;
+    try {
+      const context = JSON.parse(raw) as { roomCode?: string; activeSheet?: SheetId; enteredAt?: number };
+      if (!context.roomCode) return;
+      const reconnectGraceMs = (capabilities?.session.reconnectGraceSec ?? 300) * 1000;
+      if (context.enteredAt && Date.now() - context.enteredAt > reconnectGraceMs) {
+        window.sessionStorage.removeItem('roomContext');
+        return;
+      }
+      void joinRoom(context.roomCode)
+        .then(() => setActiveSheet(GAME_SHEET_ID))
+        .catch(() => window.sessionStorage.removeItem('roomContext'));
+    } catch {
+      window.sessionStorage.removeItem('roomContext');
+    }
+  }, [authStatus, connected, room, bossMode, joinRoom, capabilities?.session.reconnectGraceSec]);
 
   useEffect(() => {
     if (authStatus === 'guest' && !room) {
@@ -154,7 +183,7 @@ function App() {
     if (room && !bossMode) {
       setActiveSheet(GAME_SHEET_ID);
     }
-  }, [room, bossMode]);
+  }, [room?.code, bossMode]);
 
   const isSandbox = room?.isSandbox || room?.code === SANDBOX_ROOM_CODE;
   const isPlaying = room?.status === 'playing' || room?.status === 'finished';
@@ -186,10 +215,10 @@ function App() {
   const prevTurnIndexRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (gamePrompt && gamePrompt.playerId !== actingId) {
+    if (isSandbox && gamePrompt && gamePrompt.playerId !== actingId) {
       sandboxSwitchActor(gamePrompt.playerId);
     }
-  }, [gamePrompt?.id, gamePrompt?.playerId, actingId, sandboxSwitchActor]);
+  }, [isSandbox, gamePrompt?.id, gamePrompt?.playerId, actingId, sandboxSwitchActor]);
 
   /** 回合结束后自动切换操控到当前回合角色 */
   useEffect(() => {
@@ -312,6 +341,26 @@ function App() {
     [isAuthed, currentVersion, setCurrentVersion, showToast],
   );
 
+  const handleChangeNickname = useCallback(async () => {
+    if (!isAuthed) {
+      showToast('请先登录后修改显示昵称');
+      setShowLoginDialog(true);
+      return;
+    }
+    const next = window.prompt('请输入新昵称', nickname)?.trim();
+    if (!next || next === nickname) return;
+    try {
+      await setNickname(next);
+      showToast('昵称已更新');
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      useAppStore.getState().showError(
+        code,
+        err instanceof Error ? err.message : '昵称更新失败',
+      );
+    }
+  }, [isAuthed, nickname, setNickname, showToast]);
+
   const handleRibbonAction = useCallback(
     async (id: string) => {
       clearError();
@@ -333,6 +382,7 @@ function App() {
           break;
         case 'leave':
           leaveRoom();
+          if (typeof window !== 'undefined') window.sessionStorage.removeItem('roomContext');
           setActiveSheet('sheet1');
           setSelectedHand(null);
           break;
@@ -465,8 +515,20 @@ function App() {
 
       switch (cmd.toLowerCase()) {
         case 'nick':
-          if (isAuthed) setNickname(arg || nickname);
-          else showToast('请先登录后修改显示昵称');
+          if (!isAuthed) {
+            showToast('请先登录后修改显示昵称');
+            break;
+          }
+          try {
+            await setNickname(arg || nickname);
+            showToast('昵称已更新');
+          } catch (err) {
+            const code = err instanceof HttpError ? err.code : undefined;
+            useAppStore.getState().showError(
+              code,
+              err instanceof Error ? err.message : '昵称更新失败',
+            );
+          }
           break;
         case 'version': {
           if (!isAuthed) {
@@ -517,6 +579,7 @@ function App() {
           break;
         case 'leave':
           leaveRoom();
+          if (typeof window !== 'undefined') window.sessionStorage.removeItem('roomContext');
           setActiveSheet('sheet1');
           setSelectedHand(null);
           break;
@@ -598,7 +661,7 @@ function App() {
   ]);
 
   const showGameSheet = !!room && !bossMode;
-  const displaySheet = showGameSheet ? GAME_SHEET_ID : activeSheet;
+  const displaySheet = showGameSheet && activeSheet === GAME_SHEET_ID ? GAME_SHEET_ID : activeSheet;
 
   const fileName = showGameSheet
     ? isPlaying
@@ -612,7 +675,9 @@ function App() {
     ? '游戏中'
     : room?.status === 'finished'
       ? '已结束'
-      : '等待中';
+      : room?.status === 'selecting'
+        ? '选将中'
+        : '等待中';
 
   return (
     <div className={styles.app}>
@@ -636,9 +701,9 @@ function App() {
         roomStatus={room ? roomStatusLabel : undefined}
         actingName={formatGeneralName(actingPlayer)}
         turnName={formatGeneralName(turnPlayer)}
-        email={user?.email}
         isAuthed={isAuthed}
         onLoginClick={() => setShowLoginDialog(true)}
+        onChangeNickname={handleChangeNickname}
         onChangePassword={() => setShowChangePasswordDialog(true)}
         onLogout={() => void logout()}
       />
@@ -729,7 +794,7 @@ function App() {
         className={
           onLobbySheet && !bossMode
             ? gridStyles.boardLayout
-            : room && !bossMode && !isPlaying
+            : displaySheet === GAME_SHEET_ID && room && !bossMode && !isPlaying
               ? styles.mainWithChat
               : styles.main
         }
@@ -744,12 +809,14 @@ function App() {
             selectedHand={selectedHand}
             onSelectCell={setSelectedCell}
           onSelectHand={handleSelectHand}
-          onPlayCard={handlePlayCard}
-          onViewSkills={setSkillModalPlayer}
-          onViewCard={setDetailCardName}
-          isSandbox={isSandbox}
-          onToggleReady={toggleReady}
-        />
+            onPlayCard={handlePlayCard}
+            onViewSkills={setSkillModalPlayer}
+            onViewCard={setDetailCardName}
+            onSendChat={sendChat}
+            isSandbox={isSandbox}
+            onToggleReady={toggleReady}
+            onSelectGeneral={selectGeneral}
+          />
         ) : displaySheet === 'sheet1' ? (
           <>
             <div className={gridStyles.gridPane}>
@@ -779,8 +846,8 @@ function App() {
         ) : (
           <DecoyGrid selectedCell={selectedCell} onSelectCell={setSelectedCell} />
         )}
-        {room && !bossMode && !isPlaying && (
-          <ChatPanel messages={chatMessages} visible />
+        {displaySheet === GAME_SHEET_ID && room && !bossMode && !isPlaying && (
+          <ChatPanel messages={chatMessages} visible onSend={sendChat} />
         )}
       </div>
       <SheetTabs

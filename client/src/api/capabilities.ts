@@ -29,6 +29,7 @@ export interface Capabilities {
   sandboxEnabled: boolean;
   versions: VersionInfo[];
   bgColorToken: string;
+  selectingTimeoutSec: number;
   chatLimits: ChatLimits;
   session: SessionInfo;
 }

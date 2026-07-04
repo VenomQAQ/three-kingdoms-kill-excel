@@ -22,7 +22,8 @@ export class CapabilitiesController {
           maxPlayers: v.maxPlayers,
           default: v.default,
         })),
-        bgColorToken: '--bg-cell',
+        bgColorToken: '#ffffff',
+        selectingTimeoutSec: env.selectingTimeoutSec,
         chatLimits: {
           ratePerSec: 1,
           maxLength: 200,

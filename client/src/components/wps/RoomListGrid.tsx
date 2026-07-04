@@ -5,7 +5,7 @@ import styles from './SpreadsheetGrid.module.css';
 import { COL_LABELS } from '../../data/decoy';
 import { useCellFiller } from '../../utils/useCellFiller';
 
-const HEADERS = ['房间号', '状态', '玩家人数', '房主', '版本', '备注'];
+const HEADERS = ['房间号', '状态', '玩家人数', '房主', '版本', '操作'];
 const COL_WIDTHS = [100, 88, 88, 100, 132, 120];
 
 interface RoomListGridProps {
@@ -20,6 +20,7 @@ interface RoomListGridProps {
 
 function statusLabel(status: RoomListItem['status']) {
   if (status === 'playing') return '游戏中';
+  if (status === 'selecting') return '选将中';
   if (status === 'finished') return '已结束';
   return '等待中';
 }
@@ -71,7 +72,7 @@ export function RoomListGrid({
           return (
             <div
               key={rowNum}
-              className={`${styles.row}${isFiller ? ` ${styles.fillerRow}` : ''}${
+              className={`${styles.row}${room?.isMember ? ` ${styles.memberRow}` : ''}${isFiller ? ` ${styles.fillerRow}` : ''}${
                 isFiller && isLastRow ? ` ${styles.fillerRowStretch}` : ''
               }`}
             >
@@ -100,18 +101,19 @@ export function RoomListGrid({
                       value = `${room.playerCount}/${room.maxPlayers}`;
                       break;
                     case 3:
-                      value = room.hostNickname;
+                      value = room.ownerNickname;
                       break;
                     case 4:
                       value = room.versionId ?? 'standard-2014';
                       break;
                     case 5:
-                      value = room.isSandbox ? '模拟测试房' : '';
+                      value = room.joinLabel ?? (room.isSandbox ? '测试房' : '加入');
+                      extraClass += ` ${styles.linkCell}`;
                       break;
                     default:
                       break;
                   }
-                  if (ci === 0) {
+                  if (ci === 0 || ci === 5) {
                     onClick = () => {
                       onSelectCell(ref);
                       if (isGuest) {
@@ -131,7 +133,7 @@ export function RoomListGrid({
                     } ${extraClass}`}
                     style={{ minWidth: COL_WIDTHS[ci], width: COL_WIDTHS[ci] }}
                     onClick={onClick}
-                    title={ci === 0 && room ? (isGuest ? '请先登录' : '点击加入房间') : undefined}
+                    title={(ci === 0 || ci === 5) && room ? (isGuest ? '请先登录' : `${room.joinLabel ?? '加入'}房间`) : undefined}
                   >
                     {value}
                   </div>

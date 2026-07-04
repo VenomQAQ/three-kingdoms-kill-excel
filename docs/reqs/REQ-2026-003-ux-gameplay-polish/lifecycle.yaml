@@ -1,8 +1,8 @@
 req_id: REQ-2026-003
 title: UX 与玩法体验补全
-stage: "②已通过"
-prd_ref: prd/prd.v1.md
-prd_version: v1
+stage: "③开发"
+prd_ref: prd/prd.v2.md
+prd_version: v2
 status: approved
 history:
   - ts: 2026-07-03T17:30+08:00
@@ -15,3 +15,23 @@ history:
     to: "②已通过"
     actor: lifecycle-orchestrator
     note: 三维签核 qa=pass，前后端=pass-with-conditions；合并条件在 ③ design 消解
+  - ts: 2026-07-03T18:05+08:00
+    from: "②已通过"
+    to: "②已通过"
+    actor: prd-author
+    note: PRD v2 按产品确认修订：room:join 重进、正式房 room.status=selecting、180s 超时 index=0、测试房保留原逻辑、日志武将名主展示
+  - ts: 2026-07-03T18:20+08:00
+    from: "②评审会签"
+    to: "②已通过"
+    actor: lifecycle-orchestrator
+    note: 三方 v2 复核全 pass，review-signoff.v2.yaml 聚合通过
+  - ts: 2026-07-03T18:45+08:00
+    from: "②已通过"
+    to: "③详细技术方案"
+    actor: backend-design/frontend-design
+    note: 产出 api-contract.v1（SSOT）+ backend-tech-design.v1 + frontend-tech-design.v1
+  - ts: 2026-07-03T22:05+08:00
+    from: "③详细技术方案"
+    to: "③开发"
+    actor: codex
+    note: 完成 REQ-2026-003 代码实现与开发自测；dev-smoke-report.v1 记录 unit/build 通过，视觉基线待 QA

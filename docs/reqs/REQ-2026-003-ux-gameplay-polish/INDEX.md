@@ -4,11 +4,15 @@
 
 | 产物 | 版本 | 路径 | 备注 |
 |---|---|---|---|
-| PRD | **v1** | [prd/prd.v1.md](./prd/prd.v1.md) | 承接 001/002 未完成项 + 本轮 6 条优化 |
-| 前端可行性 | **v1** | [review/frontend-feasibility.v1.md](./review/frontend-feasibility.v1.md) | ②评审 |
-| 后端可行性 | **v1** | [review/backend-feasibility.v1.md](./review/backend-feasibility.v1.md) | ②评审 |
-| QA 可测性 | **v1** | [review/qa-testability.v1.md](./review/qa-testability.v1.md) | ②评审 |
-| 会签聚合 | **v1** | [review/review-signoff.v1.yaml](./review/review-signoff.v1.yaml) | ②评审 |
+| PRD | **v2** | [prd/prd.v2.md](./prd/prd.v2.md) | 消解三审产品条件；v1 保留只读 |
+| 前端可行性 | **v2** | [review/frontend-feasibility.v2.md](./review/frontend-feasibility.v2.md) | pass；v1 保留 |
+| 后端可行性 | **v2** | [review/backend-feasibility.v2.md](./review/backend-feasibility.v2.md) | pass；v1 保留 |
+| QA 可测性 | **v2** | [review/qa-testability.v2.md](./review/qa-testability.v2.md) | pass；v1 保留 |
+| 会签聚合 | **v2** | [review/review-signoff.v2.yaml](./review/review-signoff.v2.yaml) | ②已通过 |
+| API 契约 (SSOT) | **v1** | [design/api-contract.v1.md](./design/api-contract.v1.md) | frozen: true |
+| 后端技术方案 | **v1** | [design/backend-tech-design.v1.md](./design/backend-tech-design.v1.md) | room:join 重进 + 正式房选将 + 无懈断链 |
+| 前端技术方案 | **v1** | [design/frontend-tech-design.v1.md](./design/frontend-tech-design.v1.md) | 消费冻结契约 |
+| 开发自测报告 | **v1** | [qa/dev-smoke-report.v1.md](./qa/dev-smoke-report.v1.md) | unit/build pass；视觉基线待 QA |
 
 ## 前置需求（只读引用）
 
@@ -20,6 +24,8 @@
 ## 版本变更日志
 
 - **v1** · 2026-07-03 · 页面状态保持与重进房、昵称体系、锦囊响应链修复、对局区铺满、选将流程、房间内聊天输入框；承接 001/002 未完成 P0 项
+- **v2** · 2026-07-03 · 消解三审产品问题：复用 `room:join`、正式房 `room.status='selecting'`、180s 超时默认候选 `index=0`、测试房保留原自定义角色逻辑、对局日志武将名主展示；三审 v2 全 pass；产出 API/后端/前端设计 v1
+- **dev-smoke v1** · 2026-07-03 · 代码实现后完成服务端选将单测、引擎回归、前后端 build 自测；浏览器视觉基线留待 QA
 
 ## 需求点索引
 

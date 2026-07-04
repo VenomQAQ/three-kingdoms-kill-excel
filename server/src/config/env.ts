@@ -49,6 +49,7 @@ export const env = Object.freeze({
   jwtAccessTtlSec: int(process.env.JWT_ACCESS_TTL_SEC, 3600),
   refreshTtlSec: int(process.env.REFRESH_TTL_SEC, 60 * 60 * 24 * 7),
   reconnectGraceSec: int(process.env.RECONNECT_GRACE_SEC, 300),
+  selectingTimeoutSec: int(process.env.SELECTING_TIMEOUT_SEC, 180),
 
   // Cookie
   cookieSecure: bool(process.env.COOKIE_SECURE, false),

@@ -2,7 +2,7 @@
  * REQ-2026-001 · FE-1 · Auth 域 API
  * 对齐 design/api-contract.v1.md §1
  */
-import { apiFetch, httpGet, httpPost } from './http';
+import { apiFetch, httpGet, httpPatch, httpPost } from './http';
 
 export interface AuthUser {
   userId: string;
@@ -12,8 +12,8 @@ export interface AuthUser {
 }
 
 export const AuthApi = {
-  register: (email: string, password: string, nickname: string) =>
-    httpPost<AuthUser>('/api/auth/register', { email, password, nickname }),
+  register: (email: string, password: string, nickname: string, confirmPassword = password) =>
+    httpPost<AuthUser>('/api/auth/register', { email, password, confirmPassword, nickname }),
 
   login: (email: string, password: string) =>
     httpPost<AuthUser>('/api/auth/login', { email, password }),
@@ -22,6 +22,9 @@ export const AuthApi = {
 
   changePassword: (oldPassword: string, newPassword: string) =>
     httpPost<void>('/api/auth/change-password', { oldPassword, newPassword }),
+
+  updateProfile: (nickname: string) =>
+    httpPatch<AuthUser>('/api/auth/profile', { nickname }),
 
   /** 页面挂载/rehydrate 时调用；未登录抛 HttpError code=E_UNAUTHORIZED */
   me: () => httpGet<AuthUser>('/api/auth/me'),

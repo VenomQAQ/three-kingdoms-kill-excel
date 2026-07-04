@@ -242,6 +242,11 @@
   color: #217346;
 }
 
+.memberRow .rowHeader,
+.memberRow .cell {
+  background: #eef6ff;
+}
+
 .virtualTag {
   color: #888;
   font-size: 10px;
@@ -426,6 +431,58 @@
   color: #217346;
   font-weight: 600;
   margin-right: 6px;
+}
+
+.chatInputArea {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid #e5e5e5;
+  background: #fafafa;
+  flex-shrink: 0;
+}
+
+.chatInput {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #333333;
+  font-size: 12px;
+}
+
+.chatInput:focus {
+  outline: none;
+  border-color: #217346;
+  box-shadow: 0 0 0 2px rgba(33, 115, 70, 0.12);
+}
+
+.chatSendBtn {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid #217346;
+  border-radius: 3px;
+  background: #217346;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.chatSendBtn:hover:not(:disabled) {
+  background: #1a5c38;
+}
+
+.chatSendBtn:disabled {
+  border-color: #d9d9d9;
+  background: #f0f0f0;
+  color: #999999;
+  cursor: not-allowed;
 }
 
 .collapseBtn {

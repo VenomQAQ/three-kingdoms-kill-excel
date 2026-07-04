@@ -1,0 +1,73 @@
+req_id: REQ-2026-003
+version: v2
+stage: "②评审会签"
+prd_ref: prd/prd.v2.md
+based_on: review/review-signoff.v1.yaml
+signoffs:
+  frontend-feasibility:
+    status: signed
+    verdict: pass
+    reviewer: frontend-feasibility
+    ts: 2026-07-03T18:20+08:00
+    ref: review/frontend-feasibility.v2.md
+    complexity: L
+    cost_person_day: "5-8"
+    v1_conditions_resolved:
+      - selecting 字段落点固定为 room.status='selecting'
+      - 候选武将列表服务端权威下发
+      - 对局日志以武将名为主，非日志玩家标识用昵称
+    new_notes:
+      - 选将候选卡需展示武将名、技能摘要、体力/血量、倒计时
+      - 测试房保留原自定义角色/武将流程
+  backend-feasibility:
+    status: signed
+    verdict: pass
+    reviewer: backend-feasibility
+    ts: 2026-07-03T18:20+08:00
+    ref: review/backend-feasibility.v2.md
+    complexity: L
+    cost_person_day: "6-9"
+    v1_conditions_resolved:
+      - room:join 复用为刷新恢复/返回房间/保坐重绑入口
+      - 正式房使用 room.status='selecting'
+      - sandbox 保留原测试逻辑，不强制正式房选将
+      - 180s 超时默认候选数组 index=0
+    new_notes:
+      - room:join 需覆盖首次加入、已在房内返回、保坐重绑三类行为
+      - 正式房 startGame 拆为分配身份 -> selecting -> engine.start()
+  qa-testability:
+    status: signed
+    verdict: pass
+    reviewer: qa-testability
+    ts: 2026-07-03T18:20+08:00
+    ref: review/qa-testability.v2.md
+    per_requirement:
+      "R-UX-01": { testable: yes, note: "等待/选将/对局三态刷新恢复" }
+      "R-UX-02": { testable: yes, note: "room:join 返回原座位" }
+      "R-ACCT-01": { testable: yes, note: "排除账号表单后无邮箱展示" }
+      "R-ACCT-02": { testable: yes, note: "昵称同步" }
+      "R-ACCT-03": { testable: yes, note: "注册确认密码" }
+      "R-ACCT-04": { testable: yes, note: "日志武将名主展示" }
+      "R-ENG-01": { testable: yes, note: "P0 缺陷" }
+      "R-ENG-02": { testable: yes, note: "7 项清单" }
+      "R-UI-01": { testable: yes, note: "等待/选将/对局 game-sheet 基线" }
+      "R-GAME-01": { testable: yes, note: "room.status=selecting" }
+      "R-GAME-02": { testable: yes, note: "主公 5、其他 3" }
+      "R-GAME-03": { testable: yes, note: "技能/体力展示 + 180s 超时" }
+      "R-SBX-01": { testable: yes, note: "测试房自定义角色/武将" }
+      "R-CHAT-01": { testable: yes, note: "房间聊天输入框" }
+    seed_or_stub_needed: true
+    cost_person_day_for_qa: "2-4"
+result: pass
+last_signer: qa-testability
+last_signer_ts: 2026-07-03T18:20+08:00
+suggested_next:
+  agent: lifecycle-orchestrator
+  reason: |
+    v2 三方全 pass，可保持/翻至 "②已通过"。
+    下一步进入 ③ 详细技术方案：backend-design 产出 API 契约与后端技术方案，frontend-design 消费契约并产出前端技术方案。
+open_items_for_design:
+  - selectingTimeoutSec 默认 180，测试环境可配置
+  - 选将候选 payload 字段与提交事件命名
+  - game-sheet 视觉基线路径与 data-bg-token 读取方式
+  - 日志展示 format helper 拆分昵称与武将名语义

@@ -18,6 +18,7 @@ export class SocketAuthService {
   /** userId → socketIds */
   private readonly userSockets = new Map<string, Set<string>>();
   private server: Server | null = null;
+  private nicknameChanged: ((userId: string, nickname: string) => void) | null = null;
 
   constructor(
     private readonly tokens: TokenService,
@@ -26,6 +27,10 @@ export class SocketAuthService {
 
   bindServer(server: Server): void {
     this.server = server;
+  }
+
+  bindNicknameChanged(callback: (userId: string, nickname: string) => void): void {
+    this.nicknameChanged = callback;
   }
 
   /**
@@ -94,6 +99,19 @@ export class SocketAuthService {
     for (const sid of set) {
       this.server.to(sid).emit(event as any, payload);
     }
+  }
+
+  updateUserNickname(userId: string, nickname: string): void {
+    if (!this.server) return;
+    const set = this.userSockets.get(userId);
+    if (!set) return;
+    for (const sid of set) {
+      const socket = this.server.sockets.sockets.get(sid);
+      if (socket) {
+        (socket.data as any).nickname = nickname;
+      }
+    }
+    this.nicknameChanged?.(userId, nickname);
   }
 
   /**

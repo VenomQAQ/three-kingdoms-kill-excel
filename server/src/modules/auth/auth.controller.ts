@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Patch,
   Req,
   Res,
   UnauthorizedException,
@@ -23,6 +24,7 @@ import {
 interface RegisterDto {
   email: string;
   password: string;
+  confirmPassword?: string;
   nickname: string;
 }
 interface LoginDto {
@@ -32,6 +34,9 @@ interface LoginDto {
 interface ChangePasswordDto {
   oldPassword: string;
   newPassword: string;
+}
+interface UpdateProfileDto {
+  nickname?: string;
 }
 
 @Controller('api/auth')
@@ -93,6 +98,26 @@ export class AuthController {
     await this.authService.changePassword(req.user!.userId, body.oldPassword, body.newPassword);
     this.clearAuthCookies(res);
     return { ok: true, _v: 1 };
+  }
+
+  @Patch('profile')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard)
+  async updateProfile(
+    @Req() req: AuthedRequest,
+    @Body() body: UpdateProfileDto,
+  ) {
+    const user = await this.authService.updateProfile(req.user!.userId, body);
+    return {
+      ok: true,
+      data: {
+        userId: user.id,
+        email: user.email,
+        nickname: user.nickname,
+        preferredVersion: user.preferredVersion,
+      },
+      _v: 1,
+    };
   }
 
   @Post('refresh')

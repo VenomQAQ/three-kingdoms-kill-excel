@@ -17,6 +17,7 @@ import { SocketAuthService } from './socket-auth.service';
 
 const QQ_EMAIL_RE = /^\d{5,11}@qq\.com$/i;
 const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9!@#$%^&*_.-]{8,32}$/;
+const NICKNAME_UPDATE_INTERVAL_MS = 60_000;
 
 function throwCode(exception: 'bad' | 'conflict' | 'unauth', code: string, message: string): never {
   if (exception === 'bad') throw new BadRequestException({ ok: false, code, message, _v: 1 });
@@ -27,6 +28,7 @@ function throwCode(exception: 'bad' | 'conflict' | 'unauth', code: string, messa
 export interface RegisterInput {
   email: string;
   password: string;
+  confirmPassword?: string;
   nickname: string;
 }
 
@@ -34,6 +36,10 @@ export interface LoginInput {
   email: string;
   password: string;
   ip: string;
+}
+
+export interface UpdateProfileInput {
+  nickname?: string;
 }
 
 export interface AuthPair {
@@ -50,6 +56,7 @@ export interface AuthPair {
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger('AuthService');
+  private readonly nicknameUpdatedAt = new Map<string, number>();
 
   constructor(
     @InjectRepository(User) private readonly userRepo: Repository<User>,
@@ -65,6 +72,7 @@ export class AuthService {
     const email = typeof input?.email === 'string' ? input.email.trim().toLowerCase() : '';
     const nickname = typeof input?.nickname === 'string' ? input.nickname.trim() : '';
     const password = typeof input?.password === 'string' ? input.password : '';
+    const confirmPassword = typeof input?.confirmPassword === 'string' ? input.confirmPassword : password;
 
     if (!QQ_EMAIL_RE.test(email)) {
       throwCode('bad', ErrorCodes.INVALID_EMAIL, '邮箱必须为 QQ 邮箱（数字@qq.com）');
@@ -72,9 +80,10 @@ export class AuthService {
     if (!PASSWORD_RE.test(password)) {
       throwCode('bad', ErrorCodes.WEAK_PASSWORD, '密码需 8-32 位，且同时包含字母和数字');
     }
-    if (nickname.length < 1 || nickname.length > 20) {
-      throwCode('bad', ErrorCodes.WEAK_PASSWORD, '昵称长度需 1-20 字符');
+    if (password !== confirmPassword) {
+      throwCode('bad', ErrorCodes.PASSWORD_MISMATCH, '两次密码不一致');
     }
+    this.assertNickname(nickname);
 
     const exists = await this.userRepo.findOne({ where: { email } });
     if (exists) {
@@ -156,6 +165,33 @@ export class AuthService {
     this.logger.log(`change-password user=${userId}, all refresh revoked`);
   }
 
+  // ---- Profile ----
+
+  async updateProfile(userId: string, input: UpdateProfileInput): Promise<User> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throwCode('unauth', ErrorCodes.UNAUTHORIZED, '会话已失效');
+
+    if (typeof input.nickname === 'string') {
+      const nickname = input.nickname.trim();
+      this.assertNickname(nickname);
+      const lastUpdatedAt = this.nicknameUpdatedAt.get(userId) ?? 0;
+      if (Date.now() - lastUpdatedAt < NICKNAME_UPDATE_INTERVAL_MS) {
+        throwCode('bad', ErrorCodes.NICKNAME_RATE_LIMIT, '昵称修改过于频繁，请稍后再试');
+      }
+      user.nickname = nickname;
+    }
+
+    await this.userRepo.save(user);
+    this.nicknameUpdatedAt.set(userId, Date.now());
+    this.socketAuth.updateUserNickname(userId, user.nickname);
+    this.socketAuth.emitToUser(userId, 'user:nicknameChanged', {
+      userId,
+      nickname: user.nickname,
+      _v: 1,
+    });
+    return user;
+  }
+
   // ---- Refresh ----
 
   async refresh(rawRefresh: string) {
@@ -183,5 +219,11 @@ export class AuthService {
       refreshToken: rt.token,
       refreshExpiresAt: rt.expiresAt,
     };
+  }
+
+  private assertNickname(nickname: string): void {
+    if (nickname.length < 2 || nickname.length > 12 || /[<>]/.test(nickname)) {
+      throwCode('bad', ErrorCodes.INVALID_NICKNAME, '昵称长度需 2-12 字符，且不可包含 <>');
+    }
   }
 }

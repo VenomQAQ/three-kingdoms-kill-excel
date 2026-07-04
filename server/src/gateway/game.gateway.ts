@@ -33,7 +33,7 @@ type GameSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.CORS_ORIGIN?.split(',') ?? ['http://localhost:5173'],
+    origin: env.corsOrigins,
     credentials: true,
   },
 })
@@ -56,6 +56,13 @@ export class GameGateway
   ) {}
 
   afterInit() {
+    this.roomService.bindRoomChanged((room) => {
+      void this.broadcastGameState(room);
+    });
+    this.socketAuth.bindNicknameChanged((userId, nickname) => {
+      const room = this.roomService.updateNicknameByUser(userId, nickname);
+      if (room) void this.broadcastGameState(room);
+    });
     this.socketAuth.bindServer(this.server as unknown as Server);
     // BE-11：sandbox 门控 —— SANDBOX_ENABLED=false 时拦所有 sandbox:* 事件
     (this.server as unknown as Server).use((socket, next) => {
@@ -101,7 +108,8 @@ export class GameGateway
           const room = this.roomService.rebindUserPlayer(auth.userId, oldPlayerId, playerId);
           if (room) {
             void client.join(room.id);
-            client.emit('room:state', room);
+            const filtered = this.roomService.getFilteredRoomForPlayer(room.id, playerId) ?? room;
+            client.emit('room:state', filtered);
           }
         }
       }
@@ -177,42 +185,48 @@ export class GameGateway
     ack?: (res: RoomCreateAck) => void,
   ) {
     const playerId = this.getPlayerId(client);
+    const userId = (client.data as any).userId as string | undefined;
     try {
       const room = this.roomService.createRoom(
         playerId,
         payload?.nickname ?? '',
         payload?.versionId,
       );
+      if (userId) this.roomService.bindUserPlayer(userId, playerId);
       void client.join(room.id);
       client.emit('room:created', room);
       ack?.({ ok: true, room, playerId });
     } catch (err) {
       const message = err instanceof Error ? err.message : '创建失败';
-      ack?.({ ok: false, error: message });
+      const code = err instanceof RoomError ? err.code : undefined;
+      ack?.({ ok: false, error: message, code });
     }
   }
 
   @SubscribeMessage('room:join')
-  handleJoin(
+  async handleJoin(
     @ConnectedSocket() client: GameSocket,
     @MessageBody() payload: { code: string; nickname: string },
     ack?: (res: RoomJoinAck) => void,
   ) {
     const playerId = this.getPlayerId(client);
+    const userId = (client.data as any).userId as string | undefined;
     try {
       const room = this.roomService.joinRoom(
         payload.code?.trim() ?? '',
         playerId,
         payload?.nickname ?? '',
+        userId,
       );
       void client.join(room.id);
-      client.emit('room:joined', room);
-      client.to(room.id).emit('room:state', room);
-      ack?.({ ok: true, room, playerId });
+      await this.broadcastGameState(room);
+      const filtered = this.roomService.getFilteredRoomForPlayer(room.id, playerId) ?? room;
+      client.emit('room:joined', filtered);
+      ack?.({ ok: true, room: filtered, playerId });
     } catch (err) {
-      const message =
-        err instanceof RoomError ? err.message : '加入失败';
-      ack?.({ ok: false, error: message });
+      const message = err instanceof RoomError ? err.message : '加入失败';
+      const code = err instanceof RoomError ? err.code : undefined;
+      ack?.({ ok: false, error: message, code });
     }
   }
 
@@ -252,6 +266,27 @@ export class GameGateway
       const room = this.roomService.startGame(playerId);
       await this.broadcastGameState(room);
       this.server.to(room.id).emit('game:started', { roomId: room.id });
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  @SubscribeMessage('general:select')
+  async handleGeneralSelect(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { roomCode: string; generalId: string },
+  ) {
+    const playerId = this.getPlayerId(client);
+    try {
+      const room = this.roomService.selectGeneral(
+        playerId,
+        payload?.roomCode ?? '',
+        payload?.generalId ?? '',
+      );
+      await this.broadcastGameState(room);
+      if (room.status === 'playing') {
+        this.server.to(room.id).emit('game:started', { roomId: room.id });
+      }
     } catch (err) {
       this.emitError(client, err);
     }
@@ -842,9 +877,12 @@ export class GameGateway
 
   @SubscribeMessage('room:list')
   handleRoomList(
+    @ConnectedSocket() client: GameSocket,
     @MessageBody() payload: { versionId?: string },
   ): ReturnType<RoomService['listPublicRooms']> {
-    return this.roomService.listPublicRooms(payload?.versionId);
+    const playerId = this.getPlayerId(client);
+    const userId = (client.data as any).userId as string | undefined;
+    return this.roomService.listPublicRooms(payload?.versionId, playerId, userId);
   }
 
   // ==== BE-9 · 大厅聊天 ====
@@ -934,14 +972,15 @@ export class GameGateway
       this.server.to(room.id).emit('room:state', room);
       return;
     }
-    if (room.status === 'playing' || room.status === 'finished') {
+    if (room.status === 'selecting' || room.status === 'playing' || room.status === 'finished') {
       const sockets = await this.server.in(room.id).fetchSockets();
       for (const socket of sockets) {
         const playerId =
           (socket.data as { playerId?: string }).playerId ??
           this.socketPlayer.get(socket.id);
         if (!playerId) continue;
-        const filtered = this.gameService.filterRoomForPlayer(room, playerId);
+        const filtered = this.roomService.getFilteredRoomForPlayer(room.id, playerId);
+        if (!filtered) continue;
         socket.emit('room:state', filtered);
       }
       if (room.sandbox?.victory) {

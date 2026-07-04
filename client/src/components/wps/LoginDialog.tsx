@@ -19,6 +19,7 @@ export function LoginDialog({ open, onClose }: LoginDialogProps) {
   const [tab, setTab] = useState<Tab>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +58,12 @@ export function LoginDialog({ open, onClose }: LoginDialogProps) {
       if (tab === 'login') {
         await login(email.trim(), password);
       } else {
-        await register(email.trim(), password, nickname.trim() || '表格用户');
+        if (password !== confirmPassword) {
+          setError('两次密码不一致');
+          setLoading(false);
+          return;
+        }
+        await register(email.trim(), password, nickname.trim() || '表格用户', confirmPassword);
       }
       onClose();
     } catch (err) {
@@ -130,16 +136,30 @@ export function LoginDialog({ open, onClose }: LoginDialogProps) {
             />
           </label>
           {tab === 'register' && (
-            <label className={styles.field}>
-              <span>昵称</span>
-              <input
-                type="text"
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
-                maxLength={20}
-                placeholder="表格用户"
-              />
-            </label>
+            <>
+              <label className={styles.field}>
+                <span>确认密码</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  maxLength={32}
+                />
+              </label>
+              <label className={styles.field}>
+                <span>昵称</span>
+                <input
+                  type="text"
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
+                  maxLength={12}
+                  placeholder="表格用户"
+                />
+              </label>
+            </>
           )}
           {error && <p className={styles.error}>{error}</p>}
           <button type="submit" className={styles.submit} disabled={loading}>

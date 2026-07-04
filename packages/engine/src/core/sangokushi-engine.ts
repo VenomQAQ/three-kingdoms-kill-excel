@@ -540,7 +540,12 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
       promptId,
       choiceId,
       (p) => this.applyDamage(p),
-    );
+    ).then(async (res) => {
+      if (!res.ok || this.state.prompt) return res;
+      await this.drainStack();
+      await this.cardPlay.advanceAoeIfPending(this);
+      return { ok: true };
+    });
   }
 
   /** 伤害入栈并结算（含 AFTER_DAMAGE 与奸雄/反馈询问） */

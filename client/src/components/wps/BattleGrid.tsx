@@ -22,6 +22,7 @@ interface BattleGridProps {
   onPlayCard: (card: string, handIndex?: number) => void;
   onViewSkills: (player: RoomPlayer) => void;
   onViewCard: (cardName: string) => void;
+  onSendChat: (content: string) => void;
 }
 
 function formatEquipmentName(name: string): string {
@@ -46,8 +47,10 @@ export function BattleGrid({
   onSelectCell,
   onViewSkills,
   onViewCard,
+  onSendChat,
 }: BattleGridProps) {
   const [sideCollapsed, setSideCollapsed] = useState(false);
+  const [chatInput, setChatInput] = useState('');
   const logScrollRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
@@ -74,6 +77,13 @@ export function BattleGrid({
     playerStartRow + room.players.length * ROWS_PER_PLAYER + 18,
     32,
   );
+
+  const handleChatSubmit = () => {
+    const trimmed = chatInput.trim();
+    if (!trimmed) return;
+    onSendChat(trimmed);
+    setChatInput('');
+  };
 
   const renderPlayerRow = (
     player: RoomPlayer,
@@ -407,7 +417,6 @@ export function BattleGrid({
         </section>
         <section className={styles.sidePanel}>
           <div className={styles.sidePanelTitle}>聊天区</div>
-          <div className={styles.chatHint}>在上方公式栏输入消息后按 Enter 发送</div>
           <div className={styles.logScroll} ref={chatScrollRef}>
             {chatMessages.length === 0 ? (
               <div className={styles.emptyPanelLine}>暂无聊天消息</div>
@@ -419,6 +428,29 @@ export function BattleGrid({
                 </div>
               ))
             )}
+          </div>
+          <div className={styles.chatInputArea}>
+            <input
+              className={styles.chatInput}
+              value={chatInput}
+              onChange={(event) => setChatInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  handleChatSubmit();
+                }
+              }}
+              placeholder="输入消息，Enter 发送..."
+              maxLength={200}
+            />
+            <button
+              type="button"
+              className={styles.chatSendBtn}
+              onClick={handleChatSubmit}
+              disabled={!chatInput.trim()}
+            >
+              发送
+            </button>
           </div>
         </section>
       </aside>

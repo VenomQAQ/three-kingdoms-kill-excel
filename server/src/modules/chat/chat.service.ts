@@ -4,6 +4,7 @@ import { ChatMessage } from '@tk/shared';
 
 const MAX_MESSAGES = 100;
 const MIN_CHAT_INTERVAL_MS = 300;
+const MAX_CHAT_LENGTH = 200;
 
 @Injectable()
 export class ChatService {
@@ -20,14 +21,14 @@ export class ChatService {
     if (!trimmed) {
       throw new ChatError('EMPTY_MESSAGE', '消息不能为空');
     }
-    if (trimmed.length > 500) {
-      throw new ChatError('MESSAGE_TOO_LONG', '消息过长');
+    if ([...trimmed].length > MAX_CHAT_LENGTH) {
+      throw new ChatError('E_CHAT_TOO_LONG', `单条消息 ≤ ${MAX_CHAT_LENGTH} 字符`);
     }
 
     const now = Date.now();
     const last = this.lastSendAt.get(playerId) ?? 0;
     if (now - last < MIN_CHAT_INTERVAL_MS) {
-      throw new ChatError('RATE_LIMIT', '发送过快，请稍后再试');
+      throw new ChatError('E_CHAT_RATE_LIMIT', '发送过快，请稍后再试');
     }
     this.lastSendAt.set(playerId, now);
 

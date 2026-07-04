@@ -47,7 +47,7 @@ interface AppState {
   capabilities: Capabilities | null;
   currentVersion: string;
 
-  setNickname: (nickname: string) => void;
+  setNickname: (nickname: string) => Promise<void>;
   connect: () => void;
   fetchRoomList: () => Promise<void>;
   createRoom: () => Promise<void>;
@@ -56,6 +56,7 @@ interface AppState {
   leaveRoom: () => void;
   toggleReady: () => void;
   startGame: () => void;
+  selectGeneral: (generalId: string) => void;
   sandboxAddPlayer: (nickname: string, general?: string) => void;
   sandboxRemoveLastVirtual: () => void;
   sandboxSwitchActor: (playerId: string) => void;
@@ -88,7 +89,7 @@ interface AppState {
   // REQ-2026-001 · FE-2 · auth actions
   hydrate: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, nickname: string) => Promise<void>;
+  register: (email: string, password: string, nickname: string, confirmPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
   setCurrentVersion: (versionId: string) => void;
@@ -157,9 +158,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   capabilities: null,
   currentVersion: 'standard-2014',
 
-  setNickname: (nickname) => {
-    localStorage.setItem('tk_nickname', nickname);
-    set({ nickname });
+  setNickname: async (nickname) => {
+    const trimmed = nickname.trim();
+    if (!trimmed) return;
+    if (get().authStatus === 'authed') {
+      const user = await AuthApi.updateProfile(trimmed);
+      localStorage.setItem('tk_nickname', user.nickname);
+      set({ user, nickname: user.nickname });
+      return;
+    }
+    localStorage.setItem('tk_nickname', trimmed);
+    set({ nickname: trimmed });
   },
 
   connect: () => {
@@ -233,6 +242,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     (socket as any).on('auth:invalidated', (payload: any) => {
       const reason = payload?.reason === 'password-changed' ? '密码已修改，请重新登录' : '登录已失效，请重新登录';
       get().markUnauthenticated(reason);
+    });
+    (socket as any).on('user:nicknameChanged', (payload: any) => {
+      if (typeof payload?.nickname !== 'string') return;
+      const nickname = payload.nickname;
+      localStorage.setItem('tk_nickname', nickname);
+      set((s) => ({
+        nickname,
+        user: s.user ? { ...s.user, nickname } : s.user,
+      }));
     });
     (socket as any).on('version:switched', (payload: any) => {
       if (payload && payload.versionId) {
@@ -356,6 +374,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     } else {
       socket.emit('room:start');
     }
+  },
+
+  selectGeneral: (generalId) => {
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    socket.emit('general:select', { roomCode: room.code, generalId, _v: 1 });
   },
 
   sandboxAddPlayer: (nickname, general) => {
@@ -576,8 +600,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  register: async (email, password, nickname) => {
-    const u = await AuthApi.register(email, password, nickname);
+  register: async (email, password, nickname, confirmPassword) => {
+    const u = await AuthApi.register(email, password, nickname, confirmPassword);
     set({
       authStatus: 'authed',
       user: u,

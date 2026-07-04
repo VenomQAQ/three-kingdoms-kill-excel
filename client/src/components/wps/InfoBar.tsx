@@ -8,9 +8,9 @@ interface InfoBarProps {
   roomStatus?: string;
   actingName?: string;
   turnName?: string;
-  email?: string | null;
   isAuthed?: boolean;
   onLoginClick?: () => void;
+  onChangeNickname?: () => void;
   onChangePassword?: () => void;
   onLogout?: () => void;
 }
@@ -22,9 +22,9 @@ export function InfoBar({
   roomStatus,
   actingName,
   turnName,
-  email,
   isAuthed,
   onLoginClick,
+  onChangeNickname,
   onChangePassword,
   onLogout,
 }: InfoBarProps) {
@@ -42,7 +42,7 @@ export function InfoBar({
 
   return (
     <div className={styles.bar}>
-      {isAuthed && email ? (
+      {isAuthed ? (
         <span className={styles.authWrap} ref={wrapRef}>
           已登录{' '}
           <button
@@ -50,10 +50,20 @@ export function InfoBar({
             className={styles.emailBtn}
             onClick={() => setMenuOpen((v) => !v)}
           >
-            {email}
+            {nickname}
           </button>
           {menuOpen && (
             <div className={styles.dropdown} role="menu">
+              <button
+                type="button"
+                className={styles.menuItem}
+                onClick={() => {
+                  setMenuOpen(false);
+                  onChangeNickname?.();
+                }}
+              >
+                修改昵称
+              </button>
               <button
                 type="button"
                 className={styles.menuItem}

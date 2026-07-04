@@ -49,7 +49,7 @@ function refreshOnce(): Promise<boolean> {
 }
 
 interface FetchOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   headers?: Record<string, string>;
   /** 内部使用：是否已尝试过 refresh。避免死循环 */
@@ -104,3 +104,5 @@ export async function apiFetch<T = unknown>(
 export const httpGet = <T = unknown>(p: string) => apiFetch<T>(p, { method: 'GET' });
 export const httpPost = <T = unknown>(p: string, body?: unknown) =>
   apiFetch<T>(p, { method: 'POST', body });
+export const httpPatch = <T = unknown>(p: string, body?: unknown) =>
+  apiFetch<T>(p, { method: 'PATCH', body });

@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import {
   assignIdentities,
-  assignRandomGenerals,
+  CharacterRegistry,
   SangokushiEngine,
 } from '@tk/engine';
 import { v4 as uuidv4 } from 'uuid';
@@ -14,11 +14,14 @@ import {
   SANDBOX_ROOM_CODE,
   SandboxGameState,
 } from '@tk/shared';
+import { env } from '../../config/env';
 import { GameService } from '../game/game.service';
 
 const CODE_MIN = 10_000_000;
 const CODE_MAX = 99_999_999;
 const MAX_CODE_RETRIES = 10;
+const LORD_GENERAL_OPTION_COUNT = 5;
+const GENERAL_OPTION_COUNT = 3;
 
 @Injectable()
 export class RoomService implements OnModuleInit {
@@ -27,11 +30,18 @@ export class RoomService implements OnModuleInit {
   private readonly playerRoom = new Map<string, string>();
   /** userId → playerId（当前活跃的 socket-scoped id） */
   private readonly userPlayer = new Map<string, string>();
+  private readonly selectingTimers = new Map<string, NodeJS.Timeout>();
+  private readonly generalOptionsByRoom = new Map<string, Map<string, string[]>>();
+  private roomChanged: ((room: Room) => void) | null = null;
 
   constructor(private readonly gameService: GameService) {}
 
   onModuleInit() {
     this.ensureSandboxRoom();
+  }
+
+  bindRoomChanged(callback: (room: Room) => void): void {
+    this.roomChanged = callback;
   }
 
   /**
@@ -56,6 +66,19 @@ export class RoomService implements OnModuleInit {
   }
   getPlayerIdByUser(userId: string): string | null {
     return this.userPlayer.get(userId) ?? null;
+  }
+
+  updateNicknameByUser(userId: string, nickname: string): Room | null {
+    const playerId = this.userPlayer.get(userId);
+    if (!playerId) return null;
+    const room = this.getRoomOfPlayer(playerId);
+    const player = room?.players.find((p) => p.id === playerId);
+    if (!room || !player) return null;
+    player.nickname = nickname;
+    if (room.generalSelection?.currentPlayerId === playerId) {
+      room.generalSelection.currentPlayerNickname = nickname;
+    }
+    return room;
   }
   /**
    * 5min 到期或改密强制回收：将 userId 对应的座位真正 leaveRoom。
@@ -96,6 +119,8 @@ export class RoomService implements OnModuleInit {
       this.gameService.remapPlayerId(room.id, oldPlayerId, newPlayerId);
       const engine = this.gameService.getRoomEngine(room.id);
       if (engine) this.gameService.syncRoomFromEngine(room, engine);
+    } else if (!room.isSandbox && room.status === 'selecting') {
+      this.remapSelectingPlayer(room, oldPlayerId, newPlayerId);
     }
     return room;
   }
@@ -103,7 +128,7 @@ export class RoomService implements OnModuleInit {
   createRoom(hostId: string, nickname: string, versionId: string = DEFAULT_VERSION_ID): Room {
     const version = findVersion(versionId);
     if (!version) {
-      throw new RoomError('VERSION_UNKNOWN', `未知版本 ${versionId}`);
+      throw new RoomError('E_VERSION_UNKNOWN', `未知版本 ${versionId}`);
     }
     const maxPlayers = version.maxPlayers;
     const code = this.generateUniqueCode();
@@ -132,19 +157,13 @@ export class RoomService implements OnModuleInit {
     return room;
   }
 
-  joinRoom(code: string, playerId: string, nickname: string): Room {
+  joinRoom(code: string, playerId: string, nickname: string, userId?: string | null): Room {
     if (code === SANDBOX_ROOM_CODE) {
-      return this.joinSandboxRoom(playerId, nickname);
+      return this.joinSandboxRoom(playerId, nickname, userId);
     }
     const room = this.getRoomByCode(code);
     if (!room) {
-      throw new RoomError('ROOM_NOT_FOUND', '房间不存在');
-    }
-    if (room.status !== 'waiting') {
-      throw new RoomError('ROOM_PLAYING', '对局已开始，无法加入');
-    }
-    if (room.players.length >= room.maxPlayers) {
-      throw new RoomError('ROOM_FULL', '房间已满');
+      throw new RoomError('E_ROOM_NOT_FOUND', '房间不存在');
     }
     const existing = room.players.find((p) => p.id === playerId);
     if (existing) {
@@ -153,15 +172,55 @@ export class RoomService implements OnModuleInit {
       this.actingPlayerBySocket.set(playerId, playerId);
       return room;
     }
+    if (userId) {
+      const boundPlayerId = this.userPlayer.get(userId);
+      if (boundPlayerId) {
+        const boundRoomId = this.playerRoom.get(boundPlayerId);
+        const rebound = room.players.find((p) => p.id === boundPlayerId && boundRoomId === room.id);
+        if (rebound) {
+          const oldPlayerId = rebound.id;
+          rebound.id = playerId;
+          rebound.connected = true;
+          rebound.nickname = nickname.trim() || rebound.nickname;
+          this.playerRoom.delete(oldPlayerId);
+          this.playerRoom.set(playerId, room.id);
+          this.userPlayer.set(userId, playerId);
+          this.actingPlayerBySocket.set(playerId, playerId);
+          if (room.hostId === oldPlayerId) room.hostId = playerId;
+          this.remapSelectingPlayer(room, oldPlayerId, playerId);
+          if (room.status === 'playing') {
+            this.gameService.remapPlayerId(room.id, oldPlayerId, playerId);
+            const engine = this.gameService.getRoomEngine(room.id);
+            if (engine) this.gameService.syncRoomFromEngine(room, engine);
+          }
+          return room;
+        }
+      }
+    }
     const rejoin = room.players.find(
       (p) => p.nickname === nickname.trim() && !p.connected,
     );
     if (rejoin) {
+      const oldPlayerId = rejoin.id;
       rejoin.id = playerId;
       rejoin.connected = true;
+      this.playerRoom.delete(oldPlayerId);
       this.playerRoom.set(playerId, room.id);
       this.actingPlayerBySocket.set(playerId, playerId);
+      if (room.hostId === oldPlayerId) room.hostId = playerId;
+      this.remapSelectingPlayer(room, oldPlayerId, playerId);
+      if (room.status === 'playing') {
+        this.gameService.remapPlayerId(room.id, oldPlayerId, playerId);
+        const engine = this.gameService.getRoomEngine(room.id);
+        if (engine) this.gameService.syncRoomFromEngine(room, engine);
+      }
       return room;
+    }
+    if (room.status !== 'waiting') {
+      throw new RoomError('E_ROOM_STARTED', '对局已开始，无法加入');
+    }
+    if (room.players.length >= room.maxPlayers) {
+      throw new RoomError('E_ROOM_FULL', '房间已满');
     }
     room.players.push({
       id: playerId,
@@ -171,6 +230,7 @@ export class RoomService implements OnModuleInit {
     });
     this.playerRoom.set(playerId, room.id);
     this.actingPlayerBySocket.set(playerId, playerId);
+    this.bindUserIdToPlayer(playerId, userId);
     return room;
   }
 
@@ -229,29 +289,41 @@ export class RoomService implements OnModuleInit {
     if (!allReady) {
       throw new RoomError('NOT_ALL_READY', '还有玩家未准备');
     }
-    room.status = 'playing';
-    assignRandomGenerals(room.players);
+    room.status = 'selecting';
     const lordIndex = Math.max(0, room.players.findIndex((p) => p.id === room.hostId));
     assignIdentities(room.players, lordIndex);
     room.players.forEach((p) => {
       p.roleRevealed = p.role === '主公';
+      p.general = undefined;
       p.handCards = [];
-      const isLord = p.role === '主公';
-      p.maxHp = 4 + (isLord ? 1 : 0);
-      p.hp = p.maxHp;
+      p.equipment = [];
+      p.judgeCards = [];
+      p.handCount = 0;
+      p.dead = false;
+      p.maxHp = undefined;
+      p.hp = undefined;
     });
-    const turnLordIndex = SangokushiEngine.findLordIndex(room.players);
-    room.sandbox = {
-      phase: 'playing',
-      turnIndex: turnLordIndex,
-      round: 1,
-      turnPhase: 'judge',
-      log: [],
-      prompt: null,
-    };
-    const engine = this.gameService.createRoomEngine(room);
-    engine.start();
-    this.gameService.syncRoomFromEngine(room, engine);
+    this.setupGeneralSelection(room);
+    return room;
+  }
+
+  selectGeneral(playerId: string, roomCode: string, generalId: string): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.code !== roomCode) {
+      throw new RoomError('E_ROOM_NOT_FOUND', '房间不匹配');
+    }
+    if (room.isSandbox) {
+      throw new RoomError('NOT_SUPPORTED', '模拟测试房不需要选将');
+    }
+    if (room.status !== 'selecting') {
+      throw new RoomError('E_NOT_SELECTING', '当前不是选将阶段');
+    }
+    const currentId = room.generalSelection?.currentPlayerId;
+    if (currentId !== playerId) {
+      throw new RoomError('E_NOT_YOUR_TURN', '当前不是你选将');
+    }
+    this.applyGeneralSelection(room, playerId, generalId);
+    this.advanceGeneralSelection(room);
     return room;
   }
 
@@ -278,7 +350,7 @@ export class RoomService implements OnModuleInit {
     return room;
   }
 
-  joinSandboxRoom(playerId: string, nickname: string): Room {
+  joinSandboxRoom(playerId: string, nickname: string, userId?: string | null): Room {
     const room = this.ensureSandboxRoom();
     const trimmedNick = nickname.trim() || '玩家';
 
@@ -289,6 +361,30 @@ export class RoomService implements OnModuleInit {
       this.playerRoom.set(playerId, room.id);
       this.actingPlayerBySocket.set(playerId, playerId);
       return room;
+    }
+
+    if (userId) {
+      const boundPlayerId = this.userPlayer.get(userId);
+      if (boundPlayerId) {
+        const rebound = room.players.find((p) => p.id === boundPlayerId && !p.isVirtual);
+        if (rebound) {
+          const oldId = rebound.id;
+          rebound.id = playerId;
+          rebound.connected = true;
+          rebound.nickname = trimmedNick || rebound.nickname;
+          this.playerRoom.delete(oldId);
+          this.playerRoom.set(playerId, room.id);
+          this.userPlayer.set(userId, playerId);
+          if (room.hostId === oldId) room.hostId = playerId;
+          this.actingPlayerBySocket.set(playerId, playerId);
+          if (room.status === 'playing') {
+            this.gameService.remapPlayerId(room.id, oldId, playerId);
+            const engine = this.gameService.getRoomEngine(room.id);
+            if (engine) this.gameService.syncRoomFromEngine(room, engine);
+          }
+          return room;
+        }
+      }
     }
 
     const rejoin = room.players.find(
@@ -324,6 +420,7 @@ export class RoomService implements OnModuleInit {
     });
     this.playerRoom.set(playerId, room.id);
     this.actingPlayerBySocket.set(playerId, playerId);
+    this.bindUserIdToPlayer(playerId, userId);
     return room;
   }
 
@@ -697,6 +794,9 @@ export class RoomService implements OnModuleInit {
   getFilteredRoomForPlayer(roomId: string, playerId: string): Room | null {
     const room = this.getRoomById(roomId);
     if (!room) return null;
+    if (room.status === 'selecting') {
+      return this.filterSelectingRoomForPlayer(room, playerId);
+    }
     return this.gameService.filterRoomForPlayer(room, playerId);
   }
 
@@ -926,21 +1026,28 @@ export class RoomService implements OnModuleInit {
     return room;
   }
 
-  listPublicRooms(versionFilter?: string): RoomListItem[] {
+  listPublicRooms(versionFilter?: string, viewerPlayerId?: string, viewerUserId?: string): RoomListItem[] {
     this.ensureSandboxRoom();
+    const mappedPlayerId = viewerUserId ? this.userPlayer.get(viewerUserId) : undefined;
     return [...this.roomsById.values()]
       .filter((r) => r.players.length > 0 || r.isSandbox)
       .filter((r) => !versionFilter || (r.versionId ?? DEFAULT_VERSION_ID) === versionFilter)
-      .map((r) => ({
-        code: r.code,
-        status: r.status,
-        playerCount: r.players.length,
-        maxPlayers: r.maxPlayers,
-        hostNickname:
-          r.players.find((p) => p.id === r.hostId)?.nickname ?? '—',
-        versionId: r.versionId ?? DEFAULT_VERSION_ID,
-        isSandbox: r.isSandbox,
-      }))
+      .map((r) => {
+        const isMember = r.players.some((p) => p.id === viewerPlayerId || p.id === mappedPlayerId);
+        return {
+          code: r.code,
+          status: r.status,
+          playerCount: r.players.length,
+          maxPlayers: r.maxPlayers,
+          ownerNickname:
+            r.players.find((p) => p.id === r.hostId)?.nickname ?? '—',
+          versionId: r.versionId ?? DEFAULT_VERSION_ID,
+          isSandbox: r.isSandbox,
+          isMember,
+          joinLabel: isMember ? ('返回' as const) : ('加入' as const),
+          _v: 1 as const,
+        };
+      })
       .sort((a, b) => {
         if (a.isSandbox) return -1;
         if (b.isSandbox) return 1;
@@ -974,6 +1081,191 @@ export class RoomService implements OnModuleInit {
     return this.resolveActingPlayerId(socketPlayerId);
   }
 
+  private setupGeneralSelection(room: Room): void {
+    const optionsByPlayer = new Map<string, string[]>();
+    const pool = this.shuffle(CharacterRegistry.getAll().map((ch) => ch.id));
+    let cursor = 0;
+    for (const player of room.players) {
+      const optionCount = player.role === '主公' ? LORD_GENERAL_OPTION_COUNT : GENERAL_OPTION_COUNT;
+      const picks: string[] = [];
+      while (picks.length < optionCount) {
+        const fallback = CharacterRegistry.getAll()[picks.length % CharacterRegistry.getAll().length];
+        const id = pool[cursor++ % pool.length] ?? fallback?.id;
+        if (id && !picks.includes(id)) picks.push(id);
+      }
+      optionsByPlayer.set(player.id, picks);
+    }
+    this.generalOptionsByRoom.set(room.id, optionsByPlayer);
+    const current = room.players.find((player) => player.role === '主公') ?? room.players[0]!;
+    room.generalSelection = {
+      currentPlayerId: current.id,
+      currentPlayerNickname: current.nickname,
+      deadlineAt: Date.now() + env.selectingTimeoutSec * 1000,
+      timeoutSec: env.selectingTimeoutSec,
+      selected: [],
+    };
+    this.scheduleSelectingTimeout(room);
+  }
+
+  private scheduleSelectingTimeout(room: Room): void {
+    this.clearSelectingTimer(room.id);
+    if (room.status !== 'selecting' || !room.generalSelection) return;
+    const delay = Math.max(0, room.generalSelection.deadlineAt - Date.now());
+    const timer = setTimeout(() => {
+      const latest = this.roomsById.get(room.id);
+      if (!latest || latest.status !== 'selecting') return;
+      const currentId = latest.generalSelection?.currentPlayerId;
+      if (!currentId) return;
+      const defaultGeneralId = this.generalOptionsByRoom.get(latest.id)?.get(currentId)?.[0];
+      if (defaultGeneralId) {
+        this.applyGeneralSelection(latest, currentId, defaultGeneralId);
+        this.advanceGeneralSelection(latest);
+        this.roomChanged?.(latest);
+      }
+    }, delay);
+    this.selectingTimers.set(room.id, timer);
+  }
+
+  private clearSelectingTimer(roomId: string): void {
+    const timer = this.selectingTimers.get(roomId);
+    if (timer) clearTimeout(timer);
+    this.selectingTimers.delete(roomId);
+  }
+
+  private applyGeneralSelection(room: Room, playerId: string, generalId: string): void {
+    const options = this.generalOptionsByRoom.get(room.id)?.get(playerId) ?? [];
+    if (!options.includes(generalId)) {
+      throw new RoomError('E_INVALID_GENERAL_OPTION', '请选择候选武将');
+    }
+    const ch = CharacterRegistry.getById(generalId);
+    if (!ch) throw new RoomError('E_INVALID_GENERAL_OPTION', '武将不存在');
+    const player = room.players.find((p) => p.id === playerId);
+    if (!player) throw new RoomError('PLAYER_NOT_FOUND', '玩家不存在');
+    player.general = ch.name;
+    room.generalSelection = room.generalSelection
+      ? {
+          ...room.generalSelection,
+          selected: [
+            ...room.generalSelection.selected.filter((item) => item.playerId !== playerId),
+            { playerId, generalId: ch.id, generalName: ch.name },
+          ],
+        }
+      : room.generalSelection;
+  }
+
+  private advanceGeneralSelection(room: Room): void {
+    const next = this.nextSelectingPlayer(room);
+    if (next) {
+      room.generalSelection = {
+        currentPlayerId: next.id,
+        currentPlayerNickname: next.nickname,
+        deadlineAt: Date.now() + env.selectingTimeoutSec * 1000,
+        timeoutSec: env.selectingTimeoutSec,
+        selected: room.generalSelection?.selected ?? [],
+      };
+      this.scheduleSelectingTimeout(room);
+      return;
+    }
+    this.startSelectedGame(room);
+  }
+
+  private startSelectedGame(room: Room): void {
+    this.clearSelectingTimer(room.id);
+    this.generalOptionsByRoom.delete(room.id);
+    room.status = 'playing';
+    room.generalSelection = undefined;
+    room.players.forEach((p) => {
+      p.handCards = [];
+      p.equipment = [];
+      p.judgeCards = [];
+      const ch = p.general ? CharacterRegistry.resolve(p.general) : undefined;
+      const isLord = p.role === '主公';
+      p.maxHp = (ch?.maxHp ?? 4) + (isLord ? 1 : 0);
+      p.hp = p.maxHp;
+      p.dead = false;
+    });
+    const turnLordIndex = SangokushiEngine.findLordIndex(room.players);
+    room.sandbox = {
+      phase: 'playing',
+      turnIndex: turnLordIndex,
+      round: 1,
+      turnPhase: 'judge',
+      log: [],
+      prompt: null,
+    };
+    const engine = this.gameService.createRoomEngine(room);
+    engine.start();
+    this.gameService.syncRoomFromEngine(room, engine);
+  }
+
+  private filterSelectingRoomForPlayer(room: Room, playerId: string): Room {
+    const clone: Room = JSON.parse(JSON.stringify(room)) as Room;
+    if (clone.generalSelection && clone.generalSelection.currentPlayerId === playerId) {
+      const optionIds = this.generalOptionsByRoom.get(room.id)?.get(playerId) ?? [];
+      clone.generalSelection.myOptions = optionIds
+        .map((id) => CharacterRegistry.getById(id))
+        .filter((ch): ch is NonNullable<typeof ch> => !!ch)
+        .map((ch) => ({
+          id: ch.id,
+          name: ch.name,
+          maxHp: ch.maxHp,
+          skills: ch.skills.map((skill) => ({
+            name: skill.name,
+            description: skill.description,
+          })),
+        }));
+    } else if (clone.generalSelection) {
+      delete clone.generalSelection.myOptions;
+    }
+    for (const p of clone.players) {
+      const isSelf = p.id === playerId;
+      if (!isSelf && p.role !== '主公') p.role = '？';
+      p.handCards = [];
+      p.handCount = 0;
+    }
+    return clone;
+  }
+
+  private nextSelectingPlayer(room: Room): RoomPlayer | undefined {
+    const selectedIds = new Set(room.generalSelection?.selected.map((item) => item.playerId) ?? []);
+    const lordIndex = Math.max(0, room.players.findIndex((p) => p.role === '主公'));
+    for (let offset = 1; offset <= room.players.length; offset++) {
+      const player = room.players[(lordIndex + offset) % room.players.length];
+      if (player && !selectedIds.has(player.id)) return player;
+    }
+    return undefined;
+  }
+
+  private remapSelectingPlayer(room: Room, oldPlayerId: string, newPlayerId: string): void {
+    const options = this.generalOptionsByRoom.get(room.id);
+    const oldOptions = options?.get(oldPlayerId);
+    if (oldOptions) {
+      options!.delete(oldPlayerId);
+      options!.set(newPlayerId, oldOptions);
+    }
+    if (room.generalSelection?.currentPlayerId === oldPlayerId) {
+      room.generalSelection.currentPlayerId = newPlayerId;
+    }
+    if (room.generalSelection) {
+      room.generalSelection.selected = room.generalSelection.selected.map((item) =>
+        item.playerId === oldPlayerId ? { ...item, playerId: newPlayerId } : item,
+      );
+    }
+  }
+
+  private shuffle<T>(arr: T[]): T[] {
+    const pile = [...arr];
+    for (let i = pile.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pile[i], pile[j]] = [pile[j]!, pile[i]!];
+    }
+    return pile;
+  }
+
+  private bindUserIdToPlayer(playerId: string, userId?: string | null): void {
+    if (userId) this.userPlayer.set(userId, playerId);
+  }
+
   private generateUniqueCode(): string {
     for (let i = 0; i < MAX_CODE_RETRIES; i++) {
       const num =
@@ -985,6 +1277,8 @@ export class RoomService implements OnModuleInit {
   }
 
   private deleteRoom(room: Room): void {
+    this.clearSelectingTimer(room.id);
+    this.generalOptionsByRoom.delete(room.id);
     this.gameService.destroyEngine(room.id);
     this.roomsById.delete(room.id);
     this.roomIdByCode.delete(room.code);

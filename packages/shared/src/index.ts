@@ -1,4 +1,21 @@
-export type RoomStatus = 'waiting' | 'playing' | 'finished';
+export type RoomStatus = 'waiting' | 'selecting' | 'playing' | 'finished';
+
+export interface GeneralOption {
+  id: string;
+  name: string;
+  maxHp: number;
+  hp?: number;
+  skills: Array<{ name: string; description: string }>;
+}
+
+export interface GeneralSelectionState {
+  currentPlayerId: string;
+  currentPlayerNickname: string;
+  deadlineAt: number;
+  timeoutSec: number;
+  selected: Array<{ playerId: string; generalId: string; generalName: string }>;
+  myOptions?: GeneralOption[];
+}
 
 /** 固定模拟测试房间号 */
 export const SANDBOX_ROOM_CODE = '70755712';
@@ -114,6 +131,7 @@ export interface Room {
   createdAt: number;
   isSandbox?: boolean;
   sandbox?: SandboxGameState;
+  generalSelection?: GeneralSelectionState;
 }
 
 export interface RoomListItem {
@@ -121,9 +139,12 @@ export interface RoomListItem {
   status: RoomStatus;
   playerCount: number;
   maxPlayers: number;
-  hostNickname: string;
+  ownerNickname: string;
   versionId?: string;
   isSandbox?: boolean;
+  isMember?: boolean;
+  joinLabel?: '加入' | '返回';
+  _v: 1;
 }
 
 export interface ChatMessage {
@@ -138,10 +159,14 @@ export interface ChatMessage {
 /** Client → Server */
 export interface ClientToServerEvents {
   'room:create': (payload: { nickname: string }, ack?: (res: RoomCreateAck) => void) => void;
-  'room:join': (payload: { code: string; nickname: string }, ack?: (res: RoomJoinAck) => void) => void;
+  'room:join': (
+    payload: { code: string; nickname?: string; _v?: 1 },
+    ack?: (res: RoomJoinAck) => void,
+  ) => void;
   'room:leave': () => void;
   'room:ready': (payload: { ready: boolean }) => void;
   'room:start': () => void;
+  'general:select': (payload: { roomCode: string; generalId: string; _v?: 1 }) => void;
   'sandbox:addPlayer': (
     payload: { nickname: string; general?: string },
     ack?: (res: RoomJoinAck) => void,
@@ -211,16 +236,17 @@ export interface ServerToClientEvents {
   'game:started': (payload: { roomId: string }) => void;
   'game:finished': (payload: { roomId: string; victory: { winners: string[]; message: string } }) => void;
   'game:event': (payload: { type: string; message: string }) => void;
+  'user:nicknameChanged': (payload: { userId: string; nickname: string; _v: 1 }) => void;
   'sandbox:actor': (payload: { actingPlayerId: string }) => void;
 }
 
 export type RoomCreateAck =
   | { ok: true; room: Room; playerId: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; code?: string };
 
 export type RoomJoinAck =
   | { ok: true; room: Room; playerId: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; code?: string };
 
 export const WS_EVENTS = {
   ROOM_CREATE: 'room:create',
