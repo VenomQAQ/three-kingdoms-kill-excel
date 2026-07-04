@@ -1,0 +1,22 @@
+req_id: REQ-2026-004
+stage: "②评审会签"
+prd_ref: prd/prd.v1.md
+signoffs:
+  frontend-feasibility:
+    status: pending
+    verdict: ""
+    reviewer: ""
+    ts: ""
+  backend-feasibility:
+    status: pending
+    verdict: ""
+    reviewer: ""
+    ts: ""
+  qa-testability:
+    status: pending
+    verdict: ""
+    reviewer: ""
+    ts: ""
+result: pending
+last_signer: ""
+

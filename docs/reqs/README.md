@@ -8,7 +8,8 @@
 |---|---|---|
 | [REQ-2026-001-wps-account-version](./REQ-2026-001-wps-account-version/INDEX.md) | ①已定稿 | 账号/大厅/单元格填满 |
 | [REQ-2026-002-game-core-m3](./REQ-2026-002-game-core-m3/INDEX.md) | ③开发中 | M3 锦囊/正式房大厅 |
-| **[REQ-2026-003-ux-gameplay-polish](./REQ-2026-003-ux-gameplay-polish/INDEX.md)** | **②已通过** | **本轮 SSOT：UX + 选将 + 引擎修复** |
+| [REQ-2026-003-ux-gameplay-polish](./REQ-2026-003-ux-gameplay-polish/INDEX.md) | ③开发中 | UX + 选将 + 引擎修复 |
+| **[REQ-2026-004-rules-progression-room-routing](./REQ-2026-004-rules-progression-room-routing/INDEX.md)** | **①产品设计** | **本轮 SSOT：Sheet 架构 + 房间生命周期 + 规则完备** |
 
 ## 目录约定
 
