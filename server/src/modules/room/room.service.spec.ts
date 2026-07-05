@@ -13,6 +13,65 @@ function optionIds(service: RoomService, roomId: string, playerId: string): stri
 }
 
 describe('RoomService formal general selection', () => {
+  it('creates and starts a free world monopoly room with a typed room-list entry', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主', undefined, 'user-host', 'monopoly');
+    service.joinRoom(room.code, 'p2', '玩家二', 'user-2');
+
+    expect(room.gameType).toBe('monopoly');
+    expect(room.versionName).toBe('世界版大富翁');
+    expect(room.maxPlayers).toBe(4);
+    expect(room.monopoly?.phase).toBe('lobby');
+
+    const listed = service.listPublicRooms(undefined, undefined, undefined, 'monopoly')[0];
+    expect(listed).toEqual(expect.objectContaining({
+      code: room.code,
+      gameType: 'monopoly',
+      gameName: '世界版大富翁',
+      playerCount: 2,
+    }));
+
+    service.setReady('host', true);
+    service.setReady('p2', true);
+    service.startGame('host');
+
+    expect(room.status).toBe('playing');
+    expect(room.monopoly).toEqual(expect.objectContaining({
+      phase: 'playing',
+      round: 1,
+      pendingAction: null,
+    }));
+    expect(room.monopoly?.players.map((player) => player.cash)).toEqual([1500, 1500]);
+    expect(room.monopoly?.board.some((cell) => cell.name === '伦敦')).toBe(true);
+    expect(room.monopoly?.log[0]).toContain('游玩免费');
+  });
+
+  it('runs the monopoly roll and buy turn flow on the server state', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主', undefined, undefined, 'monopoly');
+    service.joinRoom(room.code, 'p2', '玩家二');
+    service.setReady('host', true);
+    service.setReady('p2', true);
+    service.startGame('host');
+
+    const state = room.monopoly!;
+    state.players[0]!.position = 15;
+    vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(0);
+
+    try {
+      service.monopolyRoll('host');
+      expect(state.players[0]).toEqual(expect.objectContaining({ position: 1, cash: 1700 }));
+      expect(state.pendingAction).toBe('buy_or_skip');
+
+      service.monopolyBuy('host');
+      expect(state.board[1]?.ownerId).toBe('host');
+      expect(state.players[0]?.cash).toBe(1580);
+      expect(state.turnIndex).toBe(1);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
   it('enforces standard-2014 player count boundaries from the version catalog', () => {
     const service = createService();
     const room = service.createRoom('host', '房主');

@@ -1,0 +1,21 @@
+req_id: REQ-2026-006-office-game-iteration
+stage: "②评审会签"
+signoffs:
+  frontend-feasibility:
+    status: pass
+    verdict: "现有 WPS 组件结构可承载资料 tab、设置、Sheet 重命名、连连看扩容与大富翁棋盘。"
+    reviewer: frontend-feasibility
+    ts: "2026-07-06"
+  backend-feasibility:
+    status: pass
+    verdict: "新增 gameType 与轻量 monopoly 状态可行，资料契约保留 stats 并扩展 statsByGame。"
+    reviewer: backend-feasibility
+    ts: "2026-07-06"
+  qa-testability:
+    status: pass
+    verdict: "首期大富翁范围已收敛，本地设置和资料兼容字段具备可测断言。"
+    reviewer: qa-testability
+    ts: "2026-07-06"
+result: pass
+last_signer: qa-testability
+

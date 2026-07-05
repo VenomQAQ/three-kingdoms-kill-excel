@@ -13,6 +13,12 @@
   height: 100%;
 }
 
+.tabWrap {
+  position: relative;
+  display: flex;
+  height: 100%;
+}
+
 .tab {
   padding: 0 18px;
   height: 100%;
@@ -56,5 +62,37 @@
 
 .add:hover {
   background: rgba(0, 0, 0, 0.06);
+  color: #217346;
+}
+
+.contextMenu {
+  position: absolute;
+  left: 4px;
+  bottom: 28px;
+  z-index: 20;
+  min-width: 96px;
+  padding: 4px;
+  border: 1px solid #cfcfcf;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+}
+
+.contextMenu button {
+  display: block;
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #333333;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.contextMenu button:hover {
+  background: #f0f8f4;
   color: #217346;
 }

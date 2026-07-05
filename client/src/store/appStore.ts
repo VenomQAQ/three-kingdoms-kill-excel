@@ -9,6 +9,7 @@ import {
   RoomListItem,
   ServerToClientEvents,
 } from '@tk/shared';
+import type { GameType } from '@tk/shared';
 import { create } from 'zustand';
 import { SANDBOX_ROOM_CODE } from '../data/decoy';
 import { translateError } from '../data/errorMessages';
@@ -56,7 +57,7 @@ interface AppState {
   setNickname: (nickname: string) => Promise<void>;
   connect: () => void;
   fetchRoomList: () => Promise<void>;
-  createRoom: () => Promise<void>;
+  createRoom: (gameType?: GameType) => Promise<void>;
   joinRoom: (code: string) => Promise<void>;
   joinSandbox: () => Promise<void>;
   leaveRoom: (reason?: RoomLeaveReason) => void;
@@ -86,6 +87,9 @@ interface AppState {
   sandboxCancelDiscard: (promptId: string) => void;
   sandboxSelectZoneCard: (promptId: string, choiceId: string) => void;
   sandboxEndTurn: () => void;
+  monopolyRoll: () => void;
+  monopolyBuy: () => void;
+  monopolySkip: () => void;
   sendChat: (content: string) => void;
   clearError: () => void;
   subscribeLobbyChat: () => void;
@@ -291,7 +295,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     return new Promise<void>((resolve) => {
       socket.emit(
         'room:list' as any,
-        { versionId: currentVersion, _v: 1 },
+        { versionId: currentVersion, gameType: 'all', _v: 1 },
         (list?: RoomListItem[]) => {
           if (Array.isArray(list)) set({ roomList: list });
           resolve();
@@ -302,13 +306,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  createRoom: async () => {
+  createRoom: async (gameType = 'sanguosha') => {
     const { socket, nickname, currentVersion } = get();
     if (!socket) return;
     return new Promise((resolve, reject) => {
       socket.emit(
         'room:create',
-        { nickname, versionId: currentVersion } as { nickname: string },
+        { nickname, versionId: currentVersion, gameType },
         (ack?: RoomCreateAck) => {
         if (!ack?.ok) {
           const code = (ack as { code?: string } | undefined)?.code;
@@ -542,6 +546,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { socket, room } = get();
     if (!socket || !room) return;
     routeGameEmit(socket, room, 'sandbox:endTurn', 'game:endTurn');
+  },
+
+  monopolyRoll: () => {
+    get().socket?.emit('monopoly:roll');
+  },
+
+  monopolyBuy: () => {
+    get().socket?.emit('monopoly:buy');
+  },
+
+  monopolySkip: () => {
+    get().socket?.emit('monopoly:skip');
   },
 
   sendChat: (content) => {

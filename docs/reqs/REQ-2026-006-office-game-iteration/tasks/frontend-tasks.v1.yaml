@@ -1,0 +1,21 @@
+req: REQ-2026-006-office-game-iteration
+tasks:
+  - id: FE-1
+    title: 工作栏账号信息与资料入口
+    files: [client/src/components/wps/InfoBar.tsx, client/src/App.tsx]
+  - id: FE-2
+    title: 设置弹窗与浏览器标题本地保存
+    files: [client/src/components/wps/SettingsDialog.tsx, client/src/components/wps/Ribbon.tsx]
+  - id: FE-3
+    title: Sheet 右键重命名
+    files: [client/src/components/wps/SheetTabs.tsx]
+  - id: FE-4
+    title: 个人资料战绩 tab
+    files: [client/src/components/wps/PlayerProfileModal.tsx]
+  - id: FE-5
+    title: 大富翁房间入口与棋盘
+    files: [client/src/store/appStore.ts, client/src/components/wps/RoomListGrid.tsx, client/src/components/wps/MonopolyGrid.tsx]
+  - id: FE-6
+    title: 连连看配置展示适配
+    files: [client/src/components/wps/LianliankanGrid.tsx]
+

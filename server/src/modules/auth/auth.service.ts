@@ -16,6 +16,8 @@ import { LoginRateLimiter } from './login-rate-limiter';
 import { SocketAuthService } from './socket-auth.service';
 import type { PlayerPublicProfile } from '@tk/shared';
 
+const ZERO_STATS = { total: 0, wins: 0, losses: 0, winRate: 0 };
+
 const QQ_EMAIL_RE = /^\d{5,11}@qq\.com$/i;
 const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9!@#$%^&*_.-]{8,32}$/;
 const NICKNAME_UPDATE_INTERVAL_MS = 60_000;
@@ -260,17 +262,18 @@ export class AuthService {
   async getPublicProfile(userId: string): Promise<PlayerPublicProfile | null> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) return null;
+    const statsByGame = {
+      sanguosha: { ...ZERO_STATS },
+      lianliankan: { ...ZERO_STATS },
+      monopoly: { ...ZERO_STATS },
+    };
     return {
       userId: user.id,
       nickname: user.nickname,
       level: user.level,
       coins: user.coins,
-      stats: {
-        total: 0,
-        wins: 0,
-        losses: 0,
-        winRate: 0,
-      },
+      stats: statsByGame.sanguosha,
+      statsByGame,
       updatedAt: user.updatedAt?.getTime?.() ?? Date.now(),
       _v: 1,
     };

@@ -48,6 +48,7 @@ interface RibbonProps {
   versionDisabled?: boolean;
   onCheckIn?: () => void;
   checkInDisabled?: boolean;
+  onOpenSettings?: () => void;
 }
 
 export function Ribbon({
@@ -62,6 +63,7 @@ export function Ribbon({
   versionDisabled,
   onCheckIn,
   checkInDisabled,
+  onOpenSettings,
 }: RibbonProps) {
   const [tab, setTab] = useState<RibbonTab>('home');
   const currentSkills = useMemo(() => {
@@ -90,9 +92,9 @@ export function Ribbon({
       {tab === 'home' ? (
         <div className={styles.ribbon}>
           <div className={styles.group}>
-            <button type="button" className={styles.actionBtn} title="粘贴">
-              <span className={styles.actionIcon}>📋</span>
-              <span>粘贴</span>
+            <button type="button" className={styles.actionBtn} title="设置" onClick={onOpenSettings}>
+              <span className={styles.actionIcon}>⚙</span>
+              <span>设置</span>
             </button>
             <button
               type="button"

@@ -9,9 +9,16 @@ interface PlayerProfileModalProps {
   onClose: () => void;
 }
 
+const GAME_STATS_LABELS = [
+  ['sanguosha', '三国杀'],
+  ['lianliankan', '连连看'],
+  ['monopoly', '大富翁'],
+] as const;
+
 export function PlayerProfileModal({ userId, virtualName, onClose }: PlayerProfileModalProps) {
   const [profile, setProfile] = useState<PlayerPublicProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [statsTab, setStatsTab] = useState<(typeof GAME_STATS_LABELS)[number][0]>('sanguosha');
 
   useEffect(() => {
     if (!userId) {
@@ -64,18 +71,42 @@ export function PlayerProfileModal({ userId, virtualName, onClose }: PlayerProfi
               </dl>
               <section className={modalStyles.section}>
                 <h3>战绩</h3>
+                <div className={modalStyles.segmented} role="tablist" aria-label="分游戏战绩">
+                  {GAME_STATS_LABELS.map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      role="tab"
+                      aria-selected={statsTab === key}
+                      className={statsTab === key ? modalStyles.segmentActive : ''}
+                      onClick={() => setStatsTab(key)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {(() => {
+                  const stats = profile.statsByGame?.[statsTab] ?? {
+                    total: 0,
+                    wins: 0,
+                    losses: 0,
+                    winRate: 0,
+                  };
+                  return (
                 <dl className={modalStyles.meta}>
                   <dt>总局数</dt>
-                  <dd>{profile.stats.total}</dd>
+                  <dd>{stats.total}</dd>
                   <dt>胜利</dt>
-                  <dd>{profile.stats.wins}</dd>
+                  <dd>{stats.wins}</dd>
                   <dt>失败</dt>
-                  <dd>{profile.stats.losses}</dd>
+                  <dd>{stats.losses}</dd>
                   <dt>胜率</dt>
-                  <dd>{Math.round(profile.stats.winRate * 100)}%</dd>
+                  <dd>{Math.round(stats.winRate * 100)}%</dd>
                   <dt>最近更新</dt>
                   <dd>{new Date(profile.updatedAt).toLocaleString()}</dd>
                 </dl>
+                  );
+                })()}
               </section>
             </>
           ) : null}

@@ -791,3 +791,142 @@
   font-size: 18px;
   line-height: 1;
 }
+
+.monopolyWrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: #ffffff;
+}
+
+.monopolyToolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 5px 10px;
+  border-bottom: 1px solid #d0d0d0;
+  background: #fafafa;
+  font-size: 12px;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.monopolyToolbar span {
+  white-space: nowrap;
+}
+
+.monopolyToolbar button {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid #cfcfcf;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #333333;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.monopolyToolbar button:not(:disabled):hover {
+  border-color: #217346;
+  background: #f0f8f4;
+}
+
+.monopolyToolbar button:disabled {
+  color: #999999;
+  background: #f0f0f0;
+  cursor: not-allowed;
+}
+
+.monopolyBody {
+  display: grid;
+  grid-template-columns: minmax(392px, 520px) minmax(0, 1fr);
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.monopolyBoard {
+  display: grid;
+  grid-template-columns: 40px repeat(4, 88px);
+  grid-template-rows: 22px repeat(16, 32px);
+  align-content: start;
+  min-width: 392px;
+  overflow: auto;
+  border-right: 1px solid #d0d0d0;
+}
+
+.monopolyBoard .colHeaders {
+  display: contents;
+}
+
+.monopolyBoard .corner {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.monopolyBoard .colHeader {
+  min-width: 88px;
+  width: 88px;
+}
+
+.monopolyCell {
+  position: relative;
+  min-height: 32px;
+  height: 32px;
+  border-top: none;
+  border-left: none;
+  background: #ffffff;
+  text-align: left;
+}
+
+.turnRowCell {
+  background: #fff7e6;
+  box-shadow: inset 0 0 0 1px #ffc53d;
+}
+
+.monopolyToken {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #217346;
+  color: #ffffff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.monopolySide {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.monopolyTable {
+  overflow-x: auto;
+  flex-shrink: 0;
+  border-bottom: 1px solid #d0d0d0;
+}
+
+@media (max-width: 760px) {
+  .monopolyBody {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .monopolyBoard {
+    border-right: none;
+    border-bottom: 1px solid #d0d0d0;
+  }
+
+  .monopolySide {
+    min-height: 320px;
+  }
+}

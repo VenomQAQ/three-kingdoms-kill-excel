@@ -4,6 +4,7 @@ import type { HandCardPick } from '../../types/hand';
 import { BattleGrid } from './BattleGrid';
 import { GeneralSelectPanel } from './GeneralSelectPanel';
 import { LobbyGrid } from './LobbyGrid';
+import { MonopolyGrid } from './MonopolyGrid';
 import gridStyles from './SpreadsheetGrid.module.css';
 
 interface GameGridProps {
@@ -21,6 +22,9 @@ interface GameGridProps {
   onViewChatProfile?: (message: ChatMessage) => void;
   onViewCard: (cardName: string) => void;
   onSendChat: (content: string) => void;
+  onMonopolyRoll?: () => void;
+  onMonopolyBuy?: () => void;
+  onMonopolySkip?: () => void;
   isSandbox?: boolean;
   onToggleReady?: () => void;
   onSelectGeneral?: (generalId: string) => void;
@@ -41,10 +45,30 @@ export function GameGrid({
   onViewChatProfile,
   onViewCard,
   onSendChat,
+  onMonopolyRoll,
+  onMonopolyBuy,
+  onMonopolySkip,
   isSandbox = false,
   onToggleReady,
   onSelectGeneral,
 }: GameGridProps) {
+  if (room.gameType === 'monopoly' && room.status === 'playing') {
+    return (
+      <div className={gridStyles.gridPane}>
+        <MonopolyGrid
+          room={room}
+          playerId={playerId}
+          selectedCell={selectedCell}
+          onSelectCell={onSelectCell}
+          onRoll={onMonopolyRoll ?? (() => undefined)}
+          onBuy={onMonopolyBuy ?? (() => undefined)}
+          onSkip={onMonopolySkip ?? (() => undefined)}
+          onViewProfile={onViewProfile}
+        />
+      </div>
+    );
+  }
+
   if (room.status === 'playing') {
     return (
       <BattleGrid

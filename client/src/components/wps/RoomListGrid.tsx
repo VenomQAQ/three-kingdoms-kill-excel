@@ -1,15 +1,18 @@
 import { useRef } from 'react';
 import type { CSSProperties } from 'react';
-import { RoomListItem } from '@tk/shared';
+import type { GameType, RoomListItem } from '@tk/shared';
 import styles from './SpreadsheetGrid.module.css';
 import { COL_LABELS } from '../../data/decoy';
 import { useCellFiller } from '../../utils/useCellFiller';
 
-const HEADERS = ['房间号', '状态', '玩家人数', '房主', '版本', '操作'];
-const COL_WIDTHS = [100, 88, 88, 100, 132, 120];
+const HEADERS = ['房间号', '类型', '状态', '玩家人数', '房主', '版本', '操作'];
+const COL_WIDTHS = [100, 84, 88, 88, 100, 132, 120];
 
 interface RoomListGridProps {
   rooms: RoomListItem[];
+  defaultGameType?: GameType;
+  onDefaultGameTypeChange?: (type: GameType) => void;
+  onCreateRoom?: (type: GameType) => void;
   selectedCell: string;
   onSelectCell: (ref: string) => void;
   onJoinRoom: (code: string) => void;
@@ -28,6 +31,9 @@ function statusLabel(status: RoomListItem['status']) {
 
 export function RoomListGrid({
   rooms,
+  defaultGameType = 'sanguosha',
+  onDefaultGameTypeChange,
+  onCreateRoom,
   selectedCell,
   onSelectCell,
   onJoinRoom,
@@ -40,8 +46,9 @@ export function RoomListGrid({
   const dataRows = rooms;
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  const filler = useCellFiller(wrapRef, 1 + dataRows.length);
-  const totalRows = 1 + dataRows.length + filler.rows;
+  const fixedRows = 3;
+  const filler = useCellFiller(wrapRef, fixedRows + dataRows.length);
+  const totalRows = fixedRows + dataRows.length + filler.rows;
 
   return (
     <div
@@ -66,9 +73,10 @@ export function RoomListGrid({
       <div className={styles.bodyFit}>
         {Array.from({ length: totalRows }, (_, ri) => {
           const rowNum = ri + 1;
-          const room = ri > 0 && ri <= dataRows.length ? dataRows[ri - 1] : null;
+          const room = ri >= fixedRows && ri < fixedRows + dataRows.length ? dataRows[ri - fixedRows] : null;
           const isHeader = ri === 0;
-          const isFiller = ri >= 1 + dataRows.length;
+          const isToolbar = ri === 1 || ri === 2;
+          const isFiller = ri >= fixedRows + dataRows.length;
           const isLastRow = ri === totalRows - 1;
 
           return (
@@ -87,36 +95,67 @@ export function RoomListGrid({
 
                 if (isHeader) {
                   value = HEADERS[ci];
+                } else if (isToolbar) {
+                  if (ri === 1 && ci === 0) {
+                    value = '创建类型';
+                    extraClass = styles.headerCell;
+                  } else if (ri === 1 && ci === 1) {
+                    value = defaultGameType === 'monopoly' ? '大富翁' : '三国杀';
+                    extraClass += ` ${styles.linkCell}`;
+                    onClick = () => {
+                      onSelectCell(ref);
+                      onDefaultGameTypeChange?.(defaultGameType === 'monopoly' ? 'sanguosha' : 'monopoly');
+                    };
+                  } else if (ri === 1 && ci === 6) {
+                    value = '创建房间';
+                    extraClass += ` ${styles.linkCell}`;
+                    onClick = () => {
+                      onSelectCell(ref);
+                      if (isGuest) {
+                        onGuestAction?.();
+                        return;
+                      }
+                      onCreateRoom?.(defaultGameType);
+                    };
+                  } else if (ri === 2 && ci === 0) {
+                    value = '筛选';
+                    extraClass = styles.headerCell;
+                  } else if (ri === 2 && ci === 1) {
+                    value = '全部游戏';
+                  }
                 } else if (room) {
                   switch (ci) {
                     case 0:
                       value = room.code;
                       break;
                     case 1:
+                      value = room.gameName ?? (room.gameType === 'monopoly' ? '大富翁' : '三国杀');
+                      break;
+                    case 2:
                       value = statusLabel(room.status);
                       extraClass +=
                         room.status === 'playing'
                           ? ` ${styles.playing}`
                           : ` ${styles.waiting}`;
                       break;
-                    case 2:
+                    case 3:
                       value = `${room.playerCount}/${room.maxPlayers}`;
                       break;
-                    case 3:
+                    case 4:
                       value = room.ownerNickname;
                       if (room.ownerUserId) extraClass += ` ${styles.linkCell}`;
                       break;
-                    case 4:
+                    case 5:
                       value = room.versionName ?? room.versionId ?? 'standard-2014';
                       break;
-                    case 5:
+                    case 6:
                       value = room.joinLabel ?? (room.isSandbox ? '测试房' : '加入');
                       extraClass += ` ${styles.linkCell}`;
                       break;
                     default:
                       break;
                   }
-                  if (ci === 0 || ci === 5) {
+                  if (ci === 0 || ci === 6) {
                     onClick = () => {
                       onSelectCell(ref);
                       if (isGuest) {
@@ -125,7 +164,7 @@ export function RoomListGrid({
                       }
                       onJoinRoom(room.code);
                     };
-                  } else if (ci === 3 && room.ownerUserId) {
+                  } else if (ci === 4 && room.ownerUserId) {
                     onClick = () => {
                       onSelectCell(ref);
                       onViewProfile?.(room.ownerUserId!);
@@ -141,7 +180,7 @@ export function RoomListGrid({
                     } ${extraClass}`}
                     style={{ minWidth: COL_WIDTHS[ci], width: COL_WIDTHS[ci] }}
                     onClick={onClick}
-                    title={(ci === 0 || ci === 5) && room ? (isGuest ? '请先登录' : `${room.joinLabel ?? '加入'}房间`) : undefined}
+                    title={(ci === 0 || ci === 6) && room ? (isGuest ? '请先登录' : `${room.joinLabel ?? '加入'}房间`) : undefined}
                   >
                     {value}
                   </div>

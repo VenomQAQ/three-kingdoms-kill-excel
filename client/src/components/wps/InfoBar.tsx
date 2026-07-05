@@ -4,12 +4,14 @@ import styles from './InfoBar.module.css';
 interface InfoBarProps {
   nickname: string;
   connected: boolean;
+  accountLabel?: string;
   roomCode?: string;
   roomStatus?: string;
   actingName?: string;
   turnName?: string;
   isAuthed?: boolean;
   onLoginClick?: () => void;
+  onProfileClick?: () => void;
   onChangeNickname?: () => void;
   onChangePassword?: () => void;
   onLogout?: () => void;
@@ -18,12 +20,14 @@ interface InfoBarProps {
 export function InfoBar({
   nickname,
   connected,
+  accountLabel,
   roomCode,
   roomStatus,
   actingName,
   turnName,
   isAuthed,
   onLoginClick,
+  onProfileClick,
   onChangeNickname,
   onChangePassword,
   onLogout,
@@ -44,13 +48,19 @@ export function InfoBar({
     <div className={styles.bar}>
       {isAuthed ? (
         <span className={styles.authWrap} ref={wrapRef}>
-          已登录{' '}
           <button
             type="button"
             className={styles.emailBtn}
+            onClick={() => onProfileClick?.()}
+          >
+            {accountLabel ?? nickname}
+          </button>
+          <button
+            type="button"
+            className={styles.authBtn}
             onClick={() => setMenuOpen((v) => !v)}
           >
-            {nickname}
+            账户
           </button>
           {menuOpen && (
             <div className={styles.dropdown} role="menu">
@@ -89,7 +99,7 @@ export function InfoBar({
         </span>
       ) : (
         <span className={styles.authWrap}>
-          操作员 <strong>{nickname}</strong>
+          <strong>未登录</strong>
           <button type="button" className={styles.authBtn} onClick={onLoginClick}>
             登录
           </button>
@@ -97,9 +107,9 @@ export function InfoBar({
       )}
       <span className={styles.sep}>|</span>
       <span>
-        连接{' '}
+        当前状态{' '}
         <strong className={connected ? styles.ok : styles.err}>
-          {connected ? '已连接' : '未连接'}
+          {connected ? '在线' : '离线'}
         </strong>
       </span>
       {roomCode && (

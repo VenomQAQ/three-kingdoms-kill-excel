@@ -8,6 +8,9 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   DEFAULT_VERSION_ID,
   findVersion,
+  GameType,
+  MonopolyBoardCell,
+  MonopolyGameState,
   Room,
   RoomListItem,
   RoomLeaveReason,
@@ -25,6 +28,32 @@ const LORD_GENERAL_OPTION_COUNT = 5;
 const GENERAL_OPTION_COUNT = 3;
 const MANUAL_LEAVE_PENALTY = 5;
 const DISCONNECT_GRACE_MS = 5 * 60 * 1000;
+const MONOPOLY_MAX_PLAYERS = 4;
+const MONOPOLY_START_CASH = 1500;
+const MONOPOLY_PASS_START_BONUS = 200;
+
+const MONOPOLY_WORLD_BOARD: MonopolyBoardCell[] = [
+  { index: 0, name: '起点', country: '世界', type: 'start', price: 0, rent: 0 },
+  { index: 1, name: '北京', country: '中国', type: 'city', price: 120, rent: 18 },
+  { index: 2, name: '机会', country: '亚洲', type: 'chance', price: 0, rent: 0 },
+  { index: 3, name: '东京', country: '日本', type: 'city', price: 140, rent: 22 },
+  { index: 4, name: '税务', country: '世界', type: 'tax', price: 0, rent: 80 },
+  { index: 5, name: '新加坡', country: '新加坡', type: 'city', price: 160, rent: 26 },
+  { index: 6, name: '休整', country: '世界', type: 'rest', price: 0, rent: 0 },
+  { index: 7, name: '悉尼', country: '澳大利亚', type: 'city', price: 180, rent: 30 },
+  { index: 8, name: '迪拜', country: '阿联酋', type: 'city', price: 200, rent: 34 },
+  { index: 9, name: '机会', country: '欧洲', type: 'chance', price: 0, rent: 0 },
+  { index: 10, name: '巴黎', country: '法国', type: 'city', price: 220, rent: 38 },
+  { index: 11, name: '伦敦', country: '英国', type: 'city', price: 240, rent: 42 },
+  { index: 12, name: '税务', country: '世界', type: 'tax', price: 0, rent: 120 },
+  { index: 13, name: '纽约', country: '美国', type: 'city', price: 260, rent: 48 },
+  { index: 14, name: '里约', country: '巴西', type: 'city', price: 220, rent: 38 },
+  { index: 15, name: '开普敦', country: '南非', type: 'city', price: 180, rent: 30 },
+];
+
+function gameName(gameType?: GameType): string {
+  return gameType === 'monopoly' ? '世界版大富翁' : '三国杀';
+}
 
 export interface LeaveRoomResult {
   room: Room | null;
@@ -151,7 +180,16 @@ export class RoomService implements OnModuleInit {
     return room;
   }
 
-  createRoom(hostId: string, nickname: string, versionId: string = DEFAULT_VERSION_ID, userId?: string | null): Room {
+  createRoom(
+    hostId: string,
+    nickname: string,
+    versionId: string = DEFAULT_VERSION_ID,
+    userId?: string | null,
+    gameType: GameType = 'sanguosha',
+  ): Room {
+    if (gameType === 'monopoly') {
+      return this.createMonopolyRoom(hostId, nickname, userId);
+    }
     const version = findVersion(versionId);
     if (!version) {
       throw new RoomError('E_VERSION_UNKNOWN', `未知版本 ${versionId}`);
@@ -177,6 +215,7 @@ export class RoomService implements OnModuleInit {
       status: 'waiting',
       settings: { maxPlayers },
       createdAt: Date.now(),
+      gameType: 'sanguosha',
     };
     this.syncLifecycle(room);
     this.roomsById.set(room.id, room);
@@ -268,6 +307,39 @@ export class RoomService implements OnModuleInit {
     this.playerRoom.set(playerId, room.id);
     this.actingPlayerBySocket.set(playerId, playerId);
     this.bindUserIdToPlayer(playerId, userId);
+    return room;
+  }
+
+  private createMonopolyRoom(hostId: string, nickname: string, userId?: string | null): Room {
+    const code = this.generateUniqueCode();
+    const room: Room = {
+      id: uuidv4(),
+      code,
+      hostId,
+      maxPlayers: MONOPOLY_MAX_PLAYERS,
+      versionId: 'monopoly-world',
+      versionName: '世界版大富翁',
+      gameType: 'monopoly',
+      players: [
+        {
+          id: hostId,
+          userId: userId ?? undefined,
+          nickname: nickname.trim() || '玩家',
+          ready: false,
+          connected: true,
+        },
+      ],
+      status: 'waiting',
+      settings: { maxPlayers: MONOPOLY_MAX_PLAYERS },
+      createdAt: Date.now(),
+      monopoly: { phase: 'lobby', turnIndex: 0, round: 1, board: [], players: [], log: [] },
+    };
+    this.syncLifecycle(room);
+    this.roomsById.set(room.id, room);
+    this.roomIdByCode.set(code, room.id);
+    this.playerRoom.set(hostId, room.id);
+    this.actingPlayerBySocket.set(hostId, hostId);
+    this.bindUserIdToPlayer(hostId, userId);
     return room;
   }
 
@@ -377,6 +449,9 @@ export class RoomService implements OnModuleInit {
     if (room.isSandbox) {
       return this.sandboxStart(playerId);
     }
+    if (room.gameType === 'monopoly') {
+      return this.startMonopolyGame(playerId);
+    }
     if (room.hostId !== playerId) {
       throw new RoomError('NOT_HOST', '仅房主可开始游戏');
     }
@@ -404,6 +479,37 @@ export class RoomService implements OnModuleInit {
       p.hp = undefined;
     });
     this.setupGeneralSelection(room);
+    return room;
+  }
+
+  private startMonopolyGame(playerId: string): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.hostId !== playerId) {
+      throw new RoomError('NOT_HOST', '仅房主可开始游戏');
+    }
+    if (room.status !== 'waiting') {
+      throw new RoomError('ALREADY_STARTED', '对局已开始');
+    }
+    if (room.players.length < 2) {
+      throw new RoomError('NOT_ENOUGH_PLAYERS', '至少需要 2 名玩家');
+    }
+    const allReady = room.players.every((p) => p.ready);
+    if (!allReady) {
+      throw new RoomError('NOT_ALL_READY', '还有玩家未准备');
+    }
+    room.players.forEach((p, index) => {
+      p.seat = index + 1;
+      p.role = '玩家';
+      p.roleRevealed = true;
+      p.handCards = [];
+      p.handCount = 0;
+      p.general = '世界旅客';
+      p.hp = undefined;
+      p.maxHp = undefined;
+      p.dead = false;
+    });
+    room.monopoly = this.createMonopolyState(room);
+    this.setRoomStatus(room, 'playing');
     return room;
   }
 
@@ -1160,12 +1266,134 @@ export class RoomService implements OnModuleInit {
     return room;
   }
 
-  listPublicRooms(versionFilter?: string, viewerPlayerId?: string, viewerUserId?: string): RoomListItem[] {
+  monopolyRoll(playerId: string): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    const state = this.requireMonopolyState(room);
+    const current = state.players[state.turnIndex];
+    if (!current || current.playerId !== playerId) {
+      throw new RoomError('NOT_YOUR_TURN', '当前不是你的回合');
+    }
+    if (state.pendingAction) {
+      throw new RoomError('ACTION_PENDING', '请先处理当前位置');
+    }
+    const dice: [number, number] = [this.rollDie(), this.rollDie()];
+    const steps = dice[0] + dice[1];
+    const nextPosition = (current.position + steps) % state.board.length;
+    if (current.position + steps >= state.board.length) {
+      current.cash += MONOPOLY_PASS_START_BONUS;
+      state.log.unshift(`${current.nickname} 经过起点，获得 ${MONOPOLY_PASS_START_BONUS} 金币`);
+    }
+    current.position = nextPosition;
+    state.lastDice = dice;
+    const cell = state.board[nextPosition]!;
+    state.log.unshift(`${current.nickname} 掷出 ${dice[0]}+${dice[1]}，到达 ${cell.name}`);
+    this.resolveMonopolyCell(state, current.playerId, cell.index);
+    state.log = state.log.slice(0, 12);
+    return room;
+  }
+
+  monopolyBuy(playerId: string): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    const state = this.requireMonopolyState(room);
+    const current = state.players[state.turnIndex];
+    if (!current || current.playerId !== playerId) throw new RoomError('NOT_YOUR_TURN', '当前不是你的回合');
+    const cell = state.board[current.position];
+    if (!cell || state.pendingAction !== 'buy_or_skip' || cell.type !== 'city' || cell.ownerId) {
+      throw new RoomError('CANNOT_BUY', '当前位置不可购买');
+    }
+    if (current.cash < cell.price) throw new RoomError('NO_MONEY', '金币不足');
+    current.cash -= cell.price;
+    current.properties.push(cell.index);
+    cell.ownerId = playerId;
+    state.log.unshift(`${current.nickname} 购买 ${cell.name}，花费 ${cell.price} 金币`);
+    state.pendingAction = null;
+    this.advanceMonopolyTurn(state);
+    return room;
+  }
+
+  monopolySkip(playerId: string): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    const state = this.requireMonopolyState(room);
+    const current = state.players[state.turnIndex];
+    if (!current || current.playerId !== playerId) throw new RoomError('NOT_YOUR_TURN', '当前不是你的回合');
+    const cell = state.board[current.position];
+    if (state.pendingAction === 'buy_or_skip' && cell) {
+      state.log.unshift(`${current.nickname} 放弃购买 ${cell.name}`);
+    }
+    state.pendingAction = null;
+    this.advanceMonopolyTurn(state);
+    return room;
+  }
+
+  private createMonopolyState(room: Room): MonopolyGameState {
+    return {
+      phase: 'playing',
+      turnIndex: 0,
+      round: 1,
+      board: MONOPOLY_WORLD_BOARD.map((cell) => ({ ...cell })),
+      players: room.players.map((player) => ({
+        playerId: player.id,
+        nickname: player.nickname,
+        position: 0,
+        cash: MONOPOLY_START_CASH,
+        properties: [],
+      })),
+      log: ['世界版大富翁开始，游玩免费。'],
+      pendingAction: null,
+    };
+  }
+
+  private requireMonopolyState(room: Room): MonopolyGameState {
+    if (room.gameType !== 'monopoly' || room.status !== 'playing' || !room.monopoly) {
+      throw new RoomError('NOT_PLAYING', '大富翁未开始');
+    }
+    return room.monopoly;
+  }
+
+  private rollDie(): number {
+    return Math.floor(Math.random() * 6) + 1;
+  }
+
+  private resolveMonopolyCell(state: MonopolyGameState, playerId: string, cellIndex: number): void {
+    const player = state.players.find((item) => item.playerId === playerId);
+    const cell = state.board[cellIndex];
+    if (!player || !cell) return;
+    if (cell.type === 'city' && !cell.ownerId) {
+      state.pendingAction = 'buy_or_skip';
+      state.log.unshift(`${cell.name} 尚未归属，可用 ${cell.price} 金币购买`);
+      return;
+    }
+    if (cell.type === 'city' && cell.ownerId && cell.ownerId !== playerId) {
+      const owner = state.players.find((item) => item.playerId === cell.ownerId);
+      const paid = Math.min(player.cash, cell.rent);
+      player.cash -= paid;
+      if (owner) owner.cash += paid;
+      state.log.unshift(`${player.nickname} 向 ${owner?.nickname ?? '地主'} 支付 ${paid} 金币过路费`);
+    } else if (cell.type === 'tax') {
+      const paid = Math.min(player.cash, cell.rent);
+      player.cash -= paid;
+      state.log.unshift(`${player.nickname} 缴纳税费 ${paid} 金币`);
+    } else if (cell.type === 'chance') {
+      player.cash += 60;
+      state.log.unshift(`${player.nickname} 获得机会奖励 60 金币`);
+    }
+    this.advanceMonopolyTurn(state);
+  }
+
+  private advanceMonopolyTurn(state: MonopolyGameState): void {
+    state.turnIndex = (state.turnIndex + 1) % state.players.length;
+    if (state.turnIndex === 0) state.round += 1;
+    state.pendingAction = null;
+    state.log = state.log.slice(0, 12);
+  }
+
+  listPublicRooms(versionFilter?: string, viewerPlayerId?: string, viewerUserId?: string, gameTypeFilter?: GameType | 'all'): RoomListItem[] {
     this.ensureSandboxRoom();
     const mappedPlayerId = viewerUserId ? this.userPlayer.get(viewerUserId) : undefined;
     return [...this.roomsById.values()]
       .filter((r) => r.players.length > 0 || r.isSandbox)
-      .filter((r) => !versionFilter || (r.versionId ?? DEFAULT_VERSION_ID) === versionFilter)
+      .filter((r) => !gameTypeFilter || gameTypeFilter === 'all' || (r.gameType ?? 'sanguosha') === gameTypeFilter)
+      .filter((r) => (r.gameType ?? 'sanguosha') !== 'sanguosha' || !versionFilter || (r.versionId ?? DEFAULT_VERSION_ID) === versionFilter)
       .map((r) => {
         const host = r.players.find((p) => p.id === r.hostId);
         const isMember = r.players.some((p) => p.id === viewerPlayerId || p.id === mappedPlayerId);
@@ -1179,6 +1407,8 @@ export class RoomService implements OnModuleInit {
           versionId: r.versionId ?? DEFAULT_VERSION_ID,
           versionName:
             r.versionName ?? findVersion(r.versionId ?? DEFAULT_VERSION_ID)?.name ?? '未知版本',
+          gameType: r.gameType ?? 'sanguosha',
+          gameName: gameName(r.gameType),
           isSandbox: r.isSandbox,
           isMember,
           joinLabel: isMember ? ('返回' as const) : ('加入' as const),

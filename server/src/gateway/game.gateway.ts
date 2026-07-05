@@ -12,6 +12,7 @@ import { Server, Socket } from 'socket.io';
 import { v4 as uuidv4 } from 'uuid';
 import {
   ClientToServerEvents,
+  GameType,
   Room,
   RoomCreateAck,
   RoomJoinAck,
@@ -183,7 +184,7 @@ export class GameGateway
   @SubscribeMessage('room:create')
   handleCreate(
     @ConnectedSocket() client: GameSocket,
-    @MessageBody() payload: { nickname: string; versionId?: string },
+    @MessageBody() payload: { nickname: string; versionId?: string; gameType?: GameType },
     ack?: (res: RoomCreateAck) => void,
   ) {
     const playerId = this.getPlayerId(client);
@@ -194,6 +195,7 @@ export class GameGateway
         payload?.nickname ?? '',
         payload?.versionId,
         userId,
+        payload?.gameType ?? 'sanguosha',
       );
       void client.join(room.id);
       client.emit('room:created', room);
@@ -882,6 +884,27 @@ export class GameGateway
     }
   }
 
+  @SubscribeMessage('monopoly:roll')
+  async handleMonopolyRoll(@ConnectedSocket() client: GameSocket) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.monopolyRoll(playerId),
+    );
+  }
+
+  @SubscribeMessage('monopoly:buy')
+  async handleMonopolyBuy(@ConnectedSocket() client: GameSocket) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.monopolyBuy(playerId),
+    );
+  }
+
+  @SubscribeMessage('monopoly:skip')
+  async handleMonopolySkip(@ConnectedSocket() client: GameSocket) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.monopolySkip(playerId),
+    );
+  }
+
   @SubscribeMessage('chat:send')
   handleChat(
     @ConnectedSocket() client: GameSocket,
@@ -933,11 +956,11 @@ export class GameGateway
   @SubscribeMessage('room:list')
   handleRoomList(
     @ConnectedSocket() client: GameSocket,
-    @MessageBody() payload: { versionId?: string },
+    @MessageBody() payload: { versionId?: string; gameType?: GameType | 'all' },
   ): ReturnType<RoomService['listPublicRooms']> {
     const playerId = this.getPlayerId(client);
     const userId = (client.data as any).userId as string | undefined;
-    return this.roomService.listPublicRooms(payload?.versionId, playerId, userId);
+    return this.roomService.listPublicRooms(payload?.versionId, playerId, userId, payload?.gameType);
   }
 
   // ==== BE-9 · 大厅聊天 ====

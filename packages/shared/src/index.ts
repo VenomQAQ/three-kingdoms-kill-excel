@@ -1,5 +1,14 @@
 export type RoomStatus = 'waiting' | 'selecting' | 'playing' | 'finished';
 
+export type GameType = 'sanguosha' | 'monopoly';
+
+export interface GameStats {
+  total: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+}
+
 export interface GeneralOption {
   id: string;
   name: string;
@@ -133,6 +142,38 @@ export interface RoomSettings {
   maxPlayers: number;
 }
 
+export type MonopolyCellType = 'start' | 'city' | 'tax' | 'chance' | 'rest';
+
+export interface MonopolyBoardCell {
+  index: number;
+  name: string;
+  country: string;
+  type: MonopolyCellType;
+  price: number;
+  rent: number;
+  ownerId?: string;
+}
+
+export interface MonopolyPlayerState {
+  playerId: string;
+  nickname: string;
+  position: number;
+  cash: number;
+  properties: number[];
+  bankrupt?: boolean;
+}
+
+export interface MonopolyGameState {
+  phase: 'lobby' | 'playing' | 'finished';
+  turnIndex: number;
+  round: number;
+  board: MonopolyBoardCell[];
+  players: MonopolyPlayerState[];
+  log: string[];
+  lastDice?: [number, number];
+  pendingAction?: 'buy_or_skip' | null;
+}
+
 export interface RoomLifecycleState {
   state: RoomStatus;
   hostTransferPending?: boolean;
@@ -164,6 +205,8 @@ export interface Room {
   generalSelection?: GeneralSelectionState;
   roomLifecycle?: RoomLifecycleState;
   settlementRecords?: RoomSettlementRecord[];
+  gameType?: GameType;
+  monopoly?: MonopolyGameState;
 }
 
 export interface RoomListItem {
@@ -178,6 +221,8 @@ export interface RoomListItem {
   isSandbox?: boolean;
   isMember?: boolean;
   joinLabel?: '加入' | '返回';
+  gameType?: GameType;
+  gameName?: string;
   _v: 1;
 }
 
@@ -213,7 +258,7 @@ export interface ChatMessage {
 
 /** Client → Server */
 export interface ClientToServerEvents {
-  'room:create': (payload: { nickname: string }, ack?: (res: RoomCreateAck) => void) => void;
+  'room:create': (payload: { nickname: string; versionId?: string; gameType?: GameType }, ack?: (res: RoomCreateAck) => void) => void;
   'room:join': (
     payload: { code: string; nickname?: string; _v?: 1 },
     ack?: (res: RoomJoinAck) => void,
@@ -278,6 +323,9 @@ export interface ClientToServerEvents {
   'game:selectZoneCard': (payload: { promptId: string; choiceId: string }) => void;
   'game:endTurn': () => void;
   'game:sync': (ack?: (room: Room | null) => void) => void;
+  'monopoly:roll': () => void;
+  'monopoly:buy': () => void;
+  'monopoly:skip': () => void;
   'chat:send': (payload: { content: string }) => void;
   'chat:history': (ack?: (messages: ChatMessage[]) => void) => void;
 }
@@ -315,12 +363,8 @@ export interface PlayerPublicProfile {
   nickname: string;
   level: number;
   coins: number;
-  stats: {
-    total: number;
-    wins: number;
-    losses: number;
-    winRate: number;
-  };
+  stats: GameStats;
+  statsByGame?: Record<'sanguosha' | 'lianliankan' | 'monopoly', GameStats>;
   updatedAt: number;
   _v: 1;
 }

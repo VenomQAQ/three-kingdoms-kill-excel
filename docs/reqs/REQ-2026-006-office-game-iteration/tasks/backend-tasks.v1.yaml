@@ -1,0 +1,18 @@
+req: REQ-2026-006-office-game-iteration
+tasks:
+  - id: BE-1
+    title: 扩展共享类型
+    files: [packages/shared/src/index.ts]
+  - id: BE-2
+    title: 调整公开资料 statsByGame
+    files: [server/src/modules/auth/auth.service.ts]
+  - id: BE-3
+    title: 调整连连看难度与主题
+    files: [server/src/modules/lianliankan/lianliankan.config.ts]
+  - id: BE-4
+    title: 房间类型与大富翁状态逻辑
+    files: [server/src/modules/room/room.service.ts, server/src/gateway/game.gateway.ts]
+  - id: BE-5
+    title: socket 契约补齐
+    files: [packages/shared/src/index.ts, client/src/store/appStore.ts]
+

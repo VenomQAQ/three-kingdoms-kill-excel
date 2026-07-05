@@ -1,0 +1,12 @@
+req_id: REQ-2026-006-office-game-iteration
+current_stage: "③开发"
+status: "②已通过"
+updated_at: "2026-07-06"
+history:
+  - stage: "①产品设计"
+    status: "①已定稿"
+    artifact: "prd/prd.v1.md"
+  - stage: "②评审会签"
+    status: "②已通过"
+    artifact: "review/review-signoff.v1.yaml"
+

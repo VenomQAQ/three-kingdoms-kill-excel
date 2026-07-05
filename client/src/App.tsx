@@ -6,7 +6,7 @@ import {
   CharacterRegistry,
   type EnginePlayerState,
 } from '@tk/engine';
-import type { RoomPlayer } from '@tk/shared';
+import type { GameType, RoomPlayer } from '@tk/shared';
 import type { HandCardPick } from './types/hand';
 import { TitleBar } from './components/wps/TitleBar';
 import { CardDetailModal } from './components/wps/CardDetailModal';
@@ -27,6 +27,7 @@ import { LobbyChatPanel } from './components/wps/LobbyChatPanel';
 import { LoginDialog } from './components/wps/LoginDialog';
 import { ChangePasswordDialog } from './components/wps/ChangePasswordDialog';
 import { PlayerProfileModal } from './components/wps/PlayerProfileModal';
+import { SettingsDialog } from './components/wps/SettingsDialog';
 import { Toast } from './components/wps/Toast';
 import {
   CURRENT_ROOM_SHEET_ID,
@@ -80,6 +81,13 @@ function App() {
   const [promptCollapsed, setPromptCollapsed] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [defaultGameType, setDefaultGameType] = useState<GameType>(() => {
+    if (typeof window === 'undefined') return 'sanguosha';
+    return window.localStorage.getItem('tk_default_game_type') === 'monopoly'
+      ? 'monopoly'
+      : 'sanguosha';
+  });
 
   const showToast = useToastStore((s) => s.show);
 
@@ -128,6 +136,9 @@ function App() {
     sandboxCancelDiscard,
     sandboxSelectZoneCard,
     sandboxEndTurn,
+    monopolyRoll,
+    monopolyBuy,
+    monopolySkip,
     sendChat,
     chatMessages,
     lastError,
@@ -267,7 +278,9 @@ function App() {
   const actingPlayer = controlPlayer;
   const actingId = controlId;
   const turnPlayer =
-    room?.sandbox != null && isPlaying
+    room?.gameType === 'monopoly' && room.monopoly != null && isPlaying
+      ? room.players.find((player) => player.id === room.monopoly?.players[room.monopoly.turnIndex]?.playerId) ?? null
+      : room?.sandbox != null && isPlaying
       ? room.players[room.sandbox.turnIndex]
       : null;
   const gamePrompt = room?.sandbox?.prompt ?? null;
@@ -426,6 +439,13 @@ function App() {
     }
   }, [isAuthed, nickname, setNickname, showToast]);
 
+  const handleDefaultGameTypeChange = useCallback((type: GameType) => {
+    setDefaultGameType(type);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('tk_default_game_type', type);
+    }
+  }, []);
+
   const handleCheckIn = useCallback(async () => {
     if (!isAuthed) {
       showToast('请先登录');
@@ -473,7 +493,7 @@ function App() {
       }
       switch (id) {
         case 'create':
-          await createRoom();
+          await createRoom(defaultGameType);
           break;
         case 'joinSandbox':
           await joinSandbox();
@@ -547,6 +567,7 @@ function App() {
       room,
       actingId,
       isSandbox,
+      defaultGameType,
     ],
   );
 
@@ -709,7 +730,15 @@ function App() {
             setShowLoginDialog(true);
             break;
           }
-          await createRoom();
+          await createRoom(defaultGameType);
+          break;
+        case 'monopoly':
+          if (!isAuthed) {
+            showToast('请先登录');
+            setShowLoginDialog(true);
+            break;
+          }
+          await createRoom('monopoly');
           break;
         case 'join':
           if (!isAuthed) {
@@ -810,6 +839,7 @@ function App() {
     isSandbox,
     isPlaying,
     actingPlayer?.handCards,
+    defaultGameType,
   ]);
 
   const showCurrentRoomSheet = !!room && !bossMode;
@@ -850,16 +880,24 @@ function App() {
         versionDisabled={!isAuthed}
         onCheckIn={() => void handleCheckIn()}
         checkInDisabled={authStatus === 'loading'}
+        onOpenSettings={() => setShowSettingsDialog(true)}
       />
       <InfoBar
         nickname={nickname}
         connected={connected}
+        accountLabel={accountLabel}
         roomCode={bossMode ? undefined : room?.code}
         roomStatus={room ? roomStatusLabel : undefined}
         actingName={formatGeneralName(actingPlayer)}
         turnName={formatGeneralName(turnPlayer)}
         isAuthed={isAuthed}
         onLoginClick={() => setShowLoginDialog(true)}
+        onProfileClick={() => {
+          if (user?.userId) {
+            setProfileUserId(user.userId);
+            setVirtualProfileName(null);
+          }
+        }}
         onChangeNickname={handleChangeNickname}
         onChangePassword={() => setShowChangePasswordDialog(true)}
         onLogout={() => void logout()}
@@ -973,6 +1011,9 @@ function App() {
             onViewChatProfile={handleViewChatProfile}
             onViewCard={setDetailCardName}
             onSendChat={sendChat}
+            onMonopolyRoll={monopolyRoll}
+            onMonopolyBuy={monopolyBuy}
+            onMonopolySkip={monopolySkip}
             isSandbox={isSandbox}
             onToggleReady={toggleReady}
             onSelectGeneral={selectGeneral}
@@ -985,6 +1026,9 @@ function App() {
             <div className={gridStyles.gridPane}>
               <RoomListGrid
                 rooms={roomList}
+                defaultGameType={defaultGameType}
+                onDefaultGameTypeChange={handleDefaultGameTypeChange}
+                onCreateRoom={(type) => requireAuth(() => createRoom(type))}
                 selectedCell={selectedCell}
                 onSelectCell={setSelectedCell}
                 onJoinRoom={(code) => requireAuth(() => joinRoom(code))}
@@ -1055,6 +1099,14 @@ function App() {
         open={showChangePasswordDialog}
         onClose={() => setShowChangePasswordDialog(false)}
         onSuccess={() => setShowLoginDialog(true)}
+      />
+      <SettingsDialog
+        open={showSettingsDialog}
+        defaultGameType={defaultGameType}
+        onDefaultGameTypeChange={handleDefaultGameTypeChange}
+        onChangeNickname={handleChangeNickname}
+        onChangePassword={() => setShowChangePasswordDialog(true)}
+        onClose={() => setShowSettingsDialog(false)}
       />
       {skillModalPlayer && (
         <CharacterSkillModal
