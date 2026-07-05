@@ -13,6 +13,23 @@ function optionIds(service: RoomService, roomId: string, playerId: string): stri
 }
 
 describe('RoomService formal general selection', () => {
+  it('enforces standard-2014 player count boundaries from the version catalog', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主');
+
+    expect(room.versionId).toBe('standard-2014');
+    expect(room.versionName).toBe('三国杀标准版·界限突破');
+    expect(room.maxPlayers).toBe(8);
+    expect(() => service.startGame('host')).toThrow('至少需要 2 名玩家');
+
+    for (let i = 2; i <= 8; i += 1) {
+      service.joinRoom(room.code, `p${i}`, `玩家${i}`);
+    }
+
+    expect(room.players).toHaveLength(8);
+    expect(() => service.joinRoom(room.code, 'p9', '玩家9')).toThrow('房间已满');
+  });
+
   it('binds authenticated joins for room-list return and rebinds selecting prompts', () => {
     const service = createService();
     const room = service.createRoom('host', '房主');
@@ -36,7 +53,7 @@ describe('RoomService formal general selection', () => {
     expect(optionIdsAfterRebind).toHaveLength(3);
   });
 
-  it('starts selecting after identity assignment and exposes only current player options', () => {
+  it('starts simultaneous selecting after identity assignment and exposes each player options', () => {
     const service = createService();
     const room = service.createRoom('host', '房主');
     service.joinRoom(room.code, 'p2', '玩家二');
@@ -46,9 +63,9 @@ describe('RoomService formal general selection', () => {
     service.startGame('host');
 
     expect(room.status).toBe('selecting');
+    expect(room.roomLifecycle?.state).toBe('selecting');
     const lord = room.players.find((p) => p.role === '主公')!;
     const rebel = room.players.find((p) => p.role !== '主公')!;
-    expect(room.generalSelection?.currentPlayerId).toBe(lord.id);
     expect(lord.roleRevealed).toBe(true);
     expect(rebel.roleRevealed).toBe(false);
     expect(optionIds(service, room.id, lord.id)).toHaveLength(5);
@@ -57,10 +74,20 @@ describe('RoomService formal general selection', () => {
     const lordView = service.getFilteredRoomForPlayer(room.id, lord.id)!;
     const rebelView = service.getFilteredRoomForPlayer(room.id, rebel.id)!;
     expect(lordView.generalSelection?.myOptions).toHaveLength(5);
-    expect(rebelView.generalSelection?.myOptions).toBeUndefined();
+    expect(rebelView.generalSelection?.myOptions).toHaveLength(3);
+    expect(lordView.generalSelection?.myOptions?.[0]).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        name: expect.any(String),
+        kingdom: expect.stringMatching(/^(wei|shu|wu|qun)$/),
+        hp: expect.any(Number),
+        maxHp: expect.any(Number),
+        skills: expect.any(Array),
+      }),
+    );
   });
 
-  it('advances from lord to the next seat and starts the engine after all picks', () => {
+  it('accepts picks in any order and starts the engine after all players pick', () => {
     const service = createService();
     const room = service.createRoom('host', '房主');
     service.joinRoom(room.code, 'p2', '玩家二');
@@ -69,18 +96,17 @@ describe('RoomService formal general selection', () => {
 
     service.startGame('host');
 
-    const lord = room.players.find((p) => p.role === '主公')!;
-    service.selectGeneral(lord.id, room.code, optionIds(service, room.id, lord.id)[0]!);
+    const nonLord = room.players.find((p) => p.role !== '主公')!;
+    service.selectGeneral(nonLord.id, room.code, optionIds(service, room.id, nonLord.id)[0]!);
+    expect(room.status).toBe('selecting');
+    expect(room.generalSelection?.selected).toHaveLength(1);
 
-    const nextSeat = room.players[(room.players.findIndex((p) => p.id === lord.id) + 1) % room.players.length]!;
-    expect(room.generalSelection?.currentPlayerId).toBe(nextSeat.id);
-
-    while (room.status === 'selecting') {
-      const currentId = room.generalSelection!.currentPlayerId;
-      service.selectGeneral(currentId, room.code, optionIds(service, room.id, currentId)[0]!);
+    for (const player of room.players.filter((p) => p.id !== nonLord.id)) {
+      service.selectGeneral(player.id, room.code, optionIds(service, room.id, player.id)[0]!);
     }
 
     expect(room.status).toBe('playing');
+    expect(room.roomLifecycle?.state).toBe('playing');
     expect(room.generalSelection).toBeUndefined();
     expect(room.players.every((p) => p.general && p.hp != null && p.maxHp != null)).toBe(true);
     expect(room.players.every((p) => (p.handCards?.length ?? 0) >= 4)).toBe(true);
@@ -97,17 +123,20 @@ describe('RoomService formal general selection', () => {
       service.setReady('p2', true);
 
       service.startGame('host');
-      const currentId = room.generalSelection!.currentPlayerId;
-      const first = optionIds(service, room.id, currentId)[0]!;
-      const firstName = service.getFilteredRoomForPlayer(room.id, currentId)!.generalSelection!.myOptions![0]!.name;
+      const expected = room.players.map((player) => {
+        const first = optionIds(service, room.id, player.id)[0]!;
+        const firstName = service.getFilteredRoomForPlayer(room.id, player.id)!.generalSelection!.myOptions![0]!.name;
+        return { playerId: player.id, generalId: first, generalName: firstName };
+      });
 
       vi.advanceTimersByTime(room.generalSelection!.timeoutSec * 1000);
 
-      expect(room.generalSelection?.selected).toContainEqual({
-        playerId: currentId,
-        generalId: first,
-        generalName: firstName,
-      });
+      expect(room.status).toBe('playing');
+      expect(room.players).toEqual(
+        expect.arrayContaining(
+          expected.map((item) => expect.objectContaining({ id: item.playerId, general: item.generalName })),
+        ),
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -129,7 +158,7 @@ describe('RoomService formal general selection', () => {
     expect(result.penalty).toBe(5);
     expect(room.players.map((p) => p.id)).toEqual(['p2', 'p3']);
     expect(room.hostId).toBe('p2');
-    expect(room.generalSelection?.currentPlayerId).not.toBe('host');
+    expect(room.roomLifecycle).toMatchObject({ state: 'selecting', hostTransferPending: false });
     expect(optionIds(service, room.id, 'host')).toHaveLength(0);
     expect(service.getRoomOfPlayer('host')).toBeNull();
   });
@@ -147,6 +176,122 @@ describe('RoomService formal general selection', () => {
     expect(result.removed).toBe(false);
     expect(result.penalty).toBeUndefined();
     expect(room.players.find((p) => p.id === 'p2')?.connected).toBe(false);
+    expect(room.roomLifecycle?.state).toBe('selecting');
+    expect(room.roomLifecycle?.disconnectGraceUntil).toBeGreaterThan(Date.now());
     expect(service.getRoomOfPlayer('p2')).toBe(room);
+  });
+
+  it('transfers host on disconnect while keeping the disconnected host seated', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主');
+    service.joinRoom(room.code, 'p2', '玩家二');
+    service.joinRoom(room.code, 'p3', '玩家三');
+    room.players.forEach((p) => service.setReady(p.id, true));
+    service.startGame('host');
+
+    const result = service.leaveRoom('host', 'disconnect');
+
+    expect(result.removed).toBe(false);
+    expect(result.disbanded).toBe(false);
+    expect(result.penalty).toBeUndefined();
+    expect(result.previousHostId).toBe('host');
+    expect(result.newHostId).toBe('p2');
+    expect(room.hostId).toBe('p2');
+    expect(room.players.map((p) => p.id)).toEqual(['host', 'p2', 'p3']);
+    expect(room.players.find((p) => p.id === 'host')?.connected).toBe(false);
+    expect(service.getRoomOfPlayer('host')).toBe(room);
+    expect(room.roomLifecycle).toMatchObject({
+      state: 'selecting',
+      hostTransferPending: false,
+    });
+    expect(room.roomLifecycle?.disconnectGraceUntil).toBeGreaterThan(Date.now());
+  });
+
+  it('disbands when the only real host disconnects during selection', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主');
+    room.players.push({
+      id: 'bot-1',
+      nickname: '虚拟一',
+      ready: true,
+      connected: true,
+      isVirtual: true,
+    });
+    service.setReady('host', true);
+    service.startGame('host');
+
+    const result = service.leaveRoom('host', 'disconnect');
+
+    expect(result.removed).toBe(false);
+    expect(result.disbanded).toBe(true);
+    expect(result.previousRoomId).toBe(room.id);
+    expect(service.getRoomById(room.id)).toBeNull();
+  });
+
+  it('marks disconnected players through the gateway helper while preserving their seat', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主');
+    service.joinRoom(room.code, 'p2', '玩家二');
+
+    const changed = service.markPlayerDisconnected('p2');
+
+    expect(changed).toBe(room);
+    expect(room.players.find((p) => p.id === 'p2')?.connected).toBe(false);
+    expect(room.roomLifecycle).toMatchObject({ state: 'waiting' });
+    expect(room.roomLifecycle?.disconnectGraceUntil).toBeGreaterThan(Date.now());
+    expect(service.getRoomOfPlayer('p2')).toBe(room);
+  });
+
+  it('transfers host through the gateway disconnect helper while preserving the seat', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主');
+    service.joinRoom(room.code, 'p2', '玩家二');
+    service.joinRoom(room.code, 'p3', '玩家三');
+
+    const changed = service.markPlayerDisconnected('host');
+
+    expect(changed).toBe(room);
+    expect(room.hostId).toBe('p2');
+    expect(room.players.map((p) => p.id)).toEqual(['host', 'p2', 'p3']);
+    expect(room.players.find((p) => p.id === 'host')?.connected).toBe(false);
+    expect(service.getRoomOfPlayer('host')).toBe(room);
+    expect(room.roomLifecycle).toMatchObject({
+      state: 'waiting',
+      hostTransferPending: false,
+    });
+    expect(room.roomLifecycle?.disconnectGraceUntil).toBeGreaterThan(Date.now());
+  });
+
+  it('recovers finished rooms back to waiting and clears ready states', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主');
+    service.joinRoom(room.code, 'p2', '玩家二');
+    room.players.forEach((p) => service.setReady(p.id, true));
+    room.status = 'finished';
+    room.roomLifecycle = { state: 'finished' };
+    room.sandbox = {
+      phase: 'finished',
+      turnIndex: 0,
+      round: 1,
+      log: [],
+      prompt: { type: 'play-card', playerId: 'host', message: 'x' },
+      victory: { winners: ['host'], message: '胜利' },
+    };
+
+    const recovered = service.completeFinishedRoom(room.id);
+
+    expect(recovered).toBe(room);
+    expect(room.status).toBe('waiting');
+    expect(room.roomLifecycle).toMatchObject({ state: 'waiting', hostTransferPending: false });
+    expect(room.players.every((p) => !p.ready)).toBe(true);
+    expect(room.sandbox?.phase).toBe('lobby');
+    expect(room.sandbox?.prompt).toBeNull();
+    expect(room.sandbox?.victory).toBeNull();
+    expect(room.settlementRecords).toEqual([
+      expect.objectContaining({
+        winners: ['host'],
+        message: '胜利',
+      }),
+    ]);
   });
 });

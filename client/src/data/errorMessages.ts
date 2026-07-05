@@ -16,6 +16,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   E_REFRESH_EXPIRED: '登录已过期，请重新登录',
   E_REFRESH_REUSED: '登录状态异常，请重新登录',
   E_LOGIN_RATE_LIMIT: '登录尝试过于频繁，请稍后再试',
+  E_CHECK_IN_ALREADY_DONE: '今天已经签到过了',
   E_ROOM_NOT_FOUND: '房间不存在',
   E_ROOM_FULL: '房间已满',
   E_ROOM_STARTED: '对局已开始，无法加入',

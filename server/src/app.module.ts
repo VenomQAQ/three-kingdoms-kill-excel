@@ -10,6 +10,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CapabilitiesModule } from './modules/capabilities/capabilities.module';
 import { LobbyChatModule } from './modules/lobby-chat/lobby-chat.module';
 import { DebugModule } from './modules/debug/debug.module';
+import { VersionModule } from './modules/version/version.module';
 import { GameGateway } from './gateway/game.gateway';
 import { User } from './modules/auth/entities/user.entity';
 
@@ -33,6 +34,7 @@ mkdirSync(dirname(sqlitePath), { recursive: true });
     GameModule,
     ChatModule,
     LobbyChatModule,
+    VersionModule,
     TypeOrmModule.forFeature([User]), // gateway 用（version:switch 需更新 preferredVersion）
     ...(env.debugClockEnabled ? [DebugModule] : []),
   ],

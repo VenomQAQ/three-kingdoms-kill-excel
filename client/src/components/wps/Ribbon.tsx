@@ -46,9 +46,9 @@ interface RibbonProps {
   versions?: VersionInfo[];
   currentVersionId?: string;
   versionDisabled?: boolean;
+  onCheckIn?: () => void;
+  checkInDisabled?: boolean;
 }
-
-const SUPPORTED_SKILLS = new Set(['rende', 'zhiheng']);
 
 export function Ribbon({
   actions,
@@ -60,6 +60,8 @@ export function Ribbon({
   versions = [],
   currentVersionId = 'standard-2014',
   versionDisabled,
+  onCheckIn,
+  checkInDisabled,
 }: RibbonProps) {
   const [tab, setTab] = useState<RibbonTab>('home');
   const currentSkills = useMemo(() => {
@@ -92,9 +94,15 @@ export function Ribbon({
               <span className={styles.actionIcon}>📋</span>
               <span>粘贴</span>
             </button>
-            <button type="button" className={styles.actionBtn} title="保存">
-              <span className={styles.actionIcon}>💾</span>
-              <span>保存</span>
+            <button
+              type="button"
+              className={styles.actionBtn}
+              title="签到"
+              disabled={checkInDisabled}
+              onClick={onCheckIn}
+            >
+              <span className={styles.actionIcon}>✓</span>
+              <span>签到</span>
             </button>
           </div>
           <div className={styles.groupDivider} />
@@ -140,8 +148,7 @@ export function Ribbon({
             {currentSkills.length > 0 ? (
               <div className={styles.skillList}>
                 {currentSkills.map((skill) => {
-                  const isSupported = SUPPORTED_SKILLS.has(skill.id);
-                  const disabled = !isSupported || !canUseSkills || turnPhase !== 'play';
+                  const disabled = !canUseSkills || turnPhase !== 'play';
                   return (
                     <button
                       key={skill.id}

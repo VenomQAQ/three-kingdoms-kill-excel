@@ -75,6 +75,10 @@ export class GameService {
     room.sandbox.phase = snap.victory ? 'finished' : 'playing';
     if (snap.victory) {
       room.status = 'finished';
+      room.roomLifecycle = {
+        ...(room.roomLifecycle ?? {}),
+        state: 'finished',
+      };
     }
 
     const byId = new Map(snap.players.map((p) => [p.id, p]));

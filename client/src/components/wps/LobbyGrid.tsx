@@ -4,6 +4,7 @@ import { Room } from '@tk/shared';
 import styles from './SpreadsheetGrid.module.css';
 import { COL_LABELS } from '../../data/decoy';
 import { useCellFiller } from '../../utils/useCellFiller';
+import { formatPlayerName } from '../../utils/display';
 
 interface LobbyGridProps {
   room: Room;
@@ -100,8 +101,7 @@ export function LobbyGrid({
                         value = String(rowPlayer.seat ?? pIdx + 1);
                         break;
                       case 1:
-                        value =
-                          rowPlayer.nickname + (rowPlayer.isVirtual ? ' (虚拟)' : '');
+                        value = formatPlayerName(rowPlayer, rowPlayer.id === room.hostId);
                         break;
                       case 2:
                         value = rowPlayer.general ?? '—';

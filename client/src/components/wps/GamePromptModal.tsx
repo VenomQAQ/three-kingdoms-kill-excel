@@ -1,4 +1,4 @@
-import { CardRegistry, listZoneCards, needsZoneCardPick } from '@tk/engine';
+import { CardRegistry } from '@tk/engine';
 import type { GamePrompt, PromptSkillInfo, Room, RoomPlayer } from '@tk/shared';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -16,6 +16,7 @@ interface GamePromptModalProps {
   onSelectTargets: (promptId: string, targetIds: string[], zoneCardId?: string) => void;
   onSubmitResponse: (promptId: string, choiceId: string) => void;
   onRendeGive: (targetId: string, cards: string[], handIndices: number[]) => void;
+  onQingnangRecover: (targetId: string, handIndices: number[]) => void;
   onZhihengConfirm: (handIndices: number[]) => void;
   onModifyJudge: (promptId: string, handIndex: number) => void;
   onSkipModifyJudge: (promptId: string) => void;
@@ -75,22 +76,28 @@ function judgeCardDescription(cardName?: string): string {
 function CardPickChips({
   cards,
   selectedIndices,
+  allowedIndices,
   onToggle,
 }: {
   cards: string[];
   selectedIndices: number[];
+  allowedIndices?: number[];
   onToggle: (index: number) => void;
 }) {
   return (
     <div className={styles.cardChipList}>
       {cards.map((card, index) => {
         const active = selectedIndices.includes(index);
+        const disabled = allowedIndices !== undefined && !allowedIndices.includes(index);
         return (
           <button
             key={`${card}-${index}`}
             type="button"
             className={`${styles.cardChip} ${active ? styles.cardChipActive : ''}`}
-            onClick={() => onToggle(index)}
+            disabled={disabled}
+            onClick={() => {
+              if (!disabled) onToggle(index);
+            }}
           >
             {card}
           </button>
@@ -108,6 +115,7 @@ export function GamePromptModal({
   onSelectTargets,
   onSubmitResponse,
   onRendeGive,
+  onQingnangRecover,
   onZhihengConfirm,
   onModifyJudge,
   onSkipModifyJudge,
@@ -122,8 +130,10 @@ export function GamePromptModal({
   const [modifyJudgeIndex, setModifyJudgeIndex] = useState<number | null>(null);
   const [discardIndices, setDiscardIndices] = useState<number[]>([]);
   const [zonePickId, setZonePickId] = useState('');
+  const [skillZoneCardId, setSkillZoneCardId] = useState('');
   const [guanxingOrder, setGuanxingOrder] = useState<number[]>([]);
   const [guanxingTopCount, setGuanxingTopCount] = useState(0);
+  const [draggedGuanxingPosition, setDraggedGuanxingPosition] = useState<number | null>(null);
 
   useEffect(() => {
     setSelectedTargets([]);
@@ -133,6 +143,8 @@ export function GamePromptModal({
     setModifyJudgeIndex(null);
     setDiscardIndices([]);
     setZonePickId('');
+    setSkillZoneCardId('');
+    setDraggedGuanxingPosition(null);
     const guanxingCards = prompt.guanxingCards ?? [];
     setGuanxingOrder(guanxingCards.map((_, index) => index));
     setGuanxingTopCount(guanxingCards.length);
@@ -153,8 +165,34 @@ export function GamePromptModal({
     .filter((player): player is RoomPlayer => !!player);
 
   const isGiveCardsSkill =
-    prompt.type === 'use_skill' && !!prompt.skillId && Array.isArray(prompt.validTargetIds);
+    prompt.type === 'use_skill' &&
+    !!prompt.skillId &&
+    Array.isArray(prompt.validTargetIds) &&
+    prompt.skillAction !== 'discard_recover' &&
+    prompt.skillAction !== 'discard_draw' &&
+    prompt.skillAction !== 'virtual_basic' &&
+    prompt.skillAction !== 'discard_card_target_pair' &&
+    prompt.skillAction !== 'give_card_duel_target' &&
+    prompt.skillAction !== 'discard_red_then_choose' &&
+    prompt.skillAction !== 'pindian' &&
+    prompt.skillAction !== 'recover_choice' &&
+    prompt.skillId !== 'jianyan';
+  const isDiscardRecoverSkill =
+    prompt.type === 'use_skill' && prompt.skillAction === 'discard_recover';
+  const isDiscardDrawSkill = prompt.type === 'use_skill' && prompt.skillAction === 'discard_draw';
+  const isDiscardRedThenChoose =
+    prompt.type === 'use_skill' && prompt.skillAction === 'discard_red_then_choose';
+  const isLijian = prompt.type === 'use_skill' && prompt.skillId === 'lijian';
+  const isJianyan = prompt.type === 'use_skill' && prompt.skillId === 'jianyan';
+  const isLiuli = prompt.type === 'use_skill' && prompt.skillId === 'liuli';
+  const isShaDodgedEquipment =
+    prompt.type === 'use_skill' && prompt.skillId === 'sha_dodged_equipment';
+  const isFanjian = prompt.type === 'use_skill' && prompt.skillId === 'fanjian';
+  const isLiyu = prompt.type === 'use_skill' && prompt.skillId === 'liyu';
+  const isYiji = prompt.type === 'use_skill' && prompt.skillId === 'yiji';
   const isZhiheng = prompt.type === 'use_skill' && prompt.skillId === 'zhiheng';
+  const isYijuePindian = prompt.type === 'use_skill' && prompt.skillAction === 'pindian';
+  const isYijueRecover = prompt.type === 'use_skill' && prompt.skillAction === 'recover_choice';
   const isGuanxing =
     prompt.type === 'use_skill' &&
     (prompt.skillId === 'guanxing' || prompt.skillId === 'xunxun');
@@ -162,14 +200,13 @@ export function GamePromptModal({
   const isModifyJudge = prompt.type === 'modify_judge';
   const isDiscard = prompt.type === 'discard_cards';
   const isZonePick = prompt.type === 'select_zone_card';
-  const isZonePickTargetSelect =
-    prompt.type === 'select_targets' && needsZoneCardPick(cardDef);
   const isWuxieResponse =
     prompt.type === 'response' &&
     prompt.validResponseCards?.includes('无懈可击') === true &&
     !!sourcePlayer &&
     (prompt.targetPlayerIds?.length ?? 0) > 0;
   const discardNeed = prompt.discardCount ?? 0;
+  const discardRecoverNeed = Math.max(1, prompt.discardCount ?? 1);
   const noLegalTargets =
     (prompt.type === 'select_targets' ||
       (prompt.type === 'use_skill' && Array.isArray(prompt.validTargetIds))) &&
@@ -204,11 +241,32 @@ export function GamePromptModal({
     if (prompt.type === 'dying_rescue') {
       return '濒死救助';
     }
+    if (isLiuli) {
+      return '发动【流离】';
+    }
+    if (isFanjian) {
+      return prompt.sourcePlayerId ? '响应【反间】' : '发动【反间】';
+    }
+    if (isLiyu) {
+      return '发动【利驭】';
+    }
     if (isGiveCardsSkill) {
       return `请选择【${stripGeneralPrefixInText(prompt.skillName ?? '技能')}】目标`;
     }
+    if (isDiscardRecoverSkill) {
+      return `发动【${stripGeneralPrefixInText(prompt.skillName ?? '技能')}】`;
+    }
     if (isZhiheng) {
       return `弃置手牌（${zhihengCardIndices.length}）`;
+    }
+    if (isDiscardDrawSkill) {
+      return `发动【${stripGeneralPrefixInText(prompt.skillName ?? '技能')}】`;
+    }
+    if (isDiscardRedThenChoose) {
+      return `发动【${stripGeneralPrefixInText(prompt.skillName ?? '技能')}】`;
+    }
+    if (isYijuePindian || isYijueRecover) {
+      return '发动【义绝】';
     }
     if (prompt.type === 'use_skill') {
       const skillLabel = stripGeneralPrefixInText(prompt.skillName ?? '');
@@ -220,6 +278,14 @@ export function GamePromptModal({
     discardIndices.length,
     discardNeed,
     isGiveCardsSkill,
+    isDiscardRecoverSkill,
+    isDiscardDrawSkill,
+    isDiscardRedThenChoose,
+    isFanjian,
+    isLiyu,
+    isLiuli,
+    isYijuePindian,
+    isYijueRecover,
     isZhiheng,
     prompt.cardName,
     prompt.skillName,
@@ -233,6 +299,15 @@ export function GamePromptModal({
     (prompt.type === 'play_card_confirm' || prompt.type === 'use_skill');
 
   const rendeHand = actingPlayer?.handCards ?? [];
+  const discardRecoverHand = actingPlayer?.handCards ?? [];
+  const discardDrawHand = actingPlayer?.handCards ?? [];
+  const discardRedHand = actingPlayer?.handCards ?? [];
+  const yijueSourceHand = actingPlayer?.handCards ?? [];
+  const yijueTarget = validTargets.find((target) => target.id === rendeTarget);
+  const yijueTargetHand = yijueTarget?.handCards ?? [];
+  const lijianCardOptions = prompt.skillCardOptions ?? [];
+  const lijianTargetOptions = validTargets.filter((target) => target.id !== rendeTarget);
+  const liyuCardOptions = prompt.skillCardOptions ?? [];
   const zhihengHand = actingPlayer?.handCards ?? [];
   const modifyHand = promptActor?.handCards ?? [];
   const handForDiscard = actingPlayer?.handCards ?? [];
@@ -245,17 +320,39 @@ export function GamePromptModal({
     .map((player) => formatGeneralName(player));
   const guanxingCards = prompt.guanxingCards ?? [];
   const orderedGuanxingCards = guanxingOrder.map((index) => guanxingCards[index]).filter(Boolean);
+  const skillCardOptions = prompt.skillCardOptions ?? [];
 
-  const moveGuanxingCard = (position: number, delta: number) => {
+  const moveGuanxingCard = (fromPosition: number, toPosition: number) => {
     setGuanxingOrder((previous) => {
-      const nextPosition = position + delta;
-      if (nextPosition < 0 || nextPosition >= previous.length) return previous;
+      if (
+        fromPosition === toPosition ||
+        fromPosition < 0 ||
+        fromPosition >= previous.length ||
+        toPosition < 0 ||
+        toPosition >= previous.length
+      ) {
+        return previous;
+      }
       const next = [...previous];
-      const [item] = next.splice(position, 1);
+      const [item] = next.splice(fromPosition, 1);
       if (item == null) return previous;
-      next.splice(nextPosition, 0, item);
+      next.splice(toPosition, 0, item);
       return next;
     });
+  };
+
+  const handleGuanxingDragStart = (position: number) => {
+    setDraggedGuanxingPosition(position);
+  };
+
+  const handleGuanxingDragEnter = (position: number) => {
+    if (draggedGuanxingPosition == null || draggedGuanxingPosition === position) return;
+    moveGuanxingCard(draggedGuanxingPosition, position);
+    setDraggedGuanxingPosition(position);
+  };
+
+  const handleGuanxingDragEnd = () => {
+    setDraggedGuanxingPosition(null);
   };
 
   const toggleTarget = (id: string) => {
@@ -267,18 +364,6 @@ export function GamePromptModal({
       return [...previous, id];
     });
   };
-
-  const zonePickTargetForSelect = isZonePickTargetSelect
-    ? room.players.find((player) => player.id === selectedTargets[0])
-    : undefined;
-  const zoneOptionsForSelect = useMemo(() => {
-    if (!zonePickTargetForSelect) return [];
-    return listZoneCards({
-      handCards: zonePickTargetForSelect.handCards ?? [],
-      equipment: zonePickTargetForSelect.equipment ?? [],
-      judgeCards: zonePickTargetForSelect.judgeCards ?? [],
-    });
-  }, [zonePickTargetForSelect, prompt.id]);
 
   const toggleRendeCard = (index: number) => {
     setRendeCardIndices((previous) =>
@@ -304,10 +389,22 @@ export function GamePromptModal({
     });
   };
 
+  const toggleSkillZoneCard = (id: string) => {
+    setRendeCardIndices((previous) => {
+      const current = prompt.skillCardOptions?.findIndex((option) => option.id === id) ?? -1;
+      if (previous.includes(current)) return previous.filter((value) => value !== current);
+      if (previous.length >= discardNeed) return previous;
+      return current >= 0 ? [...previous, current] : previous;
+    });
+  };
+
   const canConfirmTargets =
     selectedTargets.length >= targetMin && selectedTargets.length <= targetMax;
-  const canConfirmZonePickTargetSelect =
-    canConfirmTargets && !!zonePickId && zoneOptionsForSelect.length > 0;
+  const zonePickHandCount =
+    zonePickTarget?.handCards?.length ||
+    zonePickTarget?.handCount ||
+    prompt.zoneCardOptions?.filter((option) => option.id.startsWith('hand:')).length ||
+    0;
 
   return (
     <div className={styles.overlay} role="presentation">
@@ -449,63 +546,19 @@ export function GamePromptModal({
                   ))}
                 </ul>
               )}
-              {isZonePickTargetSelect && zonePickTargetForSelect && (
-                <>
-                  <h3>选择
-                    <span style={{ fontWeight: 'bold', color: 'red' }}>{formatGeneralName(zonePickTargetForSelect)}</span>
-                    区域中的一张牌
-                  </h3>
-                  {/* <p className={styles.muted}>
-                    目标：{formatGeneralName(zonePickTargetForSelect)}（手牌
-                    {zonePickTargetForSelect.handCards?.length ?? 0}张，装备
-                    {zonePickTargetForSelect.equipment?.length ?? 0}件，判定
-                    {zonePickTargetForSelect.judgeCards?.length ?? 0}张）
-                  </p> */}
-                  <p className={styles.muted} style={{ marginBottom: '10px' }}>（手牌
-                    {zonePickTargetForSelect.handCards?.length ?? 0}张，装备
-                    {zonePickTargetForSelect.equipment?.length ?? 0}件，判定
-                    {zonePickTargetForSelect.judgeCards?.length ?? 0}张）
-                  </p>
-                  {zoneOptionsForSelect.length > 0 ? (
-                    <ul className={styles.cardPickList}>
-                      {zoneOptionsForSelect.map((option) => (
-                        <li key={option.id}>
-                          <label className={styles.targetOption}>
-                            <input
-                              type="radio"
-                              name="zone-pick-card-target-select"
-                              checked={zonePickId === option.id}
-                              onChange={() => setZonePickId(option.id)}
-                            />
-                            <span>{option.label}</span>
-                          </label>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className={styles.notice}>该目标区域没有可选牌。</p>
-                  )}
-                </>
-              )}
               <div className={styles.actions}>
                 <button
                   type="button"
                   className={styles.primary}
-                  disabled={
-                    noLegalTargets ||
-                    (isZonePickTargetSelect
-                      ? !canConfirmZonePickTargetSelect
-                      : !canConfirmTargets)
-                  }
+                  disabled={noLegalTargets || !canConfirmTargets}
                   onClick={() =>
                     onSelectTargets(
                       prompt.id,
                       selectedTargets,
-                      isZonePickTargetSelect ? zonePickId : undefined,
                     )
                   }
                 >
-                  {isZonePickTargetSelect ? '确认选择' : '确认目标'}
+                  确认目标
                 </button>
                 <button
                   type="button"
@@ -520,7 +573,7 @@ export function GamePromptModal({
 
           {isGiveCardsSkill && (
             <section className={styles.section}>
-              <h3>给出手牌</h3>
+              <h3>{isYiji ? '分配手牌' : '给出手牌'}</h3>
               {!noLegalTargets && (
                 <>
                   <label className={styles.fieldLabel}>
@@ -538,11 +591,28 @@ export function GamePromptModal({
                     ))}
                   </select>
                   </label>
-                  <p className={styles.muted}>下面是卡牌列表：</p>
+                  <p className={styles.muted}>
+                    {isYiji
+                      ? `选择至多 ${Math.max(0, prompt.discardCount ?? 2)} 张手牌分配：`
+                      : '下面是卡牌列表：'}
+                  </p>
                   <CardPickChips
                     cards={rendeHand}
                     selectedIndices={rendeCardIndices}
-                    onToggle={toggleRendeCard}
+                    onToggle={(index) => {
+                      if (!isYiji) {
+                        toggleRendeCard(index);
+                        return;
+                      }
+                      setRendeCardIndices((previous) => {
+                        if (previous.includes(index)) {
+                          return previous.filter((value) => value !== index);
+                        }
+                        const max = Math.max(0, prompt.discardCount ?? 2);
+                        if (previous.length >= max) return previous;
+                        return [...previous, index];
+                      });
+                    }}
                   />
                 </>
               )}
@@ -550,14 +620,81 @@ export function GamePromptModal({
                 <button
                   type="button"
                   className={styles.primary}
-                  disabled={noLegalTargets || !rendeTarget || rendeCardIndices.length === 0}
+                  disabled={
+                    noLegalTargets ||
+                    !rendeTarget ||
+                    rendeCardIndices.length === 0 ||
+                    (isYiji && rendeCardIndices.length > Math.max(0, prompt.discardCount ?? 2))
+                  }
                   onClick={() => {
                     const cards = rendeCardIndices.map((index) => rendeHand[index]!);
                     onRendeGive(rendeTarget, cards, rendeCardIndices);
                     setRendeCardIndices([]);
                   }}
                 >
-                  给出手牌（{rendeCardIndices.length}）
+                  {isYiji ? '分配手牌' : '给出手牌'}（{rendeCardIndices.length}）
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => onConfirmPlay(prompt.id, isYiji ? 'yiji:finish' : 'cancel')}
+                >
+                  {isYiji ? '完成' : '取消'}
+                </button>
+              </div>
+            </section>
+          )}
+
+          {isDiscardRecoverSkill && (
+            <section className={styles.section}>
+              <h3>弃置手牌并回复体力</h3>
+              {!noLegalTargets && (
+                <>
+                  <label className={styles.fieldLabel}>
+                    目标角色
+                    <select
+                      className={styles.select}
+                      value={rendeTarget}
+                      onChange={(event) => setRendeTarget(event.target.value)}
+                    >
+                      <option value="">请选择目标角色</option>
+                      {validTargets.map((target) => (
+                        <option key={target.id} value={target.id}>
+                          {formatGeneralName(target)} 体力:{target.hp ?? 0}/{target.maxHp ?? 0}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className={styles.muted}>选择 {discardRecoverNeed} 张手牌弃置：</p>
+                  <CardPickChips
+                    cards={discardRecoverHand}
+                    selectedIndices={discardIndices}
+                    onToggle={(index) => {
+                      setDiscardIndices((previous) => {
+                        if (previous.includes(index)) {
+                          return previous.filter((value) => value !== index);
+                        }
+                        if (previous.length >= discardRecoverNeed) return previous;
+                        return [...previous, index];
+                      });
+                    }}
+                  />
+                </>
+              )}
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={
+                    noLegalTargets || !rendeTarget || discardIndices.length !== discardRecoverNeed
+                  }
+                  onClick={() => {
+                    if (discardIndices.length === discardRecoverNeed) {
+                      onQingnangRecover(rendeTarget, discardIndices);
+                    }
+                  }}
+                >
+                  确认回复
                 </button>
                 <button
                   type="button"
@@ -599,12 +736,523 @@ export function GamePromptModal({
             </section>
           )}
 
+          {isJianyan && (
+            <section className={styles.section}>
+              <h3>声明并选择目标</h3>
+              {!noLegalTargets && (
+                <label className={styles.fieldLabel}>
+                  目标角色
+                  <select
+                    className={styles.select}
+                    value={rendeTarget}
+                    onChange={(event) => setRendeTarget(event.target.value)}
+                  >
+                    <option value="">请选择目标角色</option>
+                    {validTargets.map((target) => (
+                      <option key={target.id} value={target.id}>
+                        {formatGeneralName(target)} 体力:{target.hp ?? 0}/{target.maxHp ?? 0}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <div className={styles.actions}>
+                {(prompt.options ?? []).map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={option.id === 'cancel' ? styles.secondary : styles.primary}
+                    disabled={option.id !== 'cancel' && (noLegalTargets || !rendeTarget)}
+                    onClick={() =>
+                      onConfirmPlay(
+                        prompt.id,
+                        option.id === 'cancel' ? option.id : `${option.id}:${rendeTarget}`,
+                      )
+                    }
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {isLiuli && (
+            <section className={styles.section}>
+              <h3>转移【杀】</h3>
+              {!noLegalTargets && (
+                <label className={styles.fieldLabel}>
+                  转移目标
+                  <select
+                    className={styles.select}
+                    value={rendeTarget}
+                    onChange={(event) => setRendeTarget(event.target.value)}
+                  >
+                    <option value="">请选择目标角色</option>
+                    {validTargets.map((target) => (
+                      <option key={target.id} value={target.id}>
+                        {formatGeneralName(target)} 体力:{target.hp ?? 0}/{target.maxHp ?? 0}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {skillCardOptions.length > 0 ? (
+                <>
+                  <p className={styles.muted}>选择一张手牌或装备弃置：</p>
+                  <ul className={styles.cardPickList}>
+                    {skillCardOptions.map((option) => (
+                      <li key={option.id}>
+                        <label className={styles.targetOption}>
+                          <input
+                            type="radio"
+                            name="liuli-card"
+                            checked={zonePickId === option.id}
+                            onChange={() => setZonePickId(option.id)}
+                          />
+                          <span>{option.label}</span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p className={styles.notice}>当前没有可弃置的牌。</p>
+              )}
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={noLegalTargets || !rendeTarget || !zonePickId}
+                  onClick={() => onConfirmPlay(prompt.id, `liuli:confirm:${rendeTarget}:${zonePickId}`)}
+                >
+                  确认流离
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => onConfirmPlay(prompt.id, 'skip')}
+                >
+                  不发动
+                </button>
+              </div>
+            </section>
+          )}
+
+          {isShaDodgedEquipment && (
+            <section className={styles.section}>
+              <h3>选择武器效果</h3>
+              {(prompt.options ?? [])
+                .filter((option) => option.id !== 'skip' && option.id !== 'guanshi:force')
+                .map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={styles.primary}
+                    onClick={() => onConfirmPlay(prompt.id, option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              {(prompt.options ?? []).some((option) => option.id === 'guanshi:force') && (
+                <>
+                  <p className={styles.muted}>发动【贯石斧】需弃置两张手牌或装备。</p>
+                  <ul className={styles.cardPickList}>
+                    {skillCardOptions.map((option, index) => (
+                      <li key={option.id}>
+                        <label className={styles.targetOption}>
+                          <input
+                            type="checkbox"
+                            name="guanshi-card"
+                            checked={rendeCardIndices.includes(index)}
+                            onChange={() => toggleSkillZoneCard(option.id)}
+                          />
+                          <span>{option.label}</span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    className={styles.primary}
+                    disabled={rendeCardIndices.length !== discardNeed}
+                    onClick={() => {
+                      const selected = rendeCardIndices
+                        .map((index) => skillCardOptions[index]?.id)
+                        .filter((id): id is string => !!id)
+                        .join(',');
+                      onConfirmPlay(prompt.id, `guanshi:force:cards:${selected}`);
+                    }}
+                  >
+                    发动【贯石斧】
+                  </button>
+                </>
+              )}
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => onConfirmPlay(prompt.id, 'skip')}
+                >
+                  不发动
+                </button>
+              </div>
+            </section>
+          )}
+
+          {isFanjian && (
+            <section className={styles.section}>
+              <h3>{prompt.sourcePlayerId ? '选择反间结算' : '交给一张手牌'}</h3>
+              {prompt.sourcePlayerId ? (
+                <div className={styles.actions}>
+                  {(prompt.options ?? []).map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={styles.primary}
+                      onClick={() => onConfirmPlay(prompt.id, option.id)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  {!noLegalTargets && (
+                    <label className={styles.fieldLabel}>
+                      目标角色
+                      <select
+                        className={styles.select}
+                        value={rendeTarget}
+                        onChange={(event) => setRendeTarget(event.target.value)}
+                      >
+                        <option value="">请选择目标角色</option>
+                        {validTargets.map((target) => (
+                          <option key={target.id} value={target.id}>
+                            {formatGeneralName(target)} 体力:{target.hp ?? 0}/{target.maxHp ?? 0}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <CardPickChips
+                    cards={rendeHand}
+                    selectedIndices={rendeCardIndices}
+                    onToggle={(index) => setRendeCardIndices([index])}
+                  />
+                  <div className={styles.actions}>
+                    <button
+                      type="button"
+                      className={styles.primary}
+                      disabled={noLegalTargets || !rendeTarget || rendeCardIndices.length !== 1}
+                      onClick={() =>
+                        onConfirmPlay(prompt.id, `fanjian:give:${rendeTarget}:${rendeCardIndices[0]}`)
+                      }
+                    >
+                      确认反间
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.secondary}
+                      onClick={() => onConfirmPlay(prompt.id, 'cancel')}
+                    >
+                      取消
+                    </button>
+                  </div>
+                </>
+              )}
+            </section>
+          )}
+
+          {isDiscardDrawSkill && (
+            <section className={styles.section}>
+              <h3>弃置一张手牌</h3>
+              <CardPickChips
+                cards={discardDrawHand}
+                selectedIndices={discardIndices}
+                onToggle={(index) => setDiscardIndices([index])}
+              />
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={discardIndices.length !== 1}
+                  onClick={() => onConfirmPlay(prompt.id, `qinxue:${discardIndices[0]}`)}
+                >
+                  确认发动
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => onConfirmPlay(prompt.id, 'skip')}
+                >
+                  不发动
+                </button>
+              </div>
+            </section>
+          )}
+
+          {isDiscardRedThenChoose && (
+            <section className={styles.section}>
+              <h3>弃置一张红色手牌</h3>
+              <CardPickChips
+                cards={discardRedHand}
+                selectedIndices={discardIndices}
+                allowedIndices={prompt.discardHandIndices}
+                onToggle={(index) => setDiscardIndices([index])}
+              />
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={discardIndices.length !== 1}
+                  onClick={() => onConfirmPlay(prompt.id, `zhaxiang:recover:hand:${discardIndices[0]}`)}
+                >
+                  回复体力
+                </button>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={discardIndices.length !== 1}
+                  onClick={() => onConfirmPlay(prompt.id, `zhaxiang:draw:hand:${discardIndices[0]}`)}
+                >
+                  摸两张牌
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => onConfirmPlay(prompt.id, 'skip')}
+                >
+                  不发动
+                </button>
+              </div>
+            </section>
+          )}
+
+          {isLijian && (
+            <section className={styles.section}>
+              <h3>选择离间目标</h3>
+              <label className={styles.fieldLabel}>
+                决斗来源
+                <select
+                  className={styles.select}
+                  value={rendeTarget}
+                  onChange={(event) => setRendeTarget(event.target.value)}
+                >
+                  <option value="">请选择男性角色</option>
+                  {validTargets.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      {formatGeneralName(target)} 手牌:{target.handCards?.length ?? 0}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.fieldLabel}>
+                决斗目标
+                <select
+                  className={styles.select}
+                  value={zonePickId}
+                  onChange={(event) => setZonePickId(event.target.value)}
+                >
+                  <option value="">请选择另一名男性角色</option>
+                  {lijianTargetOptions.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      {formatGeneralName(target)} 手牌:{target.handCards?.length ?? 0}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.fieldLabel}>
+                弃置牌
+                <select
+                  className={styles.select}
+                  value={skillZoneCardId}
+                  onChange={(event) => setSkillZoneCardId(event.target.value)}
+                >
+                  <option value="">请选择一张牌</option>
+                  {lijianCardOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={!rendeTarget || !zonePickId || !skillZoneCardId}
+                  onClick={() =>
+                    onConfirmPlay(
+                      prompt.id,
+                      `lijian:${rendeTarget}:${zonePickId}:${skillZoneCardId}`,
+                    )
+                  }
+                >
+                  确认离间
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => onConfirmPlay(prompt.id, 'cancel')}
+                >
+                  取消
+                </button>
+              </div>
+            </section>
+          )}
+
+          {isLiyu && (
+            <section className={styles.section}>
+              <h3>选择利驭结算</h3>
+              {!noLegalTargets && (
+                <label className={styles.fieldLabel}>
+                  决斗目标
+                  <select
+                    className={styles.select}
+                    value={rendeTarget}
+                    onChange={(event) => setRendeTarget(event.target.value)}
+                  >
+                    <option value="">请选择另一名角色</option>
+                    {validTargets.map((target) => (
+                      <option key={target.id} value={target.id}>
+                        {formatGeneralName(target)} 手牌:{target.handCards?.length ?? 0}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <label className={styles.fieldLabel}>
+                交给吕布的牌
+                <select
+                  className={styles.select}
+                  value={skillZoneCardId}
+                  onChange={(event) => setSkillZoneCardId(event.target.value)}
+                >
+                  <option value="">请选择一张牌</option>
+                  {liyuCardOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={noLegalTargets || !rendeTarget || !skillZoneCardId}
+                  onClick={() =>
+                    onConfirmPlay(prompt.id, `liyu:${rendeTarget}:${skillZoneCardId}`)
+                  }
+                >
+                  确认利驭
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => onConfirmPlay(prompt.id, 'skip')}
+                >
+                  不发动
+                </button>
+              </div>
+            </section>
+          )}
+
+          {isYijuePindian && (
+            <section className={styles.section}>
+              <h3>拼点</h3>
+              {!noLegalTargets && (
+                <label className={styles.fieldLabel}>
+                  目标角色
+                  <select
+                    className={styles.select}
+                    value={rendeTarget}
+                    onChange={(event) => {
+                      setRendeTarget(event.target.value);
+                      setZonePickId('');
+                    }}
+                  >
+                    <option value="">请选择目标角色</option>
+                    {validTargets.map((target) => (
+                      <option key={target.id} value={target.id}>
+                        {formatGeneralName(target)} 手牌:{target.handCards?.length ?? 0}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <p className={styles.muted}>选择自己用于拼点的一张手牌：</p>
+              <CardPickChips
+                cards={yijueSourceHand}
+                selectedIndices={discardIndices}
+                allowedIndices={prompt.discardHandIndices}
+                onToggle={(index) => setDiscardIndices([index])}
+              />
+              {rendeTarget && (
+                <>
+                  <p className={styles.muted}>选择目标用于拼点的一张手牌：</p>
+                  <CardPickChips
+                    cards={yijueTargetHand}
+                    selectedIndices={zonePickId ? [Number(zonePickId)] : []}
+                    onToggle={(index) => setZonePickId(String(index))}
+                  />
+                </>
+              )}
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={
+                    noLegalTargets ||
+                    !rendeTarget ||
+                    discardIndices.length !== 1 ||
+                    zonePickId === ''
+                  }
+                  onClick={() =>
+                    onConfirmPlay(
+                      prompt.id,
+                      `yijue:pindian:${rendeTarget}:${discardIndices[0]}:${zonePickId}`,
+                    )
+                  }
+                >
+                  确认拼点
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => onConfirmPlay(prompt.id, 'cancel')}
+                >
+                  取消
+                </button>
+              </div>
+            </section>
+          )}
+
+          {isYijueRecover && (
+            <section className={styles.section}>
+              <h3>拼点未赢</h3>
+              <div className={styles.actions}>
+                {(prompt.options ?? []).map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={option.id === 'skip' ? styles.secondary : styles.primary}
+                    onClick={() => onConfirmPlay(prompt.id, option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
           {isGuanxing && guanxingCards.length > 0 && (
             <section className={styles.section}>
               <h3>调整牌堆</h3>
               <p className={styles.muted}>
                 {isXunxun
-                  ? '前 2 张按顺序置于牌堆顶，其余按顺序置于牌堆底。使用上下按钮调整顺序。'
+                  ? '前 2 张按顺序置于牌堆顶，其余按顺序置于牌堆底。拖拽卡牌调整顺序。'
                   : '上方会按顺序置于牌堆顶，下方会按顺序沉底。'}
               </p>
               {!isXunxun && (
@@ -624,33 +1272,24 @@ export function GamePromptModal({
                   </select>
                 </label>
               )}
-              <ul className={styles.cardPickList}>
+              <ul className={`${styles.cardPickList} ${styles.sortableList}`}>
                 {orderedGuanxingCards.map((card, position) => {
                   const topLimit = isXunxun ? 2 : guanxingTopCount;
                   return (
-                    <li key={`${card}-${position}`}>
-                      <div className={styles.targetOption}>
-                        <span>
+                    <li
+                      key={`${card}-${guanxingOrder[position]}`}
+                      draggable
+                      className={draggedGuanxingPosition === position ? styles.draggingItem : undefined}
+                      onDragStart={() => handleGuanxingDragStart(position)}
+                      onDragEnter={() => handleGuanxingDragEnter(position)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDragEnd={handleGuanxingDragEnd}
+                    >
+                      <div className={`${styles.targetOption} ${styles.sortableOption}`}>
+                        <span className={styles.dragHandle} aria-hidden="true">⋮⋮</span>
+                        <span className={styles.sortableCardText}>
                           {position < topLimit ? '顶' : '底'} · 【{card}】
                         </span>
-                        <div className={styles.actions}>
-                          <button
-                            type="button"
-                            className={styles.secondary}
-                            disabled={position === 0}
-                            onClick={() => moveGuanxingCard(position, -1)}
-                          >
-                            上移
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.secondary}
-                            disabled={position === orderedGuanxingCards.length - 1}
-                            onClick={() => moveGuanxingCard(position, 1)}
-                          >
-                            下移
-                          </button>
-                        </div>
                       </div>
                     </li>
                   );
@@ -712,7 +1351,7 @@ export function GamePromptModal({
                 //   {zonePickTarget.judgeCards?.length ?? 0}张）
                 // </p>
                 <p className={styles.muted} style={{ marginBottom: '10px' }}>（手牌
-                  {zonePickTarget.handCards?.length ?? 0}张，装备
+                  {zonePickHandCount}张，装备
                   {zonePickTarget.equipment?.length ?? 0}件，判定
                   {zonePickTarget.judgeCards?.length ?? 0}张）
                 </p>
@@ -754,6 +1393,12 @@ export function GamePromptModal({
 
           {prompt.options &&
             !isGiveCardsSkill &&
+            !isDiscardRecoverSkill &&
+            !isJianyan &&
+            !isLiuli &&
+            !isShaDodgedEquipment &&
+            !isDiscardDrawSkill &&
+            !isDiscardRedThenChoose &&
             !isZhiheng &&
             !isGuanxing &&
             !isModifyJudge &&

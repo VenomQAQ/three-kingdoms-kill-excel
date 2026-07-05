@@ -34,21 +34,15 @@ export function getIdentityPack(playerCount: number): IdentityRole[] {
   return shuffle(pack);
 }
 
-/** 为座位上的玩家分配身份（主公固定给 lordIndex 座位） */
+/** 为座位上的玩家随机分配身份 */
 export function assignIdentities<T extends { role?: string; seat?: number }>(
   players: T[],
-  lordIndex = 0,
+  _lordIndex = 0,
 ): void {
   const pack = getIdentityPack(players.length);
-  const otherRoles = shuffle(pack.filter((r) => r !== '主公'));
-  let otherIdx = 0;
   players.forEach((p, i) => {
     p.seat = i + 1;
-    if (i === lordIndex) {
-      p.role = '主公';
-    } else {
-      p.role = otherRoles[otherIdx++] ?? '反贼';
-    }
+    p.role = pack[i] ?? '反贼';
   });
 }
 

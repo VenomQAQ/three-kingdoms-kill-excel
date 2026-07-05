@@ -29,8 +29,6 @@ const PHASE_LABEL: Record<string, string> = {
   end: '结束阶段',
 };
 
-const SUPPORTED_SKILLS = new Set(['rende', 'zhiheng']);
-
 function equipmentSkillLabel(cardName: string): string | null {
   const card = CardRegistry.getByName(cardName);
   if (!card || card.type !== 'equipment') return null;
@@ -128,21 +126,18 @@ export function PlayControlBar({
         <span className={styles.label}>技能</span>
         {currentSkills.length || equipmentSkills.length ? (
           <>
-            {currentSkills.map((skill) => {
-              const isSupported = SUPPORTED_SKILLS.has(skill.id);
-              return (
-                <button
-                  key={skill.id}
-                  type="button"
-                  className={styles.quickBtn}
-                  disabled={!isSupported || !isMyTurn || turnPhase !== 'play'}
-                  onClick={() => isSupported && onUseSkill(skill.id)}
-                  title={stripGeneralPrefixInText(skill.description)}
-                >
-                  {stripGeneralPrefixInText(skill.name)}
-                </button>
-              );
-            })}
+            {currentSkills.map((skill) => (
+              <button
+                key={skill.id}
+                type="button"
+                className={styles.quickBtn}
+                disabled={!isMyTurn || turnPhase !== 'play'}
+                onClick={() => onUseSkill(skill.id)}
+                title={stripGeneralPrefixInText(skill.description)}
+              >
+                {stripGeneralPrefixInText(skill.name)}
+              </button>
+            ))}
             {equipmentSkills.map((label) => (
               <span key={label} className={styles.equipSkill} title={`装备技能：${label}`}>
                 {label}

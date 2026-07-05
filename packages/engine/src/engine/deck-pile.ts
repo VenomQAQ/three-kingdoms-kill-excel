@@ -61,6 +61,10 @@ export class DeckPile {
     this.discard.push(cardNameFromHandEntry(entry));
   }
 
+  discardPile(): string[] {
+    return [...this.discard];
+  }
+
   remaining(): number {
     return this.draw.length;
   }

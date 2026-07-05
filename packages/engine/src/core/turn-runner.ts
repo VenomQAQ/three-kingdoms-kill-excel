@@ -9,7 +9,12 @@ import {
   describeJudgeResult,
   type PendingJudge,
 } from '../engine/judge-runner';
-import { createCardInstance, formatCardInstance, judgeDelayEffect } from '../engine/card-instance';
+import {
+  createCardInstance,
+  formatCardInstance,
+  type Suit,
+  judgeDelayEffect,
+} from '../engine/card-instance';
 import { cardNameFromHandEntry } from '../engine/card-label';
 import { nextPromptId } from '../utils/prompt-id';
 import {
@@ -28,6 +33,9 @@ export interface TurnRunnerHost {
   getPendingJudge(): PendingJudge | null;
   setPendingJudge(p: PendingJudge | null): void;
   startJudgePhase(): void;
+  syncState?(): void;
+  afterPlayerGainedCards?(player: EnginePlayerState, gainedCards: string[]): void;
+  afterPlayerLostHandCards?(player: EnginePlayerState, lostCount: number): void;
 }
 
 /**
@@ -52,9 +60,17 @@ export class TurnRunner {
       this.finishTurnAfterDiscard();
       return;
     }
+    const qinxueNextShaBonus = cur.skillUseCount._qinxue_next_sha_bonus ?? 0;
     cur.shaUsedCount = 0;
     cur.skillUseCount = {};
     cur.skillTargetUseCount = {};
+    for (const player of this.host.getState().players) {
+      delete player.skillUseCount._damage_dealt_this_turn;
+      delete player.skillTargetUseCount._zhuhai_offered;
+    }
+    if (qinxueNextShaBonus > 0) {
+      cur.skillUseCount._qinxue_sha_bonus = qinxueNextShaBonus;
+    }
     this.host.getFsm().set('prepare');
     this.host.getState().turn.phase = 'prepare';
     this.host.setPrompt(null);
@@ -65,6 +81,28 @@ export class TurnRunner {
   private processPreparePhase(): void {
     const cur = this.currentPlayer();
     if (!cur) return;
+
+    const wangzunOffer = this.findNextWangzunOffer(cur);
+    if (wangzunOffer) {
+      cur.skillTargetUseCount._wangzun_offered = [
+        ...(cur.skillTargetUseCount._wangzun_offered ?? []),
+        wangzunOffer.id,
+      ];
+      this.host.setPrompt({
+        id: nextPromptId(),
+        type: 'use_skill',
+        playerId: wangzunOffer.id,
+        skillId: 'wangzun',
+        skillName: '妄尊',
+        characterSkills: characterSkillsForPrompt(wangzunOffer),
+        message: `${cur.generalName} 的准备阶段：是否发动【妄尊】？`,
+        options: [
+          { id: 'skill:wangzun', label: '发动【妄尊】' },
+          { id: 'skip', label: '不发动，继续准备阶段' },
+        ],
+      });
+      return;
+    }
 
     const offers = collectOptionalSkillOffers(cur, GameTiming.TURN_START).filter((offer) => {
       if (offer.skill.id !== 'tishen') return true;
@@ -93,6 +131,49 @@ export class TurnRunner {
 
   startJudgePhase(): void {
     this.processJudgePhase();
+  }
+
+  continuePreparePhase(): void {
+    this.processPreparePhase();
+  }
+
+  submitWangzun(
+    playerId: string,
+    promptId: string,
+    activate: boolean,
+  ): { ok: boolean; error?: string } {
+    const state = this.host.getState();
+    const prompt = state.prompt;
+    if (!prompt || prompt.id !== promptId) return { ok: false, error: '提示已失效' };
+    if (prompt.type !== 'use_skill' || prompt.skillId !== 'wangzun') {
+      return { ok: false, error: '当前不是【妄尊】询问' };
+    }
+    if (prompt.playerId !== playerId) return { ok: false, error: '不是你发动【妄尊】' };
+
+    const source = state.players.find((player) => player.id === playerId);
+    const lord = this.currentPlayer();
+    if (!source || !lord) return { ok: false, error: '角色不存在' };
+    if (lord.role !== '主公' || source.id === lord.id || !playerHasSkill(source, 'wangzun')) {
+      return { ok: false, error: '当前不满足【妄尊】发动条件' };
+    }
+
+    this.host.setPrompt(null);
+    if (activate) {
+      const drawn = this.host.getDeck().drawMany(1);
+      source.handCards.push(...drawn);
+      this.host.afterPlayerGainedCards?.(source, drawn);
+      source.skillUseCount.wangzun = (source.skillUseCount.wangzun ?? 0) + 1;
+      if (this.getHandLimit(lord) > 0) {
+        lord.skillUseCount._wangzun_hand_limit_minus =
+          (lord.skillUseCount._wangzun_hand_limit_minus ?? 0) + 1;
+      }
+      this.host.log(
+        `${source.generalName} 发动【妄尊】，摸 ${drawn.length} 张牌，${lord.generalName} 本回合手牌上限 -1`,
+      );
+    }
+    this.host.syncState?.();
+    this.processPreparePhase();
+    return { ok: true };
   }
 
   private processJudgePhase(): void {
@@ -129,7 +210,8 @@ export class TurnRunner {
     }
 
     const drawn = this.host.getDeck().drawOne();
-    const result = createCardInstance(drawn ?? '杀');
+    const resultCardEntry = drawn ?? formatCardInstance(createCardInstance('杀'));
+    const result = createCardInstance(resultCardEntry);
     this.host.log(describeJudgeResult(player, item.cardName, result));
 
     const modifyQueue = collectModifyJudgePlayers(
@@ -140,6 +222,8 @@ export class TurnRunner {
       targetPlayerId: player.id,
       judgeCardName: item.cardName,
       result,
+      resultCardEntry,
+      judgedSkillOwnerId: playerHasSkill(player, 'tiandu') ? player.id : undefined,
       modifyQueue,
       modifyIndex: 0,
       modified: false,
@@ -219,9 +303,10 @@ export class TurnRunner {
     const cardEntry = modifier.handCards[handIndex]!;
     modifier.handCards.splice(handIndex, 1);
     const replacement = createCardInstance(cardNameFromHandEntry(cardEntry));
-    this.host.getDeck().discardCard(cardEntry);
+    this.host.getDeck().discardCard(pending.resultCardEntry);
 
     pending.result = replacement;
+    pending.resultCardEntry = cardEntry;
     pending.modified = true;
     const modSkill = CharacterRegistry.resolve(modifier.generalName)?.skills.find(
       (s) => s.effects?.some((e) => e.action === 'modifyJudge'),
@@ -310,8 +395,30 @@ export class TurnRunner {
       }
     }
 
+    const lightningMoved =
+      pending.judgeCardName === '闪电' &&
+      !!judgeCardEntry &&
+      !judgeDelayEffect(pending.judgeCardName, pending.result);
+
+    if (pending.judgedSkillOwnerId && !lightningMoved) {
+      const owner = this.host
+        .getState()
+        .players.find((p) => p.id === pending.judgedSkillOwnerId && p.hp > 0 && !p.dead);
+      if (owner) {
+        owner.handCards.push(pending.resultCardEntry);
+        this.host.afterPlayerGainedCards?.(owner, [pending.resultCardEntry]);
+        owner.skillUseCount.tiandu = (owner.skillUseCount.tiandu ?? 0) + 1;
+        this.host.log(`${owner.generalName} 发动【天妒】，获得判定牌 ${pending.resultCardEntry}`);
+      } else {
+        this.host.getDeck().discardCard(pending.resultCardEntry);
+      }
+    } else {
+      this.host.getDeck().discardCard(pending.resultCardEntry);
+    }
+
     this.host.setPendingJudge(null);
     this.host.setPrompt(null);
+    this.host.syncState?.();
     this.resolveNextJudge();
   }
 
@@ -363,6 +470,7 @@ export class TurnRunner {
     const drawCount = Math.max(0, drawBase - tuxiSkip);
     const drawn = this.host.getDeck().drawMany(drawCount);
     cur.handCards.push(...drawn);
+    this.host.afterPlayerGainedCards?.(cur, drawn);
     this.host.log(
       `${cur.generalName} 摸牌阶段：摸 ${drawn.length} 张（牌堆余 ${this.host.getDeck().remaining()}，手牌 ${cur.handCards.length} 张）`,
     );
@@ -389,7 +497,75 @@ export class TurnRunner {
   }
 
   advanceToEnd(): void {
+    const cur = this.currentPlayer();
+    if (!cur) return;
+
+    this.host.getState().turn.phase = 'end';
+    this.host.getFsm().set('end');
+
+    const zhuhaiOffer = this.findNextZhuhaiOffer(cur);
+    if (zhuhaiOffer) {
+      cur.skillTargetUseCount._zhuhai_offered = [
+        ...(cur.skillTargetUseCount._zhuhai_offered ?? []),
+        zhuhaiOffer.id,
+      ];
+      this.host.setPrompt({
+        id: nextPromptId(),
+        type: 'use_skill',
+        playerId: zhuhaiOffer.id,
+        skillId: 'zhuhai',
+        skillName: '诛害',
+        sourcePlayerId: cur.id,
+        targetPlayerIds: [cur.id],
+        characterSkills: characterSkillsForPrompt(zhuhaiOffer),
+        message: `${cur.generalName} 的结束阶段：是否发动【诛害】对其使用一张【杀】？`,
+        options: [
+          { id: 'skill:zhuhai', label: '发动【诛害】' },
+          { id: 'skip', label: '不发动，继续结束阶段' },
+        ],
+      });
+      return;
+    }
+
+    const offers = collectOptionalSkillOffers(cur, GameTiming.PHASE_END).filter(
+      (offer) => offer.skill.id === 'biyue',
+    );
+    if (offers.length > 0) {
+      this.host.setPrompt({
+        id: nextPromptId(),
+        type: 'use_skill',
+        playerId: cur.id,
+        characterSkills: characterSkillsForPrompt(cur),
+        message: '结束阶段：是否发动技能？',
+        options: [
+          ...offers.map((offer) => ({
+            id: `skill:${offer.skill.id}`,
+            label: `发动【${offer.skill.name}】`,
+          })),
+          { id: 'skip', label: '不发动，进入弃牌' },
+        ],
+      });
+      return;
+    }
+
     void this.enterDiscardPhase();
+  }
+
+  private findNextZhuhaiOffer(current: EnginePlayerState): EnginePlayerState | undefined {
+    if ((current.skillUseCount._damage_dealt_this_turn ?? 0) <= 0) return undefined;
+    const offered = new Set(current.skillTargetUseCount._zhuhai_offered ?? []);
+    return this.host
+      .getState()
+      .players.filter(
+        (player) =>
+          player.id !== current.id &&
+          player.hp > 0 &&
+          !player.dead &&
+          playerHasSkill(player, 'zhuhai') &&
+          !offered.has(player.id) &&
+          player.handCards.some((card) => cardNameFromHandEntry(card) === '杀'),
+      )
+      .sort((left, right) => left.seat - right.seat)[0];
   }
 
   endPlayPhase(playerId: string): { ok: boolean; error?: string } {
@@ -400,10 +576,54 @@ export class TurnRunner {
     if (this.host.getState().turn.phase !== 'play') {
       return { ok: false, error: '当前不是出牌阶段' };
     }
-    return this.enterDiscardPhase();
+    this.advanceToEnd();
+    return { ok: true };
   }
 
   enterDiscardPhase(): { ok: boolean; error?: string } {
+    const cur = this.currentPlayer();
+    if (!cur) return { ok: false, error: '状态错误' };
+
+    const discardOffers = collectOptionalSkillOffers(cur, GameTiming.PHASE_DISCARD).filter(
+      (offer) => {
+        if (offer.skill.id === 'keji') return cur.shaUsedCount === 0;
+        if (offer.skill.id === 'qinxue') return cur.handCards.length > 0;
+        return false;
+      },
+    );
+    if (discardOffers.length > 0) {
+      this.host.getState().turn.phase = 'discard';
+      this.host.getFsm().set('discard');
+      this.host.setPrompt({
+        id: nextPromptId(),
+        type: 'use_skill',
+        playerId: cur.id,
+        skillId: discardOffers.some((offer) => offer.skill.id === 'qinxue') ? 'qinxue' : undefined,
+        skillName: discardOffers.some((offer) => offer.skill.id === 'qinxue') ? '勤学' : undefined,
+        skillAction: discardOffers.some((offer) => offer.skill.id === 'qinxue')
+          ? 'discard_draw'
+          : undefined,
+        discardCount: discardOffers.some((offer) => offer.skill.id === 'qinxue') ? 1 : undefined,
+        discardHandIndices: discardOffers.some((offer) => offer.skill.id === 'qinxue')
+          ? cur.handCards.map((_, index) => index)
+          : undefined,
+        characterSkills: characterSkillsForPrompt(cur),
+        message: '弃牌阶段：是否发动技能？',
+        options: [
+          ...discardOffers.map((offer) => ({
+            id: `skill:${offer.skill.id}`,
+            label: `发动【${offer.skill.name}】`,
+          })),
+          { id: 'skip', label: '不发动，进入弃牌' },
+        ],
+      });
+      return { ok: true };
+    }
+
+    return this.performDiscardCheck();
+  }
+
+  performDiscardCheck(): { ok: boolean; error?: string } {
     const cur = this.currentPlayer();
     if (!cur) return { ok: false, error: '状态错误' };
 
@@ -456,6 +676,7 @@ export class TurnRunner {
 
     const sorted = [...handIndices].sort((a, b) => b - a);
     const discarded: string[] = [];
+    const handCountBefore = cur.handCards.length;
     for (const idx of sorted) {
       if (idx < 0 || idx >= cur.handCards.length) {
         return { ok: false, error: '选手牌无效' };
@@ -465,6 +686,7 @@ export class TurnRunner {
       this.host.getDeck().discardCard(entry);
       discarded.push(entry);
     }
+    this.host.afterPlayerLostHandCards?.(cur, handCountBefore - cur.handCards.length);
 
     this.host.log(
       `${cur.generalName} 弃牌阶段：弃置 ${discarded.join('、')}（手牌 ${cur.handCards.length}/${handLimit}）`,
@@ -497,11 +719,11 @@ export class TurnRunner {
   }
 
   private getHandLimit(player: EnginePlayerState): number {
-    if (playerHasSkill(player, 'yingzi')) return player.maxHp;
-    return Math.max(0, player.hp);
+    const base = playerHasSkill(player, 'yingzi') ? player.maxHp : Math.max(0, player.hp);
+    return Math.max(0, base - (player.skillUseCount._wangzun_hand_limit_minus ?? 0));
   }
 
-  private finishTurnAfterDiscard(): void {
+  finishTurnAfterDiscard(): void {
     const s = this.host.getState();
     const cur = this.currentPlayer();
     if (cur) {
@@ -533,6 +755,50 @@ export class TurnRunner {
     state.turn.index = nextIndex;
   }
 
+  performQinxue(playerId: string, handIndex = 0): { ok: boolean; error?: string } {
+    const cur = this.currentPlayer();
+    if (!cur || cur.id !== playerId) {
+      return { ok: false, error: '不是你的回合' };
+    }
+    if (this.host.getState().turn.phase !== 'discard') {
+      return { ok: false, error: '当前不是弃牌阶段' };
+    }
+    if (!playerHasSkill(cur, 'qinxue')) {
+      return { ok: false, error: '没有【勤学】技能' };
+    }
+    if ((cur.skillUseCount.qinxue ?? 0) > 0) {
+      return { ok: false, error: '本回合已发动过【勤学】' };
+    }
+    if (cur.handCards.length === 0) {
+      return { ok: false, error: '手牌为空，无法发动【勤学】' };
+    }
+    if (handIndex < 0 || handIndex >= cur.handCards.length) {
+      return { ok: false, error: '所选手牌无效' };
+    }
+
+    const discarded = cur.handCards.splice(handIndex, 1)[0]!;
+    this.host.getDeck().discardCard(discarded);
+    this.host.afterPlayerLostHandCards?.(cur, 1);
+    const drawn = this.host.getDeck().drawMany(2);
+    cur.handCards.push(...drawn);
+    this.host.afterPlayerGainedCards?.(cur, drawn);
+    cur.skillUseCount.qinxue = (cur.skillUseCount.qinxue ?? 0) + 1;
+    const suit = suitOf(discarded);
+    if (suit) {
+      const suits = new Set([...(cur.skillTargetUseCount._qinxue_suits ?? []), suit]);
+      cur.skillTargetUseCount._qinxue_suits = [...suits];
+      if (suits.size >= 2) {
+        cur.skillUseCount._qinxue_sha_bonus = 1;
+      }
+    }
+    this.host.log(
+      `${cur.generalName} 发动【勤学】，弃置 ${discarded} 并摸 ${drawn.length} 张牌`,
+    );
+    this.host.setPrompt(null);
+    this.host.syncState?.();
+    return this.performDiscardCheck();
+  }
+
   private nextAlivePlayerAfter(player: EnginePlayerState): EnginePlayerState | undefined {
     const players = this.host.getState().players;
     if (players.length <= 1) return undefined;
@@ -548,13 +814,35 @@ export class TurnRunner {
     return undefined;
   }
 
+  private findNextWangzunOffer(lord: EnginePlayerState): EnginePlayerState | undefined {
+    if (lord.role !== '主公') return undefined;
+    const offered = new Set(lord.skillTargetUseCount._wangzun_offered ?? []);
+    return this.host
+      .getState()
+      .players.find(
+        (player) =>
+          player.id !== lord.id &&
+          player.hp > 0 &&
+          !player.dead &&
+          !offered.has(player.id) &&
+          playerHasSkill(player, 'wangzun'),
+      );
+  }
+
   dealOpeningHands(count = 4): void {
     for (const p of this.host.getState().players) {
       if (p.hp <= 0) continue;
       const need = Math.max(0, count - p.handCards.length);
       if (need > 0) {
-        p.handCards.push(...this.host.getDeck().drawMany(need));
+        const drawn = this.host.getDeck().drawMany(need);
+        p.handCards.push(...drawn);
+        this.host.afterPlayerGainedCards?.(p, drawn);
       }
     }
   }
+}
+
+function suitOf(entry: string): Suit | undefined {
+  const suit = entry.trim()[0] as Suit | undefined;
+  return suit === '♠' || suit === '♥' || suit === '♣' || suit === '♦' ? suit : undefined;
 }

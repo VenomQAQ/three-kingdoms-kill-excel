@@ -13,9 +13,20 @@ export interface CardPlayContext {
   wuxiePromptSourcePlayerId?: string;
   wuxieCancelledTargetIds?: string[];
   wuxieCancelledAll?: boolean;
+  qianxunCancelledTargetIds?: string[];
+  qianxunOfferedTargetIds?: string[];
+  awaitingQianxunFrom?: string;
+  liuliOfferedTargetIds?: string[];
+  awaitingLiuliFrom?: string;
   pendingAoeAdvance?: boolean;
   /** 锦囊已从手牌打出（用于延迟消耗：选区域牌前取消可保留手牌） */
   cardCommitted?: boolean;
+  /** 实际打出的手牌条目，保留花色点数给后续伤害后技能判断 */
+  committedCardEntry?: string;
+  /** 技能视为使用的牌，不消耗手牌 */
+  virtualFromSkill?: string;
+  /** 丈八蛇矛：两张手牌当【杀】使用 */
+  zhangbaHandIndices?: number[];
   /** 选目标时一并提交的区域牌（合并确认） */
   pendingZoneCardId?: string;
   /** 决斗轮流出【杀】流程 */
@@ -30,6 +41,31 @@ export interface CardPlayContext {
   jiedaoHolderId?: string;
   jiedaoVictimId?: string;
   jiedaoActive?: boolean;
+  /** 铁骑：当前【杀】命中的目标响应限制 */
+  awaitingTieqiFrom?: string;
+  awaitingTieqiSourceId?: string;
+  awaitingTieqiTargetId?: string;
+  tieqiBlockedTargetIds?: string[];
+  tieqiJudgeSuits?: Record<string, string>;
+  tieqiOfferedTargetIds?: string[];
+  /** 主公技：护驾/激将等代响应流程 */
+  lordAssist?: {
+    skillId: 'hujia' | 'jijiang';
+    lordId: string;
+    responseType: 'shan' | 'sha';
+    queue: string[];
+    index: number;
+  };
+  /** 【杀】被抵消后等待武器追击/强命 */
+  shaDodgedEquipment?: {
+    sourceId: string;
+    targetId: string;
+  };
+  /** 奋威：已询问/取消的目标 */
+  fenweiOfferedTargetIds?: string[];
+  fenweiCancelledTargetIds?: string[];
+  /** 结算完成后回到当前角色结束阶段继续询问其他技能 */
+  returnToEndPhaseAfterResolve?: boolean;
 }
 
 export const CARD_PLAY_CTX_KEY = 'cardPlay';
@@ -112,4 +148,25 @@ export function setDyingRescueContext(
 ): void {
   if (value) context[DYING_RESCUE_CTX_KEY] = value;
   else delete context[DYING_RESCUE_CTX_KEY];
+}
+
+export interface YajiaoContext {
+  playerId: string;
+  revealedCard: string;
+}
+
+export const YAJIAO_CTX_KEY = 'yajiao';
+
+export function getYajiaoContext(
+  context: Record<string, unknown>,
+): YajiaoContext | undefined {
+  return context[YAJIAO_CTX_KEY] as YajiaoContext | undefined;
+}
+
+export function setYajiaoContext(
+  context: Record<string, unknown>,
+  value: YajiaoContext | undefined,
+): void {
+  if (value) context[YAJIAO_CTX_KEY] = value;
+  else delete context[YAJIAO_CTX_KEY];
 }

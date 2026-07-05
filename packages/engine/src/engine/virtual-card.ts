@@ -34,7 +34,14 @@ export function validResponseCardsForPlayer(
       result.add(entry);
       continue;
     }
+    if (responseType === 'tao' && name === '桃') {
+      result.add(entry);
+      continue;
+    }
     const inst = parseEntry(entry);
+    if (playerHasSkill(player, 'jijiu') && responseType === 'tao' && isRed(inst)) {
+      result.add(entry);
+    }
     if (playerHasSkill(player, 'wusheng') && responseType === 'sha' && isRed(inst)) {
       result.add(entry);
     }
@@ -58,6 +65,20 @@ export function canUseAsSha(player: EnginePlayerState, entry: string): boolean {
   }
   if (playerHasSkill(player, 'longdan') && name === '闪') return true;
   return false;
+}
+
+/** 出牌阶段：可将黑色牌当【过河拆桥】使用 */
+export function canUseAsGuohe(player: EnginePlayerState, entry: string): boolean {
+  const name = cardNameFromHandEntry(entry);
+  if (name === '过河拆桥') return true;
+  return playerHasSkill(player, 'qixi') && isBlack(parseEntry(entry));
+}
+
+/** 出牌阶段：可将方块牌当【乐不思蜀】使用 */
+export function canUseAsLebu(player: EnginePlayerState, entry: string): boolean {
+  const name = cardNameFromHandEntry(entry);
+  if (name === '乐不思蜀') return true;
+  return playerHasSkill(player, 'guose') && parseEntry(entry).suit === '♦';
 }
 
 /** 可将黑色牌当【闪】打出 */

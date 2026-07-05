@@ -16,19 +16,22 @@ export const COL_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'
 /** 与 @tk/shared SANDBOX_ROOM_CODE 保持一致 */
 export const SANDBOX_ROOM_CODE = '70755712';
 
-export const GAME_SHEET_ID = 'game';
-export const DECOY_SHEET_IDS = ['sheet1', 'sheet2'] as const;
+export const ROOM_LIST_SHEET_ID = 'room-list';
+export const CURRENT_ROOM_SHEET_ID = 'current-room';
+export const SALES_SHEET_ID = 'sales';
+export const GAME_SHEET_ID = CURRENT_ROOM_SHEET_ID;
+export const DECOY_SHEET_IDS = [ROOM_LIST_SHEET_ID, SALES_SHEET_ID] as const;
 
 export type SheetId = (typeof DECOY_SHEET_IDS)[number] | typeof GAME_SHEET_ID;
 
 export const SHEET_LABELS: Record<SheetId, string> = {
-  sheet1: '房间列表',
-  sheet2: '区域销售',
-  game: '当前房间',
+  [ROOM_LIST_SHEET_ID]: '房间列表',
+  [CURRENT_ROOM_SHEET_ID]: '当前房间',
+  [SALES_SHEET_ID]: '区域销售',
 };
 
 export const DEFAULT_FILE_NAMES: Record<SheetId, string> = {
-  sheet1: '房间列表.xlsx',
-  sheet2: '区域销售汇总.xlsx',
-  game: '当前房间.xlsx',
+  [ROOM_LIST_SHEET_ID]: '房间列表.xlsx',
+  [CURRENT_ROOM_SHEET_ID]: '当前房间.xlsx',
+  [SALES_SHEET_ID]: '区域销售汇总.xlsx',
 };

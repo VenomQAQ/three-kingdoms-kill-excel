@@ -8,6 +8,10 @@ export interface PendingJudge {
   targetPlayerId: string;
   judgeCardName: string;
   result: CardInstance;
+  /** 原始判定牌展示串，用于判定后获得或弃置 */
+  resultCardEntry: string;
+  /** 被判定角色若拥有判定后技能，可在判定生效后获得最终判定牌 */
+  judgedSkillOwnerId?: string;
   /** 按座位顺序待询问改判的角色 id（从被判定角色起） */
   modifyQueue: string[];
   modifyIndex: number;

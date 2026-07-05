@@ -323,3 +323,43 @@
 .cardPickList li:last-child {
   border-bottom: none;
 }
+
+.sortableList {
+  max-height: 260px;
+}
+
+.sortableList li {
+  cursor: grab;
+}
+
+.sortableList li:active {
+  cursor: grabbing;
+}
+
+.sortableOption {
+  min-height: 44px;
+  cursor: grab;
+  user-select: none;
+}
+
+.dragHandle {
+  width: 20px;
+  flex: 0 0 auto;
+  color: #888888;
+  font-size: 18px;
+  line-height: 1;
+  text-align: center;
+}
+
+.sortableCardText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draggingItem {
+  background: #f0f8f4;
+  box-shadow: inset 3px 0 0 #217346;
+  opacity: 0.72;
+}

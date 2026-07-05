@@ -24,7 +24,8 @@ import {
   type TimingContext,
 } from './timing-runner';
 import { EventManager } from './event-manager';
-import { createCardInstance, formatCardInstance } from './card-instance';
+import { createCardInstance, formatCardInstance, judgeDelayEffect } from './card-instance';
+import { cardNameFromHandEntry } from './card-label';
 import {
   applyJudgeEffect,
   collectModifyJudgePlayers,
@@ -162,7 +163,8 @@ export class GameEngine {
     }
 
     const drawn = this.deck.drawOne();
-    const result = createCardInstance(drawn ?? '杀');
+    const resultCardEntry = drawn ?? formatCardInstance(createCardInstance('杀'));
+    const result = createCardInstance(resultCardEntry);
     this.log.unshift(describeJudgeResult(player, item.cardName, result));
 
     this.events.emit(GameTiming.BEFORE_JUDGE, { source: player });
@@ -173,6 +175,8 @@ export class GameEngine {
       targetPlayerId: player.id,
       judgeCardName: item.cardName,
       result,
+      resultCardEntry,
+      judgedSkillOwnerId: playerHasSkill(player, 'tiandu') ? player.id : undefined,
       modifyQueue,
       modifyIndex: 0,
       modified: false,
@@ -249,10 +253,11 @@ export class GameEngine {
 
     const cardName = modifier.handCards[handIndex]!;
     modifier.handCards.splice(handIndex, 1);
-    const replacement = createCardInstance(cardName);
-    this.deck.discardCard(cardName);
+    const replacement = createCardInstance(cardNameFromHandEntry(cardName));
+    this.deck.discardCard(pending.resultCardEntry);
 
     pending.result = replacement;
+    pending.resultCardEntry = cardName;
     pending.modified = true;
     const modSkill = CharacterRegistry.resolve(modifier.generalName)?.skills.find((s) =>
       s.effects?.some((e) => e.action === 'modifyJudge'),
@@ -295,8 +300,11 @@ export class GameEngine {
       return;
     }
 
-    const idx = player.judgeCards.indexOf(pending.judgeCardName);
+    const idx = player.judgeCards.findIndex(
+      (c) => cardNameFromHandEntry(c) === pending.judgeCardName,
+    );
     if (idx >= 0) player.judgeCards.splice(idx, 1);
+    const judgeCardEntry = idx >= 0 ? pending.judgeCardName : undefined;
 
     const effect = applyJudgeEffect(player, pending.judgeCardName, pending.result);
     if (effect.skipPlay) {
@@ -310,6 +318,25 @@ export class GameEngine {
     if (effect.lightningDamage) {
       this.log.unshift(`【闪电】生效`);
       this.applyDamage(player, player, effect.lightningDamage);
+    }
+
+    const lightningMoved =
+      pending.judgeCardName === '闪电' &&
+      !!judgeCardEntry &&
+      !judgeDelayEffect(pending.judgeCardName, pending.result);
+    if (pending.judgedSkillOwnerId && !lightningMoved) {
+      const owner = this.players.find(
+        (p) => p.id === pending.judgedSkillOwnerId && p.hp > 0 && !p.dead,
+      );
+      if (owner) {
+        owner.handCards.push(pending.resultCardEntry);
+        owner.skillUseCount.tiandu = (owner.skillUseCount.tiandu ?? 0) + 1;
+        this.log.unshift(`${owner.generalName} 发动【天妒】，获得判定牌 ${pending.resultCardEntry}`);
+      } else {
+        this.deck.discardCard(pending.resultCardEntry);
+      }
+    } else {
+      this.deck.discardCard(pending.resultCardEntry);
     }
 
     this.events.emit(GameTiming.AFTER_JUDGE, { source: player });

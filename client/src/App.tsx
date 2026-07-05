@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CharacterRegistry } from '@tk/engine';
+import {
+  canUseAsGuohe,
+  canUseAsLebu,
+  canUseAsSha,
+  CharacterRegistry,
+  type EnginePlayerState,
+} from '@tk/engine';
 import type { RoomPlayer } from '@tk/shared';
 import type { HandCardPick } from './types/hand';
 import { TitleBar } from './components/wps/TitleBar';
@@ -21,9 +27,11 @@ import { LoginDialog } from './components/wps/LoginDialog';
 import { ChangePasswordDialog } from './components/wps/ChangePasswordDialog';
 import { Toast } from './components/wps/Toast';
 import {
+  CURRENT_ROOM_SHEET_ID,
   DEFAULT_FILE_NAMES,
-  GAME_SHEET_ID,
+  ROOM_LIST_SHEET_ID,
   SANDBOX_ROOM_CODE,
+  SALES_SHEET_ID,
   SheetId,
 } from './data/decoy';
 import { useAppStore } from './store/appStore';
@@ -33,8 +41,30 @@ import { formatGeneralName } from './utils/display';
 import gridStyles from './components/wps/SpreadsheetGrid.module.css';
 import styles from './App.module.css';
 
+function asEnginePlayer(player: RoomPlayer): EnginePlayerState {
+  return {
+    id: player.id,
+    seat: player.seat ?? 0,
+    nickname: player.nickname,
+    generalId: player.general ?? player.id,
+    generalName: player.general ?? player.nickname,
+    role: player.role ?? '反贼',
+    roleRevealed: player.roleRevealed,
+    kingdom: 'shu',
+    hp: player.hp ?? 4,
+    maxHp: player.maxHp ?? 4,
+    handCards: player.handCards ?? [],
+    equipment: player.equipment ?? [],
+    judgeCards: player.judgeCards ?? [],
+    shaUsedCount: 0,
+    skillUseCount: {},
+    skillTargetUseCount: {},
+    dead: player.dead,
+  };
+}
+
 function App() {
-  const [activeSheet, setActiveSheet] = useState<SheetId>('sheet1');
+  const [activeSheet, setActiveSheet] = useState<SheetId>(ROOM_LIST_SHEET_ID);
   const [bossMode, setBossMode] = useState(false);
   const [selectedCell, setSelectedCell] = useState('A1');
   const [selectedHand, setSelectedHand] = useState<HandCardPick | null>(null);
@@ -75,6 +105,7 @@ function App() {
     sandboxSubmitResponse,
     sandboxUseSkill,
     sandboxRendeGive,
+    sandboxQingnangRecover,
     sandboxZhihengConfirm,
     sandboxModifyJudge,
     sandboxSkipModifyJudge,
@@ -91,6 +122,7 @@ function App() {
     capabilities,
     currentVersion,
     logout,
+    checkIn,
     lobbyMessages,
     subscribeLobbyChat,
     unsubscribeLobbyChat,
@@ -111,8 +143,9 @@ function App() {
   const sandboxEnabled = capabilities?.sandboxEnabled ?? true;
   const versions = capabilities?.versions ?? [];
   const bgColorToken = capabilities?.bgColorToken ?? '#ffffff';
-  const onLobbySheet = activeSheet === 'sheet1';
-  const onCurrentRoomSheet = activeSheet === GAME_SHEET_ID;
+  const onLobbySheet = activeSheet === ROOM_LIST_SHEET_ID;
+  const onCurrentRoomSheet = activeSheet === CURRENT_ROOM_SHEET_ID;
+  const onSalesSheet = activeSheet === SALES_SHEET_ID;
 
   useEffect(() => {
     if (!room || bossMode || typeof window === 'undefined') return;
@@ -135,7 +168,7 @@ function App() {
         return;
       }
       void joinRoom(context.roomCode)
-        .then(() => setActiveSheet(GAME_SHEET_ID))
+        .then(() => setActiveSheet(CURRENT_ROOM_SHEET_ID))
         .catch(() => window.sessionStorage.removeItem('roomContext'));
     } catch {
       window.sessionStorage.removeItem('roomContext');
@@ -172,7 +205,7 @@ function App() {
       if (e.ctrlKey && e.shiftKey && e.key === 'H') {
         e.preventDefault();
         setBossMode((b) => !b);
-        if (!bossMode) setActiveSheet('sheet2');
+        if (!bossMode) setActiveSheet(SALES_SHEET_ID);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -181,7 +214,7 @@ function App() {
 
   useEffect(() => {
     if (room && !bossMode) {
-      setActiveSheet(GAME_SHEET_ID);
+      setActiveSheet(CURRENT_ROOM_SHEET_ID);
     }
   }, [room?.code, bossMode]);
 
@@ -258,12 +291,7 @@ function App() {
   const resolveHandIndex = useCallback(
     (card: string, handIndex?: number) => {
       const hand = actingPlayer?.handCards ?? [];
-      if (
-        handIndex != null &&
-        handIndex >= 0 &&
-        handIndex < hand.length &&
-        hand[handIndex] === card
-      ) {
+      if (handIndex != null && handIndex >= 0 && handIndex < hand.length) {
         return handIndex;
       }
       if (selectedHand?.name === card) return selectedHand.index;
@@ -308,6 +336,14 @@ function App() {
     ],
   );
 
+  const handlePlayVirtualCard = useCallback(
+    (cardName: string) => {
+      if (!selectedHand) return;
+      handlePlayCard(cardName, selectedHand.index);
+    },
+    [handlePlayCard, selectedHand],
+  );
+
   const handleSelectHand = useCallback((card: string, index: number) => {
     setSelectedHand((prev) =>
       prev?.index === index ? null : { name: card, index },
@@ -348,6 +384,23 @@ function App() {
     }
   }, [isAuthed, nickname, setNickname, showToast]);
 
+  const handleCheckIn = useCallback(async () => {
+    if (!isAuthed) {
+      showToast('请先登录');
+      setShowLoginDialog(true);
+      return;
+    }
+    try {
+      await checkIn();
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      useAppStore.getState().showError(
+        code,
+        err instanceof Error ? err.message : '签到失败',
+      );
+    }
+  }, [checkIn, isAuthed, showToast]);
+
   const handleLeaveRoom = useCallback(() => {
     if (!room) return;
     if (
@@ -360,7 +413,7 @@ function App() {
     }
     leaveRoom('manual');
     if (typeof window !== 'undefined') window.sessionStorage.removeItem('roomContext');
-    setActiveSheet('sheet1');
+    setActiveSheet(ROOM_LIST_SHEET_ID);
     setSelectedHand(null);
   }, [leaveRoom, room]);
 
@@ -406,6 +459,15 @@ function App() {
         case 'playCard':
           if (selectedHand) handlePlayCard(selectedHand.name, selectedHand.index);
           break;
+        case 'playAsSha':
+          handlePlayVirtualCard('杀');
+          break;
+        case 'playAsGuohe':
+          handlePlayVirtualCard('过河拆桥');
+          break;
+        case 'playAsLebu':
+          handlePlayVirtualCard('乐不思蜀');
+          break;
         case 'endTurn':
           sandboxEndTurn();
           setSelectedHand(null);
@@ -437,12 +499,27 @@ function App() {
       sandboxEndTurn,
       sandboxSwitchActor,
       handlePlayCard,
+      handlePlayVirtualCard,
       selectedHand,
       sandboxCharName,
       room,
       actingId,
       isSandbox,
     ],
+  );
+
+  const formulaVirtualIndex = useCallback(
+    (cardName: string, hand: string[]) => {
+      if (!actingPlayer) return -1;
+      const enginePlayer = asEnginePlayer(actingPlayer);
+      return hand.findIndex((entry) => {
+        if (cardName === '杀') return canUseAsSha(enginePlayer, entry);
+        if (cardName === '过河拆桥') return canUseAsGuohe(enginePlayer, entry);
+        if (cardName === '乐不思蜀') return canUseAsLebu(enginePlayer, entry);
+        return false;
+      });
+    },
+    [actingPlayer],
   );
 
   const ribbonActions: RibbonAction[] = useMemo(() => {
@@ -458,11 +535,32 @@ function App() {
       ];
     }
 
+    if (onSalesSheet) {
+      return [];
+    }
+
     if (!onCurrentRoomSheet) {
       return [];
     }
 
     if (playing) {
+      const selectedCardName = selectedHand?.name.match(/【(.+?)】$/)?.[1] ?? selectedHand?.name;
+      const engineActor = actingPlayer ? asEnginePlayer(actingPlayer) : null;
+      const canVirtualSha =
+        !!selectedHand &&
+        !!engineActor &&
+        selectedCardName !== '杀' &&
+        canUseAsSha(engineActor, selectedHand.name);
+      const canVirtualGuohe =
+        !!selectedHand &&
+        !!engineActor &&
+        selectedCardName !== '过河拆桥' &&
+        canUseAsGuohe(engineActor, selectedHand.name);
+      const canVirtualLebu =
+        !!selectedHand &&
+        !!engineActor &&
+        selectedCardName !== '乐不思蜀' &&
+        canUseAsLebu(engineActor, selectedHand.name);
       const actions: RibbonAction[] = [
         {
           id: 'playCard',
@@ -477,6 +575,30 @@ function App() {
           disabled: !canOperateTurn || !!gamePrompt,
         },
       ];
+      if (canVirtualSha) {
+        actions.push({
+          id: 'playAsSha',
+          label: '当杀',
+          icon: '⚔',
+          disabled: !canPlayCards || !selectedHand,
+        });
+      }
+      if (canVirtualGuohe) {
+        actions.push({
+          id: 'playAsGuohe',
+          label: '当拆',
+          icon: '✂',
+          disabled: !canPlayCards || !selectedHand,
+        });
+      }
+      if (canVirtualLebu) {
+        actions.push({
+          id: 'playAsLebu',
+          label: '当乐',
+          icon: '⌛',
+          disabled: !canPlayCards || !selectedHand,
+        });
+      }
       if (isSandbox) {
         actions.push({
           id: 'switchNext',
@@ -510,7 +632,7 @@ function App() {
       );
     }
     return base;
-  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet]);
+  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onSalesSheet, actingPlayer]);
 
   const handleFormulaSubmit = useCallback(async () => {
     const raw = formulaInput.trim();
@@ -608,8 +730,10 @@ function App() {
       const matchedIndex = hand.findIndex((card) => card === raw);
       if (matchedIndex >= 0) {
         handlePlayCard(raw, matchedIndex);
-      } else if (room) {
-        sendChat(raw);
+      } else {
+        const virtualIndex = formulaVirtualIndex(raw, hand);
+        if (virtualIndex >= 0) handlePlayCard(raw, virtualIndex);
+        else if (room) sendChat(raw);
       }
     } else if (room) {
       sendChat(raw);
@@ -646,16 +770,16 @@ function App() {
     actingPlayer?.handCards,
   ]);
 
-  const showGameSheet = !!room && !bossMode;
-  const displaySheet = showGameSheet && activeSheet === GAME_SHEET_ID ? GAME_SHEET_ID : activeSheet;
+  const showCurrentRoomSheet = !!room && !bossMode;
+  const displaySheet = activeSheet;
 
-  const fileName = showGameSheet
+  const fileName = showCurrentRoomSheet && displaySheet === CURRENT_ROOM_SHEET_ID
     ? isPlaying
       ? `对局面板_${room?.code}.xlsx`
       : room?.isSandbox
         ? `模拟测试_${SANDBOX_ROOM_CODE}.xlsx`
         : `对局_${room?.code}.xlsx`
-    : DEFAULT_FILE_NAMES[displaySheet === GAME_SHEET_ID ? 'sheet1' : displaySheet];
+    : DEFAULT_FILE_NAMES[displaySheet];
 
   const roomStatusLabel = isPlaying
     ? '游戏中'
@@ -678,6 +802,8 @@ function App() {
         versions={versions}
         currentVersionId={currentVersion}
         versionDisabled={!isAuthed}
+        onCheckIn={() => void handleCheckIn()}
+        checkInDisabled={authStatus === 'loading'}
       />
       <InfoBar
         nickname={nickname}
@@ -779,12 +905,13 @@ function App() {
         className={
           onLobbySheet && !bossMode
             ? gridStyles.boardLayout
-            : displaySheet === GAME_SHEET_ID && room && !bossMode && !isPlaying
+            : displaySheet === CURRENT_ROOM_SHEET_ID && room && !bossMode && !isPlaying
               ? styles.mainWithChat
               : styles.main
         }
       >
-        {displaySheet === GAME_SHEET_ID && room ? (
+        {displaySheet === CURRENT_ROOM_SHEET_ID ? (
+          room ? (
           <GameGrid
             room={room}
             chatMessages={chatMessages}
@@ -802,7 +929,10 @@ function App() {
             onToggleReady={toggleReady}
             onSelectGeneral={selectGeneral}
           />
-        ) : displaySheet === 'sheet1' ? (
+          ) : (
+            <DecoyGrid selectedCell={selectedCell} onSelectCell={setSelectedCell} />
+          )
+        ) : displaySheet === ROOM_LIST_SHEET_ID ? (
           <>
             <div className={gridStyles.gridPane}>
               <RoomListGrid
@@ -831,14 +961,14 @@ function App() {
         ) : (
           <DecoyGrid selectedCell={selectedCell} onSelectCell={setSelectedCell} />
         )}
-        {displaySheet === GAME_SHEET_ID && room && !bossMode && !isPlaying && (
+        {displaySheet === CURRENT_ROOM_SHEET_ID && room && !bossMode && !isPlaying && (
           <ChatPanel messages={chatMessages} visible onSend={sendChat} />
         )}
       </div>
       <SheetTabs
         active={displaySheet}
         onSelect={setActiveSheet}
-        showGame={!!room}
+        currentRoomDisabled={!showCurrentRoomSheet}
       />
       <StatusBar
         roomCode={bossMode ? undefined : room?.code}
@@ -888,6 +1018,7 @@ function App() {
           onRendeGive={(tid, cards, indices) =>
             sandboxRendeGive(tid, cards, indices)
           }
+          onQingnangRecover={(tid, indices) => sandboxQingnangRecover(tid, indices)}
           onZhihengConfirm={(indices) => sandboxZhihengConfirm(indices)}
           onModifyJudge={(pid, idx) => sandboxModifyJudge(pid, idx)}
           onSkipModifyJudge={(pid) => sandboxSkipModifyJudge(pid)}

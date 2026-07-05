@@ -60,6 +60,18 @@ function publicUser(user: {
   };
 }
 
+function publicWallet(wallet: {
+  coins: number;
+  experience: number;
+  level: number;
+  reward: {
+    coins: number;
+    experience: number;
+  };
+}) {
+  return wallet;
+}
+
 @Controller('api/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -132,6 +144,18 @@ export class AuthController {
     return {
       ok: true,
       data: publicUser(user),
+      _v: 1,
+    };
+  }
+
+  @Post('check-in')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard)
+  async checkIn(@Req() req: AuthedRequest) {
+    const wallet = await this.authService.checkIn(req.user!.userId);
+    return {
+      ok: true,
+      data: publicWallet(wallet),
       _v: 1,
     };
   }

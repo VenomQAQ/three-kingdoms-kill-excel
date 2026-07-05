@@ -15,16 +15,32 @@ function formatTime(ms: number): string {
   return `${min}:${String(rest).padStart(2, '0')}`;
 }
 
+function playerLabel(name?: string): string {
+  if (!name) return '未知玩家';
+  return name.endsWith('玩家') ? name : `${name}玩家`;
+}
+
 export function GeneralSelectPanel({ room, playerId, onSelectGeneral }: GeneralSelectPanelProps) {
   const selection = room.generalSelection;
   const options = selection?.myOptions ?? [];
-  const isMyTurn = !!selection && selection.currentPlayerId === playerId && options.length > 0;
+  const hasSubmitted = !!selection?.selected.some((item) => item.playerId === playerId);
+  const canChoose = !!selection && !hasSubmitted && options.length > 0;
   const [selectedId, setSelectedId] = useState<string>('');
   const [now, setNow] = useState(Date.now());
+  const currentPlayer = room.players.find((player) => player.id === playerId);
+  const lordPlayer = room.players.find((player) => player.role === '主公');
+  const validationMessage =
+    currentPlayer?.role && lordPlayer
+      ? `你的身份是：${currentPlayer.role}，${playerLabel(lordPlayer.nickname)}是主公`
+      : canChoose
+        ? '请选择一项候选数据'
+        : hasSubmitted
+          ? '已提交，等待其他玩家'
+          : '等待候选数据同步';
 
   useEffect(() => {
     setSelectedId('');
-  }, [selection?.currentPlayerId, selection?.deadlineAt]);
+  }, [selection?.deadlineAt]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 250);
@@ -43,21 +59,20 @@ export function GeneralSelectPanel({ room, playerId, onSelectGeneral }: GeneralS
       <div className={styles.header}>
         <div>
           <div className={styles.title}>数据验证</div>
-          <div className={styles.subtitle}>
-            {isMyTurn ? '请选择一项候选数据' : `等待 ${selection.currentPlayerNickname} 选择`}
-          </div>
+          <div className={styles.subtitle}>{validationMessage}</div>
         </div>
         <div className={styles.timer}>{formatTime(selection.deadlineAt - now)}</div>
       </div>
 
       <div className={styles.content}>
         <section className={styles.options} aria-label="候选武将">
-          {isMyTurn ? (
+          {options.length > 0 ? (
             options.map((option) => (
               <button
                 type="button"
                 key={option.id}
                 className={`${styles.option} ${selectedId === option.id ? styles.optionActive : ''}`}
+                disabled={!canChoose}
                 onClick={() => setSelectedId(option.id)}
               >
                 <div className={styles.optionTop}>
@@ -75,7 +90,7 @@ export function GeneralSelectPanel({ room, playerId, onSelectGeneral }: GeneralS
               </button>
             ))
           ) : (
-            <div className={styles.waitingBox}>当前选择完成后会自动刷新表格状态。</div>
+            <div className={styles.waitingBox}>候选数据只对本人可见，提交后会自动刷新表格状态。</div>
           )}
         </section>
 
@@ -101,7 +116,7 @@ export function GeneralSelectPanel({ room, playerId, onSelectGeneral }: GeneralS
         <button
           type="button"
           className={styles.confirm}
-          disabled={!isMyTurn || !selected}
+          disabled={!canChoose || !selected}
           onClick={() => {
             if (selected) onSelectGeneral(selected.id);
           }}

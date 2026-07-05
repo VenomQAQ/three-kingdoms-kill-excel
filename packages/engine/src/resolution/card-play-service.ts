@@ -3,6 +3,7 @@ import type { CardDefinition } from '../types/card';
 import type { EnginePlayerState, GamePrompt } from '../types/game';
 import type { GameState } from '../state/game-state';
 import type { DeckPile } from '../engine/deck-pile';
+import { createCardInstance } from '../engine/card-instance';
 import {
   getOnFailEffects,
   getResponseTypeFromEffect,
@@ -12,7 +13,7 @@ import {
   shaBlockedByArmor,
   validResponseCards,
 } from '../engine/effect-runner';
-import { validResponseCardsForPlayer } from '../engine/virtual-card';
+import { canUseAsGuohe, canUseAsLebu, canUseAsSha, validResponseCardsForPlayer } from '../engine/virtual-card';
 import { cardNameFromHandEntry } from '../engine/card-label';
 import {
   applyLockedModifiers,
@@ -26,6 +27,7 @@ import {
   sortAoeTargets,
 } from '../engine/targeting';
 import {
+  getEquipSlot,
   hasBaguaFormation,
   playerHasWeapon,
   takeWeaponFromPlayer,
@@ -39,6 +41,7 @@ import {
 } from './card-play-context';
 import {
   discardZoneCard,
+  canDiscardZoneCard,
   getZonePickAction,
   listZoneCards,
   parseZoneCardId,
@@ -50,9 +53,67 @@ export interface CardPlayHost {
   getDeck(): DeckPile;
   log(message: string): void;
   setPrompt(prompt: GamePrompt | null): void;
+  afterPlayerGainedCards?(player: EnginePlayerState, gainedCards: string[]): void;
+  afterPlayerLostHandCards?(player: EnginePlayerState, lostCount: number): void;
+  afterPlayerLostEquipmentCards?(player: EnginePlayerState, lostCount: number): void;
+  onCardCommitted?(params: {
+    source: EnginePlayerState;
+    card: CardDefinition;
+    targets: EnginePlayerState[];
+  }): void;
   scheduleAoeTargets?(sourcePlayerId: string, targetPlayerIds: string[]): void;
   completeTargetResolve?(): void;
   drainStack?(): Promise<{ paused: boolean }>;
+  afterPlayerUsedOrRespondedHandCard?(player: EnginePlayerState, cardEntry: string): void;
+}
+
+function suitOfCardEntry(entry: string): string | undefined {
+  const suit = entry.trim()[0];
+  return suit === '♠' || suit === '♥' || suit === '♣' || suit === '♦' ? suit : undefined;
+}
+
+function labelForResponseType(responseType: string): string {
+  if (responseType === 'shan') return '闪';
+  if (responseType === 'sha') return '杀';
+  if (responseType === 'tao') return '桃';
+  return responseType;
+}
+
+function removeResponseCardFromHand(
+  player: EnginePlayerState,
+  responseType: string,
+  cardEntry: string,
+): boolean {
+  const validCards = validResponseCardsForPlayer(player, responseType, [cardEntry]);
+  if (!validCards.includes(cardEntry)) return false;
+  const handIndex = player.handCards.indexOf(cardEntry);
+  if (handIndex < 0) return false;
+  player.handCards.splice(handIndex, 1);
+  return true;
+}
+
+function hasEquipment(player: EnginePlayerState, equipmentName: string): boolean {
+  return player.equipment.some((equipment) => equipment.includes(equipmentName));
+}
+
+function zoneCardCount(player: EnginePlayerState): number {
+  return player.handCards.length + player.equipment.length;
+}
+
+function sortTargetsFromSource(
+  players: EnginePlayerState[],
+  source: EnginePlayerState,
+  targets: EnginePlayerState[],
+): EnginePlayerState[] {
+  const ordered = [...players].sort((a, b) => a.seat - b.seat);
+  const startIdx = ordered.findIndex((player) => player.id === source.id);
+  const result: EnginePlayerState[] = [];
+  for (let i = 0; i < ordered.length; i++) {
+    const player = ordered[(startIdx + i) % ordered.length]!;
+    const target = targets.find((candidate) => candidate.id === player.id);
+    if (target && target.hp > 0) result.push(target);
+  }
+  return result;
 }
 
 export class CardPlayService {
@@ -70,15 +131,38 @@ export class CardPlayService {
     if (host.getState().turn.phase !== 'play') {
       return { ok: false, error: '当前不是出牌阶段' };
     }
+    if (source.skillUseCount._yijue_hand_blocked) {
+      return { ok: false, error: '受到【义绝】影响，本回合不能使用手牌' };
+    }
 
-    const card = CardRegistry.getByName(cardNameFromHandEntry(cardName));
+    const requestedCardName = cardNameFromHandEntry(cardName);
+    const zhangbaIndices = this.resolveZhangbaHandIndices(source, requestedCardName, handIndex);
+    const index = zhangbaIndices?.[0] ?? this.resolveHandIndex(source, cardName, handIndex);
+    if (index < 0) return { ok: false, error: '手牌中没有此牌' };
+
+    const actualEntry = source.handCards[index]!;
+    const actualName = cardNameFromHandEntry(actualEntry);
+    const virtualCardName = zhangbaIndices
+      ? '杀'
+      : this.resolveVirtualInitiateCardName(source, actualEntry, requestedCardName);
+    if (!virtualCardName) {
+      return { ok: false, error: '此牌不能按指定方式使用' };
+    }
+    const card = CardRegistry.getByName(virtualCardName);
     if (!card) return { ok: false, error: `未知卡牌：${cardName}` };
     if (card.canInitiate === false) {
       return { ok: false, error: '此牌不能主动打出' };
     }
 
-    const index = this.resolveHandIndex(source, cardName, handIndex);
-    if (index < 0) return { ok: false, error: '手牌中没有此牌' };
+    if (zhangbaIndices) {
+      host.log(
+        `${source.generalName} 发动【丈八蛇矛】，将 ${zhangbaIndices
+          .map((i) => cardNameFromHandEntry(source.handCards[i]!))
+          .join('、')} 当【杀】使用`,
+      );
+    } else if (virtualCardName !== actualName) {
+      host.log(`${source.generalName} 将 ${actualEntry} 当【${card.name}】使用`);
+    }
 
     if (!this.canUseShaThisTurn(source, card)) {
       return { ok: false, error: '本回合【杀】已用完' };
@@ -91,6 +175,7 @@ export class CardPlayService {
       cardId: card.id,
       sourcePlayerId: sourceId,
       handIndex: index,
+      zhangbaHandIndices: zhangbaIndices,
       targetPlayerIds: [],
       isAoe: false,
       responsesRequired: 1,
@@ -103,7 +188,7 @@ export class CardPlayService {
         this.clearCardPlay(host);
         return { ok: false, error: '没有合法的目标角色' };
       }
-      const max = card.targeting.count?.max ?? 1;
+      const max = this.targetMaxForCard(card, source);
       host.setPrompt({
         id: nextPromptId(),
         type: 'select_targets',
@@ -131,6 +216,146 @@ export class CardPlayService {
     return { ok: true };
   }
 
+  initiateVirtualSkillCard(
+    host: CardPlayHost,
+    sourceId: string,
+    cardName: string,
+    skillId: string,
+  ): { ok: boolean; error?: string } {
+    const activePrompt = host.getState().prompt;
+    const canReplaceSkillPrompt =
+      activePrompt?.type === 'use_skill' &&
+      activePrompt.skillId === skillId &&
+      activePrompt.skillAction === 'virtual_basic' &&
+      activePrompt.playerId === sourceId;
+    if (activePrompt && !canReplaceSkillPrompt) {
+      return { ok: false, error: '请先处理当前提示' };
+    }
+    const source = host.getState().players.find((player) => player.id === sourceId);
+    if (!source) return { ok: false, error: '玩家不存在' };
+    if (host.getState().turn.phase !== 'play') {
+      return { ok: false, error: '当前不是出牌阶段' };
+    }
+    if (source.skillUseCount._yijue_hand_blocked) {
+      return { ok: false, error: '受到【义绝】影响，本回合不能使用手牌' };
+    }
+
+    const card = CardRegistry.getByName(cardName);
+    if (!card || card.type !== 'basic') {
+      return { ok: false, error: '只能视为使用基本牌' };
+    }
+    if (card.canInitiate === false) {
+      return { ok: false, error: '此基本牌不能主动使用' };
+    }
+    if (!this.canUseShaThisTurn(source, card)) {
+      return { ok: false, error: '本回合【杀】已用完' };
+    }
+    if (!this.canInitiateTao(source, card)) {
+      return { ok: false, error: '满血时不能对自己使用【桃】' };
+    }
+
+    setCardPlayContext(host.getState().resolution.context, {
+      cardId: card.id,
+      sourcePlayerId: sourceId,
+      targetPlayerIds: [],
+      isAoe: false,
+      responsesRequired: 1,
+      responseCount: 0,
+      virtualFromSkill: skillId,
+    });
+
+    if (needsTargetSelection(card)) {
+      const validTargets = getValidTargets(card, source, host.getState().players);
+      if (validTargets.length === 0) {
+        this.clearCardPlay(host);
+        return { ok: false, error: '没有合法的目标角色' };
+      }
+      const max = this.targetMaxForCard(card, source);
+      host.setPrompt({
+        id: nextPromptId(),
+        type: 'select_targets',
+        playerId: sourceId,
+        cardId: card.id,
+        cardName: card.name,
+        skillId,
+        message: `【仁德】请选择视为使用【${card.name}】的目标（${card.targeting.count?.min ?? 1}~${max} 名）`,
+        validTargetIds: validTargets.map((target) => target.id),
+      });
+      return { ok: true };
+    }
+
+    host.setPrompt({
+      id: nextPromptId(),
+      type: 'play_card_confirm',
+      playerId: sourceId,
+      cardId: card.id,
+      cardName: card.name,
+      skillId,
+      message: `【仁德】确认视为使用【${card.name}】？`,
+      options: [
+        { id: 'confirm', label: '确认使用' },
+        { id: 'cancel', label: '取消' },
+      ],
+    });
+    return { ok: true };
+  }
+
+  submitZhangba(
+    host: CardPlayHost,
+    sourceId: string,
+    handIndices: number[],
+  ): { ok: boolean; error?: string } {
+    const source = host.getState().players.find((player) => player.id === sourceId);
+    if (!source) return { ok: false, error: '玩家不存在' };
+    if (host.getState().prompt) return { ok: false, error: '请先处理当前提示' };
+    if (host.getState().turn.phase !== 'play') return { ok: false, error: '当前不是出牌阶段' };
+    if (!hasEquipment(source, '丈八蛇矛')) return { ok: false, error: '未装备【丈八蛇矛】' };
+    if (!this.canUseShaThisTurn(source, CardRegistry.getByName('杀')!)) {
+      return { ok: false, error: '本回合【杀】已用完' };
+    }
+    const normalized = [...handIndices].sort((a, b) => a - b);
+    if (normalized.length !== 2 || new Set(normalized).size !== 2) {
+      return { ok: false, error: '请选择两张不同手牌' };
+    }
+    if (normalized.some((index) => index < 0 || index >= source.handCards.length)) {
+      return { ok: false, error: '所选手牌无效' };
+    }
+    const card = CardRegistry.getByName('杀');
+    if (!card) return { ok: false, error: '缺少【杀】卡牌配置' };
+    setCardPlayContext(host.getState().resolution.context, {
+      cardId: card.id,
+      sourcePlayerId: sourceId,
+      handIndex: normalized[0],
+      zhangbaHandIndices: normalized,
+      targetPlayerIds: [],
+      isAoe: false,
+      responsesRequired: 1,
+      responseCount: 0,
+    });
+    host.log(
+      `${source.generalName} 发动【丈八蛇矛】，将 ${normalized
+        .map((index) => cardNameFromHandEntry(source.handCards[index]!))
+        .join('、')} 当【杀】使用`,
+    );
+
+    const validTargets = getValidTargets(card, source, host.getState().players);
+    if (validTargets.length === 0) {
+      this.clearCardPlay(host);
+      return { ok: false, error: '没有合法的目标角色' };
+    }
+    const max = this.targetMaxForCard(card, source);
+    host.setPrompt({
+      id: nextPromptId(),
+      type: 'select_targets',
+      playerId: sourceId,
+      cardId: card.id,
+      cardName: card.name,
+      message: `请选择【${card.name}】的目标（${card.targeting.count?.min ?? 1}~${max} 名）`,
+      validTargetIds: validTargets.map((target) => target.id),
+    });
+    return { ok: true };
+  }
+
   confirmPlayCard(
     host: CardPlayHost,
     sourceId: string,
@@ -152,7 +377,7 @@ export class CardPlayService {
         this.clearCardPlay(host);
         return { ok: false, error: '没有合法的目标角色' };
       }
-      const max = card.targeting.count?.max ?? 1;
+      const max = this.targetMaxForCard(card, source);
       host.setPrompt({
         id: nextPromptId(),
         type: 'select_targets',
@@ -193,7 +418,7 @@ export class CardPlayService {
 
     const card = CardRegistry.getById(context.cardId);
     const min = card?.targeting.count?.min ?? 1;
-    const max = card?.targeting.count?.max ?? 1;
+    const max = card ? this.targetMaxForCard(card, host.getState().players.find((player) => player.id === sourceId)!) : 1;
     if (targetIds.length < min || targetIds.length > max) {
       return {
         ok: false,
@@ -315,8 +540,12 @@ export class CardPlayService {
       return { ok: true, paused: false };
     }
 
-    const validCards = validResponseCardsForPlayer(target, responseType, target.handCards);
-    const label = responseType === 'shan' ? '闪' : '杀';
+    const tieqiBlocked =
+      responseType === 'shan' && (context.tieqiBlockedTargetIds ?? []).includes(target.id);
+    const validCards = tieqiBlocked
+      ? []
+      : validResponseCardsForPlayer(target, responseType, target.handCards);
+    const label = labelForResponseType(responseType);
     const required = context.responsesRequired;
     const count = context.responseCount;
     const hint =
@@ -329,7 +558,9 @@ export class CardPlayService {
     const message = context.jiedaoActive
       ? `${target.generalName}：【借刀杀人】请对 ${jiedaoVictim?.generalName ?? '目标'} 使用一张【杀】，否则失去武器`
       : duelActive
-      ? `${target.generalName}：请打出【${label}】继续决斗（不出则受到 1 点伤害）`
+      ? `${target.generalName}：请打出【${label}】继续决斗${hint}（不出则受到 1 点伤害）`
+      : tieqiBlocked
+      ? `${target.generalName}：受到【铁骑】影响，不能使用【闪】响应【${card.name}】`
       : `${target.generalName}：请打出【${label}】响应【${card.name}】${hint}`;
     const passLabel = duelActive ? '不出（承受伤害）' : '不出（承受效果）';
 
@@ -350,6 +581,9 @@ export class CardPlayService {
         { id: 'pass', label: passLabel },
         ...(hasBaguaFormation(target) && responseType === 'shan'
           ? [{ id: 'bagua', label: '发动【八卦阵】判定' }]
+          : []),
+        ...(this.canStartLordAssist(host, target, responseType)
+          ? [{ id: `lord_assist:${responseType}`, label: `发动主公技代出【${label}】` }]
           : []),
       ],
     });
@@ -387,6 +621,16 @@ export class CardPlayService {
       host.setPrompt(null);
       return { ok: false, error: '状态错误' };
     }
+    if (responder.skillUseCount._yijue_hand_blocked && choiceId !== 'pass') {
+      return { ok: false, error: '受到【义绝】影响，本回合不能打出手牌' };
+    }
+    if (
+      choiceId !== 'pass' &&
+      context.responseType === 'shan' &&
+      (context.tieqiBlockedTargetIds ?? []).includes(responder.id)
+    ) {
+      return { ok: false, error: '受到【铁骑】影响，不能使用【闪】响应此【杀】' };
+    }
 
     if (context.awaitingWuxieFrom) {
       return this.submitWuxieResponse(
@@ -397,6 +641,18 @@ export class CardPlayService {
         context,
         choiceId,
       );
+    }
+
+    if (choiceId.startsWith('lord_assist:')) {
+      const responseType = choiceId.slice('lord_assist:'.length);
+      if (responseType !== context.responseType) {
+        return { ok: false, error: '主公技响应类型不匹配' };
+      }
+      return this.startLordAssist(host, card, source, responder, context, responseType);
+    }
+
+    if (choiceId.startsWith('lord:')) {
+      return this.submitLordAssist(host, responder, source, card, context, choiceId);
     }
 
     const required = context.responsesRequired;
@@ -438,10 +694,18 @@ export class CardPlayService {
         return { ok: false, error: '手牌中没有此牌' };
       }
       host.getDeck().discardCard(cardName);
+      host.afterPlayerUsedOrRespondedHandCard?.(responder, cardName);
 
-      // 决斗：出【杀】后切换到另一方继续出【杀】
       if (duelActive) {
-        host.log(`${responder.generalName} 打出【${cardName}】(1/1)`);
+        context.responseCount += 1;
+        host.log(
+          `${responder.generalName} 打出【${cardName}】（${context.responseCount}/${required}）`,
+        );
+        if (context.responseCount < required) {
+          setCardPlayContext(host.getState().resolution.context, context);
+          return this.promptResponse(host, card, source, responder, context);
+        }
+
         const nextResponderId =
           responder.id === context.duelTarget
             ? context.duelInitiator
@@ -489,6 +753,9 @@ export class CardPlayService {
         if (host.getState().resolution.targetQueue == null) this.clearCardPlay(host);
         return { ok: true, paused: host.getState().prompt != null };
       }
+      if (card.id === 'sha' && this.promptShaDodgedEquipment(host, source, responder, context)) {
+        return { ok: true, paused: true };
+      }
       this.clearCardPlay(host);
       host.log(`【${card.name}】被抵消`);
       return { ok: true };
@@ -499,11 +766,16 @@ export class CardPlayService {
 
       if (jiedaoActive && context.jiedaoHolderId === responder.id) {
         host.setPrompt(null);
+        const equipmentCountBefore = responder.equipment.length;
         takeWeaponFromPlayer(
           responder,
           source,
           host.getDeck(),
           (message) => host.log(message),
+        );
+        host.afterPlayerLostEquipmentCards?.(
+          responder,
+          equipmentCountBefore - responder.equipment.length,
         );
         this.clearCardPlay(host);
         return { ok: true };
@@ -526,7 +798,7 @@ export class CardPlayService {
           sourceId: context.duelInitiator ?? source.id,
           targetId: responder.id,
           amount,
-          damageCardName: card.name,
+          damageCardName: context.committedCardEntry ?? card.name,
         });
         return { ok: true, paused: host.getState().prompt != null };
       }
@@ -537,7 +809,7 @@ export class CardPlayService {
           sourceId: source.id,
           targetId: responder.id,
           amount,
-          damageCardName: card.name,
+          damageCardName: context.committedCardEntry ?? card.name,
         });
         if (host.getState().prompt) {
           context.pendingAoeAdvance = true;
@@ -557,7 +829,7 @@ export class CardPlayService {
         sourceId: source.id,
         targetId: responder.id,
         amount,
-        damageCardName: card.name,
+        damageCardName: context.committedCardEntry ?? card.name,
       });
       return { ok: true, paused: host.getState().prompt != null };
     }
@@ -571,6 +843,177 @@ export class CardPlayService {
     host.setPrompt(null);
   }
 
+  private canStartLordAssist(
+    host: CardPlayHost,
+    lord: EnginePlayerState,
+    responseType: string,
+  ): boolean {
+    if (lord.role !== '主公' || lord.dead || lord.hp <= 0) return false;
+    const skillId = responseType === 'shan' ? 'hujia' : responseType === 'sha' ? 'jijiang' : undefined;
+    if (!skillId || !playerHasSkill(lord, skillId)) return false;
+    const kingdom = skillId === 'hujia' ? 'wei' : 'shu';
+    return host.getState().players.some(
+      (player) =>
+        player.id !== lord.id &&
+        player.kingdom === kingdom &&
+        player.hp > 0 &&
+        !player.dead &&
+        validResponseCardsForPlayer(player, responseType, player.handCards).length > 0,
+    );
+  }
+
+  private startLordAssist(
+    host: CardPlayHost,
+    card: CardDefinition,
+    source: EnginePlayerState,
+    lord: EnginePlayerState,
+    context: CardPlayContext,
+    responseType: string,
+  ): { ok: boolean; error?: string; paused?: boolean } {
+    const skillId = responseType === 'shan' ? 'hujia' : responseType === 'sha' ? 'jijiang' : undefined;
+    if (!skillId || !this.canStartLordAssist(host, lord, responseType)) {
+      return { ok: false, error: '当前不能发动主公技' };
+    }
+    const kingdom = skillId === 'hujia' ? 'wei' : 'shu';
+    const queue = host.getState().players
+      .filter(
+        (player) =>
+          player.id !== lord.id &&
+          player.kingdom === kingdom &&
+          player.hp > 0 &&
+          !player.dead,
+      )
+      .sort((left, right) => left.seat - right.seat)
+      .map((player) => player.id);
+    context.lordAssist = {
+      skillId,
+      lordId: lord.id,
+      responseType: responseType as 'shan' | 'sha',
+      queue,
+      index: 0,
+    };
+    setCardPlayContext(host.getState().resolution.context, context);
+    host.log(`${lord.generalName} 发动【${skillId === 'hujia' ? '护驾' : '激将'}】`);
+    return this.promptNextLordAssist(host, card, source, context);
+  }
+
+  private promptNextLordAssist(
+    host: CardPlayHost,
+    card: CardDefinition,
+    source: EnginePlayerState,
+    context: CardPlayContext,
+  ): { ok: boolean; error?: string; paused?: boolean } {
+    const assist = context.lordAssist;
+    if (!assist) return { ok: false, error: '主公技状态不存在' };
+    while (assist.index < assist.queue.length) {
+      const assistantId = assist.queue[assist.index]!;
+      assist.index += 1;
+      const assistant = host.getState().players.find((player) => player.id === assistantId);
+      if (!assistant || assistant.hp <= 0 || assistant.dead) continue;
+      const validCards = validResponseCardsForPlayer(assistant, assist.responseType, assistant.handCards);
+      if (validCards.length === 0) continue;
+      setCardPlayContext(host.getState().resolution.context, context);
+      const label = labelForResponseType(assist.responseType);
+      const skillName = assist.skillId === 'hujia' ? '护驾' : '激将';
+      host.setPrompt({
+        id: nextPromptId(),
+        type: 'response',
+        playerId: assistant.id,
+        sourcePlayerId: source.id,
+        cardName: card.name,
+        targetPlayerIds: context.targetPlayerIds,
+        message: `${assistant.generalName}：是否响应【${skillName}】，为主公打出【${label}】？`,
+        validResponseCards: validCards,
+        options: [
+          ...validCards.map((validCard) => ({
+            id: `lord:card:${validCard}`,
+            label: `打出【${validCard}】`,
+          })),
+          { id: 'lord:pass', label: '不出' },
+        ],
+      });
+      return { ok: true, paused: true };
+    }
+
+    const lord = host.getState().players.find((player) => player.id === assist.lordId);
+    delete context.lordAssist;
+    setCardPlayContext(host.getState().resolution.context, context);
+    if (lord) {
+      host.log(`${lord.generalName} 的【${assist.skillId === 'hujia' ? '护驾' : '激将'}】无人响应`);
+      return this.promptResponse(host, card, source, lord, context);
+    }
+    return { ok: false, error: '主公不存在' };
+  }
+
+  private submitLordAssist(
+    host: CardPlayHost,
+    assistant: EnginePlayerState,
+    source: EnginePlayerState,
+    card: CardDefinition,
+    context: CardPlayContext,
+    choiceId: string,
+  ): Promise<{ ok: boolean; error?: string; paused?: boolean }> | { ok: boolean; error?: string; paused?: boolean } {
+    const assist = context.lordAssist;
+    if (!assist) return { ok: false, error: '当前未在主公技响应流程中' };
+    const lord = host.getState().players.find((player) => player.id === assist.lordId);
+    if (!lord) return { ok: false, error: '主公不存在' };
+
+    if (choiceId === 'lord:pass') {
+      host.log(`${assistant.generalName} 不响应【${assist.skillId === 'hujia' ? '护驾' : '激将'}】`);
+      return this.promptNextLordAssist(host, card, source, context);
+    }
+
+    if (!choiceId.startsWith('lord:card:')) return { ok: false, error: '无效选择' };
+    const cardEntry = choiceId.slice('lord:card:'.length);
+    if (!removeResponseCardFromHand(assistant, assist.responseType, cardEntry)) {
+      return { ok: false, error: '手牌中没有可响应的牌' };
+    }
+    host.getDeck().discardCard(cardEntry);
+    lord.skillUseCount[assist.skillId] = (lord.skillUseCount[assist.skillId] ?? 0) + 1;
+    context.responseCount += 1;
+    delete context.lordAssist;
+    setCardPlayContext(host.getState().resolution.context, context);
+    const label = labelForResponseType(assist.responseType);
+    host.log(`${assistant.generalName} 响应【${assist.skillId === 'hujia' ? '护驾' : '激将'}】，替 ${lord.generalName} 打出【${label}】`);
+
+    if (context.duelActive) {
+      if (context.responseCount < context.responsesRequired) {
+        return this.promptResponse(host, card, source, lord, context);
+      }
+
+      const nextResponderId =
+        lord.id === context.duelTarget ? context.duelInitiator : context.duelTarget;
+      const nextResponder = host
+        .getState()
+        .players.find((player) => player.id === nextResponderId);
+      if (!nextResponder) {
+        this.clearCardPlay(host);
+        host.setPrompt(null);
+        return { ok: false, error: '决斗对手不存在' };
+      }
+      context.awaitingResponseFrom = nextResponder.id;
+      context.responseCount = 0;
+      setCardPlayContext(host.getState().resolution.context, context);
+      return this.promptResponse(host, card, source, nextResponder, context);
+    }
+
+    if (context.responseCount < context.responsesRequired) {
+      return this.promptResponse(host, card, source, lord, context);
+    }
+    host.setPrompt(null);
+    if (context.isAoe === true) {
+      host.log(`【${card.name}】对 ${lord.generalName} 被抵消`);
+      host.completeTargetResolve?.();
+      return host.drainStack?.().then(() => {
+        if (host.getState().resolution.targetQueue == null) this.clearCardPlay(host);
+        return { ok: true, paused: host.getState().prompt != null };
+      }) ?? { ok: true, paused: host.getState().prompt != null };
+    }
+    this.clearCardPlay(host);
+    host.log(`【${card.name}】被抵消`);
+    return { ok: true };
+  }
+
   private commitPlayedCard(
     host: CardPlayHost,
     source: EnginePlayerState,
@@ -580,13 +1023,36 @@ export class CardPlayService {
   ): void {
     if (context.cardCommitted) return;
 
-    removeCardFromHand(source, card.name, context.handIndex);
-    host.getDeck().discardCard(card.name);
+    const handCountBefore = source.handCards.length;
+    context.committedCardEntry = context.virtualFromSkill
+      ? card.name
+      : source.handCards[context.handIndex ?? -1] ?? card.name;
+    if (!context.virtualFromSkill) {
+      if (context.zhangbaHandIndices?.length === 2) {
+        const ascending = [...context.zhangbaHandIndices].sort((left, right) => left - right);
+        const usedEntries = ascending
+          .map((index) => source.handCards[index])
+          .filter((entry): entry is string => !!entry);
+        for (const index of [...ascending].sort((left, right) => right - left)) {
+          source.handCards.splice(index, 1);
+        }
+        context.committedCardEntry = usedEntries.join('、') || card.name;
+        for (const entry of usedEntries) host.getDeck().discardCard(entry);
+      } else {
+        const usedEntry = source.handCards[context.handIndex ?? -1] ?? card.name;
+        removeCardFromHand(source, card.name, context.handIndex);
+        host.getDeck().discardCard(usedEntry);
+      }
+      host.afterPlayerLostHandCards?.(source, handCountBefore - source.handCards.length);
+      host.afterPlayerUsedOrRespondedHandCard?.(source, context.committedCardEntry);
+    }
     if (card.id === 'sha') source.shaUsedCount += 1;
 
     const targetLabel =
       targets.map((target) => target.generalName).join('、') || '全场';
-    host.log(`${source.generalName} 对 ${targetLabel} 使用【${card.name}】`);
+    const prefix = context.virtualFromSkill === 'rende' ? '发动【仁德】，视为' : '';
+    host.log(`${source.generalName} ${prefix}对 ${targetLabel} 使用【${card.name}】`);
+    host.onCardCommitted?.({ source, card, targets });
 
     context.cardCommitted = true;
     setCardPlayContext(host.getState().resolution.context, context);
@@ -629,16 +1095,32 @@ export class CardPlayService {
 
     this.commitPlayedCard(host, source, card, playContext, [target]);
 
+    const targetHandCountBefore = target.handCards.length;
+    const targetEquipmentCountBefore = target.equipment.length;
+    const sourceHandCountBefore = source.handCards.length;
     const ok =
       zonePick.action === 'discard'
-        ? discardZoneCard(target, parsed.zone, parsed.index, host.getDeck(), (message) =>
-            host.log(message),
+        ? discardZoneCard(
+            target,
+            parsed.zone,
+            parsed.index,
+            host.getDeck(),
+            (message) => host.log(message),
+            source,
           )
         : takeZoneCard(target, source, parsed.zone, parsed.index, (message) =>
             host.log(message),
           );
 
     if (!ok) return { ok: false, error: '所选牌无效' };
+    if (zonePick.action === 'take' && source.handCards.length > sourceHandCountBefore) {
+      host.afterPlayerGainedCards?.(source, source.handCards.slice(sourceHandCountBefore));
+    }
+    host.afterPlayerLostHandCards?.(target, targetHandCountBefore - target.handCards.length);
+    host.afterPlayerLostEquipmentCards?.(
+      target,
+      targetEquipmentCountBefore - target.equipment.length,
+    );
 
     playContext.pendingZoneCardId = undefined;
     this.clearCardPlay(host);
@@ -675,16 +1157,124 @@ export class CardPlayService {
       return { ok: true };
     }
 
-    const cancelledTargets = new Set(context.wuxieCancelledTargetIds ?? []);
+    const cancelledTargets = new Set([
+      ...(context.wuxieCancelledTargetIds ?? []),
+      ...(context.qianxunCancelledTargetIds ?? []),
+      ...(context.fenweiCancelledTargetIds ?? []),
+    ]);
     const finalTargets = targets.filter((target) => !cancelledTargets.has(target.id));
     context.targetPlayerIds = finalTargets.map((target) => target.id);
 
     if (finalTargets.length === 0 && targets.length > 0) {
       this.commitPlayedCard(host, source, card, context, targets);
-      host.log(`【${card.name}】的目标全部被【无懈可击】抵消`);
+      host.log(`【${card.name}】的目标全部被抵消`);
       this.clearCardPlay(host);
       host.setPrompt(null);
       return { ok: true };
+    }
+
+    const qianxunTarget = this.findQianxunTarget(card, finalTargets, context);
+    if (qianxunTarget) {
+      context.awaitingQianxunFrom = qianxunTarget.id;
+      context.qianxunOfferedTargetIds = [
+        ...(context.qianxunOfferedTargetIds ?? []),
+        qianxunTarget.id,
+      ];
+      setCardPlayContext(host.getState().resolution.context, context);
+      host.setPrompt({
+        id: nextPromptId(),
+        type: 'use_skill',
+        playerId: qianxunTarget.id,
+        skillId: 'qianxun',
+        skillName: '谦逊',
+        sourcePlayerId: source.id,
+        cardId: card.id,
+        cardName: card.name,
+        targetPlayerIds: [qianxunTarget.id],
+        discardCount: 2,
+        discardHandIndices: qianxunTarget.handCards.map((_, index) => index),
+        message: `${qianxunTarget.generalName}：是否发动【谦逊】，弃置两张手牌并取消【${card.name}】对你的影响？`,
+        options: [
+          { id: 'skill:qianxun', label: '发动【谦逊】' },
+          { id: 'skip', label: '不发动' },
+        ],
+      });
+      return { ok: true, paused: true };
+    }
+
+    const fenweiTarget = this.findFenweiTarget(card, targets, finalTargets, context);
+    if (fenweiTarget) {
+      context.fenweiOfferedTargetIds = [
+        ...(context.fenweiOfferedTargetIds ?? []),
+        fenweiTarget.id,
+      ];
+      setCardPlayContext(host.getState().resolution.context, context);
+      host.setPrompt({
+        id: nextPromptId(),
+        type: 'use_skill',
+        playerId: fenweiTarget.id,
+        skillId: 'fenwei',
+        skillName: '奋威',
+        sourcePlayerId: source.id,
+        cardId: card.id,
+        cardName: card.name,
+        targetPlayerIds: [fenweiTarget.id],
+        discardCount: 1,
+        discardHandIndices: fenweiTarget.handCards.map((_, index) => index),
+        skillCardOptions: listZoneCards(fenweiTarget, { hideHand: false, shuffleHand: false }),
+        message: `${fenweiTarget.generalName}：是否发动【奋威】，弃置一张牌并取消【${card.name}】对你的影响？`,
+        options: [
+          { id: 'skill:fenwei', label: '发动【奋威】' },
+          { id: 'skip', label: '不发动' },
+        ],
+      });
+      return { ok: true, paused: true };
+    }
+
+    const liuliTarget = this.findLiuliTarget(host, source, card, finalTargets, context);
+    if (liuliTarget) {
+      const redirectTargets = host
+        .getState()
+        .players.filter(
+          (player) =>
+            player.id !== source.id &&
+            player.id !== liuliTarget.id &&
+            player.hp > 0 &&
+            !player.dead &&
+            isInAttackRange(host.getState().players, liuliTarget, player),
+        );
+      context.awaitingLiuliFrom = liuliTarget.id;
+      context.liuliOfferedTargetIds = [
+        ...(context.liuliOfferedTargetIds ?? []),
+        liuliTarget.id,
+      ];
+      setCardPlayContext(host.getState().resolution.context, context);
+      host.setPrompt({
+        id: nextPromptId(),
+        type: 'use_skill',
+        playerId: liuliTarget.id,
+        skillId: 'liuli',
+        skillName: '流离',
+        sourcePlayerId: source.id,
+        cardId: card.id,
+        cardName: card.name,
+        targetPlayerIds: [liuliTarget.id],
+        validTargetIds: redirectTargets.map((player) => player.id),
+        discardCount: 1,
+        discardHandIndices: liuliTarget.handCards.map((_, index) => index),
+        skillCardOptions: listZoneCards(liuliTarget, { hideHand: true, shuffleHand: true }),
+        message: `${liuliTarget.generalName}：是否发动【流离】，弃置一张牌并转移【杀】？`,
+        options: [
+          { id: 'skill:liuli', label: '发动【流离】' },
+          { id: 'skip', label: '不发动' },
+        ],
+      });
+      return { ok: true, paused: true };
+    }
+
+    const tieqiTarget = this.findTieqiTarget(card, source, finalTargets, context);
+    if (tieqiTarget) {
+      return this.promptTieqiOffer(host, card, source, tieqiTarget, context);
     }
 
     const responseType = getResponseTypeFromEffect(card);
@@ -770,16 +1360,30 @@ export class CardPlayService {
         const parsed = parseZoneCardId(context.pendingZoneCardId);
         if (parsed) {
           this.commitPlayedCard(host, source, card, context, [finalTargets[0]!]);
+          const targetEquipmentCountBefore = finalTargets[0]!.equipment.length;
+          const sourceHandCountBefore = source.handCards.length;
           const ok =
             zonePickAction === 'discard'
-              ? discardZoneCard(finalTargets[0]!, parsed.zone, parsed.index, host.getDeck(), (message) =>
-                  host.log(message),
+              ? discardZoneCard(
+                  finalTargets[0]!,
+                  parsed.zone,
+                  parsed.index,
+                  host.getDeck(),
+                  (message) => host.log(message),
+                  source,
                 )
               : takeZoneCard(finalTargets[0]!, source, parsed.zone, parsed.index, (message) =>
                   host.log(message),
                 );
 
           if (ok) {
+            if (zonePickAction === 'take' && source.handCards.length > sourceHandCountBefore) {
+              host.afterPlayerGainedCards?.(source, source.handCards.slice(sourceHandCountBefore));
+            }
+            host.afterPlayerLostEquipmentCards?.(
+              finalTargets[0]!,
+              targetEquipmentCountBefore - finalTargets[0]!.equipment.length,
+            );
             context.pendingZoneCardId = undefined;
             this.clearCardPlay(host);
             setZonePickContext(host.getState().resolution.context, undefined);
@@ -807,6 +1411,481 @@ export class CardPlayService {
 
   private shouldPromptWuxie(card: CardDefinition, targetPlayerIds: string[]): boolean {
     return card.type === 'trick' && card.name !== '无懈可击' && targetPlayerIds.length > 0;
+  }
+
+  submitQianxun(
+    host: CardPlayHost,
+    playerId: string,
+    promptId: string,
+    choiceId: string,
+    handIndices: number[] = [],
+  ): { ok: boolean; error?: string; paused?: boolean; scheduleAoe?: boolean } {
+    const prompt = host.getState().prompt;
+    const context = this.requireCardPlay(host);
+    if (!prompt || prompt.id !== promptId || !context) {
+      return { ok: false, error: '提示已失效' };
+    }
+    if (prompt.type !== 'use_skill' || prompt.skillId !== 'qianxun' || playerId !== prompt.playerId) {
+      return { ok: false, error: '当前不能发动【谦逊】' };
+    }
+
+    const card = CardRegistry.getById(context.cardId);
+    const source = host.getState().players.find((p) => p.id === context.sourcePlayerId);
+    const player = host.getState().players.find((p) => p.id === playerId);
+    if (!card || !source || !player) {
+      this.clearCardPlay(host);
+      host.setPrompt(null);
+      return { ok: false, error: '状态错误' };
+    }
+
+    if (choiceId === 'skip') {
+      context.awaitingQianxunFrom = undefined;
+      setCardPlayContext(host.getState().resolution.context, context);
+      host.setPrompt(null);
+      const targets = context.targetPlayerIds
+        .map((id) => host.getState().players.find((p) => p.id === id))
+        .filter((p): p is EnginePlayerState => !!p);
+      return this.continueResolution(host, card, source, targets, context);
+    }
+
+    if (choiceId !== 'skill:qianxun') {
+      return { ok: false, error: '无效选择' };
+    }
+    if (handIndices.length !== 2) {
+      return { ok: false, error: '请选择两张手牌弃置' };
+    }
+
+    const sorted = [...handIndices].sort((left, right) => right - left);
+    if (new Set(sorted).size !== handIndices.length) {
+      return { ok: false, error: '不能重复选择同一张手牌' };
+    }
+    const handCountBefore = player.handCards.length;
+    const discarded: string[] = [];
+    for (const index of sorted) {
+      if (index < 0 || index >= player.handCards.length) {
+        return { ok: false, error: '所选手牌无效' };
+      }
+      const cardEntry = player.handCards.splice(index, 1)[0]!;
+      host.getDeck().discardCard(cardEntry);
+      discarded.push(cardEntry);
+    }
+
+    host.afterPlayerLostHandCards?.(player, handCountBefore - player.handCards.length);
+    context.awaitingQianxunFrom = undefined;
+    context.qianxunCancelledTargetIds = [
+      ...(context.qianxunCancelledTargetIds ?? []),
+      player.id,
+    ];
+    setCardPlayContext(host.getState().resolution.context, context);
+    host.log(
+      `${player.generalName} 发动【谦逊】，弃置 ${discarded.join('、')}，取消【${card.name}】对自己的影响`,
+    );
+    host.setPrompt(null);
+    const targets = context.targetPlayerIds
+      .map((id) => host.getState().players.find((p) => p.id === id))
+      .filter((p): p is EnginePlayerState => !!p);
+    return this.continueResolution(host, card, source, targets, context);
+  }
+
+  submitLiuli(
+    host: CardPlayHost,
+    playerId: string,
+    promptId: string,
+    choiceId: string,
+    redirectTargetId?: string,
+    zoneCardId?: string,
+  ): { ok: boolean; error?: string; paused?: boolean; scheduleAoe?: boolean } {
+    const prompt = host.getState().prompt;
+    const context = this.requireCardPlay(host);
+    if (!prompt || prompt.id !== promptId || !context) {
+      return { ok: false, error: '提示已失效' };
+    }
+    if (prompt.type !== 'use_skill' || prompt.skillId !== 'liuli' || playerId !== prompt.playerId) {
+      return { ok: false, error: '当前不能发动【流离】' };
+    }
+
+    const card = CardRegistry.getById(context.cardId);
+    const source = host.getState().players.find((p) => p.id === context.sourcePlayerId);
+    const player = host.getState().players.find((p) => p.id === playerId);
+    if (!card || !source || !player) {
+      this.clearCardPlay(host);
+      host.setPrompt(null);
+      return { ok: false, error: '状态错误' };
+    }
+
+    if (choiceId === 'skip') {
+      context.awaitingLiuliFrom = undefined;
+      setCardPlayContext(host.getState().resolution.context, context);
+      host.setPrompt(null);
+      const targets = context.targetPlayerIds
+        .map((id) => host.getState().players.find((p) => p.id === id))
+        .filter((p): p is EnginePlayerState => !!p);
+      return this.continueResolution(host, card, source, targets, context);
+    }
+
+    if (choiceId !== 'skill:liuli') return { ok: false, error: '无效选择' };
+    if (!redirectTargetId || !prompt.validTargetIds?.includes(redirectTargetId)) {
+      return { ok: false, error: '请选择合法的转移目标' };
+    }
+    if (!zoneCardId) return { ok: false, error: '请选择一张牌弃置' };
+    const parsed = parseZoneCardId(zoneCardId);
+    if (!parsed || parsed.zone === 'judge') return { ok: false, error: '所选牌无效' };
+
+    const handCountBefore = player.handCards.length;
+    const equipmentCountBefore = player.equipment.length;
+    const discarded = discardZoneCard(player, parsed.zone, parsed.index, host.getDeck(), (message) =>
+      host.log(message),
+    );
+    if (!discarded) return { ok: false, error: '所选牌无效' };
+    host.afterPlayerLostHandCards?.(player, handCountBefore - player.handCards.length);
+    host.afterPlayerLostEquipmentCards?.(
+      player,
+      equipmentCountBefore - player.equipment.length,
+    );
+
+    const nextTargets = context.targetPlayerIds.map((id) =>
+      id === player.id ? redirectTargetId : id,
+    );
+    context.awaitingLiuliFrom = undefined;
+    context.targetPlayerIds = nextTargets;
+    setCardPlayContext(host.getState().resolution.context, context);
+
+    const redirected = host.getState().players.find((p) => p.id === redirectTargetId);
+    player.skillUseCount.liuli = (player.skillUseCount.liuli ?? 0) + 1;
+    host.log(
+      `${player.generalName} 发动【流离】，将【杀】转移给 ${redirected?.generalName ?? '目标'}`,
+    );
+    host.setPrompt(null);
+    const targets = nextTargets
+      .map((id) => host.getState().players.find((p) => p.id === id))
+      .filter((p): p is EnginePlayerState => !!p);
+    return this.continueResolution(host, card, source, targets, context);
+  }
+
+  submitTieqi(
+    host: CardPlayHost,
+    playerId: string,
+    promptId: string,
+    choiceId: string,
+  ): { ok: boolean; error?: string; paused?: boolean; scheduleAoe?: boolean } {
+    const prompt = host.getState().prompt;
+    const context = this.requireCardPlay(host);
+    if (!prompt || prompt.id !== promptId || !context) {
+      return { ok: false, error: '提示已失效' };
+    }
+    if (prompt.type !== 'use_skill' || prompt.skillId !== 'tieqi' || playerId !== prompt.playerId) {
+      return { ok: false, error: '当前不能响应【铁骑】' };
+    }
+
+    const card = CardRegistry.getById(context.cardId);
+    const source = host.getState().players.find((p) => p.id === context.sourcePlayerId);
+    const player = host.getState().players.find((p) => p.id === playerId);
+    if (!card || !source || !player) {
+      this.clearCardPlay(host);
+      host.setPrompt(null);
+      return { ok: false, error: '状态错误' };
+    }
+
+    if (context.awaitingTieqiSourceId === player.id) {
+      const target = host
+        .getState()
+        .players.find((p) => p.id === context.awaitingTieqiTargetId);
+      if (!target) {
+        this.clearCardPlay(host);
+        host.setPrompt(null);
+        return { ok: false, error: '状态错误' };
+      }
+
+      if (choiceId === 'skip') {
+        context.awaitingTieqiSourceId = undefined;
+        context.awaitingTieqiTargetId = undefined;
+        context.tieqiOfferedTargetIds = [
+          ...(context.tieqiOfferedTargetIds ?? []),
+          target.id,
+        ];
+        setCardPlayContext(host.getState().resolution.context, context);
+        host.setPrompt(null);
+        const targets = context.targetPlayerIds
+          .map((id) => host.getState().players.find((p) => p.id === id))
+          .filter((p): p is EnginePlayerState => !!p);
+        return this.continueResolution(host, card, source, targets, context);
+      }
+
+      if (choiceId !== 'skill:tieqi') {
+        return { ok: false, error: '无效选择' };
+      }
+
+      context.awaitingTieqiSourceId = undefined;
+      context.awaitingTieqiTargetId = undefined;
+      return this.resolveTieqiJudge(host, card, source, target, context);
+    }
+
+    if (choiceId === 'skip') {
+      this.blockTieqiShan(context, player.id);
+      host.log(`${player.generalName} 未弃置同花色牌，不能使用【闪】响应此【杀】`);
+    } else if (choiceId.startsWith('tieqi:discard:')) {
+      const handIndex = Number(choiceId.slice('tieqi:discard:'.length));
+      const suit = context.tieqiJudgeSuits?.[player.id];
+      const cardEntry = player.handCards[handIndex];
+      if (!Number.isInteger(handIndex) || handIndex < 0 || !cardEntry) {
+        return { ok: false, error: '所选手牌无效' };
+      }
+      if (!suit || suitOfCardEntry(cardEntry) !== suit) {
+        return { ok: false, error: '请选择与【铁骑】判定结果同花色的手牌' };
+      }
+      player.handCards.splice(handIndex, 1);
+      host.getDeck().discardCard(cardEntry);
+      host.afterPlayerLostHandCards?.(player, 1);
+      host.log(`${player.generalName} 弃置 ${cardEntry}，可以使用【闪】响应此【杀】`);
+    } else {
+      return { ok: false, error: '无效选择' };
+    }
+
+    context.awaitingTieqiFrom = undefined;
+    setCardPlayContext(host.getState().resolution.context, context);
+    host.setPrompt(null);
+    const targets = context.targetPlayerIds
+      .map((id) => host.getState().players.find((p) => p.id === id))
+      .filter((p): p is EnginePlayerState => !!p);
+    return this.continueResolution(host, card, source, targets, context);
+  }
+
+  submitFenwei(
+    host: CardPlayHost,
+    playerId: string,
+    promptId: string,
+    choiceId: string,
+    zoneCardId?: string,
+  ): { ok: boolean; error?: string; paused?: boolean; scheduleAoe?: boolean } {
+    const prompt = host.getState().prompt;
+    const context = this.requireCardPlay(host);
+    if (!prompt || prompt.id !== promptId || !context) {
+      return { ok: false, error: '提示已失效' };
+    }
+    if (prompt.type !== 'use_skill' || prompt.skillId !== 'fenwei' || playerId !== prompt.playerId) {
+      return { ok: false, error: '当前不能响应【奋威】' };
+    }
+
+    const card = CardRegistry.getById(context.cardId);
+    const source = host.getState().players.find((p) => p.id === context.sourcePlayerId);
+    const player = host.getState().players.find((p) => p.id === playerId);
+    if (!card || !source || !player) {
+      this.clearCardPlay(host);
+      host.setPrompt(null);
+      return { ok: false, error: '状态错误' };
+    }
+
+    if (choiceId === 'skip') {
+      host.setPrompt(null);
+      const targets = context.targetPlayerIds
+        .map((id) => host.getState().players.find((p) => p.id === id))
+        .filter((p): p is EnginePlayerState => !!p);
+      return this.continueResolution(host, card, source, targets, context);
+    }
+
+    if (choiceId !== 'skill:fenwei') {
+      return { ok: false, error: '无效选择' };
+    }
+
+    const parsed = parseZoneCardId(zoneCardId ?? '');
+    if (!parsed || parsed.zone === 'judge') {
+      return { ok: false, error: '请选择一张手牌或装备弃置' };
+    }
+
+    const handCountBefore = player.handCards.length;
+    const equipmentCountBefore = player.equipment.length;
+    const discarded = discardZoneCard(player, parsed.zone, parsed.index, host.getDeck(), (message) =>
+      host.log(message),
+    );
+    if (!discarded) return { ok: false, error: '所选牌无效' };
+    host.afterPlayerLostHandCards?.(player, handCountBefore - player.handCards.length);
+    host.afterPlayerLostEquipmentCards?.(
+      player,
+      equipmentCountBefore - player.equipment.length,
+    );
+
+    player.skillUseCount.fenwei = (player.skillUseCount.fenwei ?? 0) + 1;
+    context.fenweiCancelledTargetIds = Array.from(
+      new Set([...(context.fenweiCancelledTargetIds ?? []), player.id]),
+    );
+    setCardPlayContext(host.getState().resolution.context, context);
+    host.log(`${player.generalName} 发动【奋威】，取消【${card.name}】对自己的影响`);
+    host.setPrompt(null);
+
+    const targets = context.targetPlayerIds
+      .map((id) => host.getState().players.find((p) => p.id === id))
+      .filter((p): p is EnginePlayerState => !!p);
+    return this.continueResolution(host, card, source, targets, context);
+  }
+
+  private findTieqiTarget(
+    card: CardDefinition,
+    source: EnginePlayerState,
+    targets: EnginePlayerState[],
+    context: CardPlayContext,
+  ): EnginePlayerState | undefined {
+    if (card.id !== 'sha' || !playerHasSkill(source, 'tieqi') || context.awaitingTieqiFrom) {
+      return undefined;
+    }
+    const offered = new Set(context.tieqiOfferedTargetIds ?? []);
+    return targets.find((target) => !offered.has(target.id) && target.hp > 0 && !target.dead);
+  }
+
+  private promptTieqiOffer(
+    host: CardPlayHost,
+    card: CardDefinition,
+    source: EnginePlayerState,
+    target: EnginePlayerState,
+    context: CardPlayContext,
+  ): { ok: boolean; error?: string; paused?: boolean; scheduleAoe?: boolean } {
+    context.awaitingTieqiSourceId = source.id;
+    context.awaitingTieqiTargetId = target.id;
+    setCardPlayContext(host.getState().resolution.context, context);
+    host.setPrompt({
+      id: nextPromptId(),
+      type: 'use_skill',
+      playerId: source.id,
+      skillId: 'tieqi',
+      skillName: '铁骑',
+      sourcePlayerId: source.id,
+      cardId: card.id,
+      cardName: card.name,
+      targetPlayerIds: [target.id],
+      message: `${source.generalName}：是否对 ${target.generalName} 发动【铁骑】？`,
+      options: [
+        { id: 'skill:tieqi', label: '发动【铁骑】' },
+        { id: 'skip', label: '不发动' },
+      ],
+    });
+    return { ok: true, paused: true };
+  }
+
+  private resolveTieqiJudge(
+    host: CardPlayHost,
+    card: CardDefinition,
+    source: EnginePlayerState,
+    target: EnginePlayerState,
+    context: CardPlayContext,
+  ): { ok: boolean; error?: string; paused?: boolean; scheduleAoe?: boolean } {
+    context.tieqiOfferedTargetIds = [...(context.tieqiOfferedTargetIds ?? []), target.id];
+    const judgeCard = host.getDeck().drawOne();
+    const targets = context.targetPlayerIds
+      .map((id) => host.getState().players.find((p) => p.id === id))
+      .filter((p): p is EnginePlayerState => !!p);
+    if (!judgeCard) {
+      setCardPlayContext(host.getState().resolution.context, context);
+      return this.continueResolution(host, card, source, targets, context);
+    }
+    host.getDeck().discardCard(judgeCard);
+    const judge = createCardInstance(judgeCard);
+    target.skillUseCount._yijue_non_locked_disabled = 1;
+    source.skillUseCount.tieqi = (source.skillUseCount.tieqi ?? 0) + 1;
+    context.awaitingTieqiFrom = target.id;
+    context.tieqiJudgeSuits = { ...(context.tieqiJudgeSuits ?? {}), [target.id]: judge.suit };
+
+    const discardHandIndices = target.handCards
+      .map((handCard, index) => (suitOfCardEntry(handCard) === judge.suit ? index : -1))
+      .filter((index) => index >= 0);
+    host.log(
+      `${source.generalName} 发动【铁骑】，判定为 ${judgeCard}，${target.generalName} 本回合非锁定技失效`,
+    );
+
+    if (discardHandIndices.length === 0) {
+      this.blockTieqiShan(context, target.id);
+      context.awaitingTieqiFrom = undefined;
+      setCardPlayContext(host.getState().resolution.context, context);
+      host.log(`${target.generalName} 没有${judge.suit}花色手牌，不能使用【闪】响应此【杀】`);
+      return this.continueResolution(host, card, source, targets, context);
+    }
+
+    setCardPlayContext(host.getState().resolution.context, context);
+    host.setPrompt({
+      id: nextPromptId(),
+      type: 'use_skill',
+      playerId: target.id,
+      skillId: 'tieqi',
+      skillName: '铁骑',
+      sourcePlayerId: source.id,
+      cardId: card.id,
+      cardName: card.name,
+      targetPlayerIds: [target.id],
+      discardCount: 1,
+      discardHandIndices,
+      message: `${target.generalName}：受到【铁骑】影响，可弃置一张${judge.suit}花色手牌，否则不能使用【闪】响应此【杀】。`,
+      options: [
+        ...discardHandIndices.map((index) => ({
+          id: `tieqi:discard:${index}`,
+          label: `弃置 ${target.handCards[index]}`,
+        })),
+        { id: 'skip', label: '不弃置' },
+      ],
+    });
+    return { ok: true, paused: true };
+  }
+
+  private blockTieqiShan(context: CardPlayContext, targetId: string): void {
+    context.tieqiBlockedTargetIds = Array.from(
+      new Set([...(context.tieqiBlockedTargetIds ?? []), targetId]),
+    );
+  }
+
+  private findQianxunTarget(
+    card: CardDefinition,
+    targets: EnginePlayerState[],
+    context: CardPlayContext,
+  ): EnginePlayerState | undefined {
+    if (card.id !== 'lebusishu' && card.id !== 'shunshou_qianyang') return undefined;
+    const cancelled = new Set(context.qianxunCancelledTargetIds ?? []);
+    const offered = new Set(context.qianxunOfferedTargetIds ?? []);
+    if (context.awaitingQianxunFrom) return undefined;
+    return targets.find(
+      (target) =>
+        !cancelled.has(target.id) &&
+        !offered.has(target.id) &&
+        playerHasSkill(target, 'qianxun') &&
+        target.handCards.length >= 2,
+    );
+  }
+
+  private findFenweiTarget(
+    card: CardDefinition,
+    originalTargets: EnginePlayerState[],
+    targets: EnginePlayerState[],
+    context: CardPlayContext,
+  ): EnginePlayerState | undefined {
+    if (card.type !== 'trick' || originalTargets.length <= 1) return undefined;
+    const offered = new Set(context.fenweiOfferedTargetIds ?? []);
+    const cancelled = new Set(context.fenweiCancelledTargetIds ?? []);
+    return targets.find(
+      (target) =>
+        !offered.has(target.id) &&
+        !cancelled.has(target.id) &&
+        playerHasSkill(target, 'fenwei') &&
+        target.handCards.length + target.equipment.length > 0,
+    );
+  }
+
+  private findLiuliTarget(
+    host: CardPlayHost,
+    source: EnginePlayerState,
+    card: CardDefinition,
+    targets: EnginePlayerState[],
+    context: CardPlayContext,
+  ): EnginePlayerState | undefined {
+    if (card.id !== 'sha' || context.awaitingLiuliFrom) return undefined;
+    const offered = new Set(context.liuliOfferedTargetIds ?? []);
+    return targets.find((target) => {
+      if (offered.has(target.id) || !playerHasSkill(target, 'liuli')) return false;
+      if (target.handCards.length + target.equipment.length <= 0) return false;
+      return host.getState().players.some(
+        (player) =>
+          player.id !== source.id &&
+          player.id !== target.id &&
+          player.hp > 0 &&
+          !player.dead &&
+          isInAttackRange(host.getState().players, target, player),
+      );
+    });
   }
 
   private canInitiateTao(source: EnginePlayerState, card: CardDefinition): boolean {
@@ -965,6 +2044,8 @@ export class CardPlayService {
       card,
       deck: host.getDeck(),
       log: (message) => host.log(message),
+      onLostEquipment: (player, lostCount) =>
+        host.afterPlayerLostEquipmentCards?.(player, lostCount),
     });
   }
 
@@ -992,10 +2073,178 @@ export class CardPlayService {
 
   private canUseShaThisTurn(source: EnginePlayerState, card: CardDefinition): boolean {
     if (card.id !== 'sha') return true;
+    if (source.skillUseCount._allow_qinglong_sha) return true;
     const limit = card.defaultUsePerTurn ?? 1;
-    if (source.shaUsedCount < limit) return true;
+    const qinxueBonus = source.skillUseCount._qinxue_sha_bonus ?? 0;
+    if (source.shaUsedCount < limit + qinxueBonus) return true;
     const hasCrossbow = source.equipment.some((equipment) => equipment.includes('诸葛连弩'));
     return hasCrossbow || playerHasSkill(source, 'paoxiao');
+  }
+
+  private targetMaxForCard(card: CardDefinition, source: EnginePlayerState): number {
+    const baseMax = card.targeting.count?.max ?? 1;
+    if (card.id !== 'sha') return baseMax;
+    if (!hasEquipment(source, '方天画戟')) return baseMax;
+    return source.handCards.length <= 1 ? Math.max(baseMax, 3) : baseMax;
+  }
+
+  private resolveZhangbaHandIndices(
+    source: EnginePlayerState,
+    requestedCardName: string,
+    handIndex?: number,
+  ): number[] | undefined {
+    if (requestedCardName !== '杀') return undefined;
+    if (!hasEquipment(source, '丈八蛇矛')) return undefined;
+    if (source.handCards.length < 2) return undefined;
+    const first = handIndex != null && handIndex >= 0 && handIndex < source.handCards.length ? handIndex : 0;
+    const second = source.handCards.findIndex((_, index) => index !== first);
+    if (second < 0) return undefined;
+    const indices = [first, second].sort((left, right) => left - right);
+    const firstEntry = source.handCards[indices[0]!]!;
+    if (cardNameFromHandEntry(firstEntry) === '杀') return undefined;
+    return indices;
+  }
+
+  private promptShaDodgedEquipment(
+    host: CardPlayHost,
+    source: EnginePlayerState,
+    target: EnginePlayerState,
+    context: CardPlayContext,
+  ): boolean {
+    const options: NonNullable<GamePrompt['options']> = [];
+    const hasUnusedSha = source.handCards.some((entry) => cardNameFromHandEntry(entry) === '杀');
+    if (hasEquipment(source, '青龙偃月刀') && hasUnusedSha) {
+      options.push({ id: 'qinglong:sha', label: '发动【青龙偃月刀】' });
+    }
+    if (hasEquipment(source, '贯石斧') && zoneCardCount(source) >= 2) {
+      options.push({ id: 'guanshi:force', label: '发动【贯石斧】' });
+    }
+    if (options.length === 0) return false;
+
+    context.shaDodgedEquipment = { sourceId: source.id, targetId: target.id };
+    setCardPlayContext(host.getState().resolution.context, context);
+    host.setPrompt({
+      id: nextPromptId(),
+      type: 'use_skill',
+      playerId: source.id,
+      skillId: 'sha_dodged_equipment',
+      skillName: '武器追击',
+      sourcePlayerId: source.id,
+      cardId: 'sha',
+      cardName: '杀',
+      targetPlayerIds: [target.id],
+      discardCount: hasEquipment(source, '贯石斧') ? 2 : undefined,
+      skillCardOptions: listZoneCards(source, { hideHand: false, shuffleHand: false }),
+      message: `${source.generalName}：【杀】被 ${target.generalName} 抵消，可发动武器效果。`,
+      options: [...options, { id: 'skip', label: '不发动' }],
+    });
+    return true;
+  }
+
+  async submitShaDodgedEquipment(
+    host: CardPlayHost,
+    playerId: string,
+    promptId: string,
+    choiceId: string,
+    zoneCardIds: string[] = [],
+    onDamage: (params: {
+      sourceId: string;
+      targetId: string;
+      amount: number;
+      damageCardName?: string;
+    }) => Promise<void>,
+  ): Promise<{ ok: boolean; error?: string; paused?: boolean; scheduleAoe?: boolean }> {
+    const prompt = host.getState().prompt;
+    const context = this.requireCardPlay(host);
+    if (!prompt || prompt.id !== promptId || !context?.shaDodgedEquipment) {
+      return { ok: false, error: '提示已失效' };
+    }
+    if (prompt.type !== 'use_skill' || prompt.skillId !== 'sha_dodged_equipment' || prompt.playerId !== playerId) {
+      return { ok: false, error: '当前不能发动武器效果' };
+    }
+
+    const source = host.getState().players.find((player) => player.id === context.shaDodgedEquipment?.sourceId);
+    const target = host.getState().players.find((player) => player.id === context.shaDodgedEquipment?.targetId);
+    const shaCard = CardRegistry.getByName('杀');
+    if (!source || !target || !shaCard) {
+      this.clearCardPlay(host);
+      host.setPrompt(null);
+      return { ok: false, error: '状态错误' };
+    }
+
+    if (choiceId === 'skip') {
+      this.clearCardPlay(host);
+      host.setPrompt(null);
+      host.log('【杀】被抵消');
+      return { ok: true };
+    }
+
+    if (choiceId === 'qinglong:sha') {
+      const handIndex = source.handCards.findIndex((entry) => cardNameFromHandEntry(entry) === '杀');
+      if (handIndex < 0) return { ok: false, error: '手牌中没有【杀】' };
+
+      context.shaDodgedEquipment = undefined;
+      context.cardId = shaCard.id;
+      context.handIndex = handIndex;
+      context.zhangbaHandIndices = undefined;
+      context.targetPlayerIds = [target.id];
+      context.responseType = 'shan';
+      context.responsesRequired = 1;
+      context.responseCount = 0;
+      context.awaitingResponseFrom = target.id;
+      context.cardCommitted = false;
+      setCardPlayContext(host.getState().resolution.context, context);
+      host.setPrompt(null);
+      host.log(`${source.generalName} 发动【青龙偃月刀】，对 ${target.generalName} 再使用一张【杀】`);
+      source.skillUseCount._allow_qinglong_sha = 1;
+      this.commitPlayedCard(host, source, shaCard, context, [target]);
+      delete source.skillUseCount._allow_qinglong_sha;
+      return this.promptResponse(host, shaCard, source, target, context);
+    }
+
+    if (choiceId === 'guanshi:force') {
+      if (zoneCardIds.length !== 2) return { ok: false, error: '请选择两张牌弃置' };
+      const parsedCards = zoneCardIds.map(parseZoneCardId);
+      if (parsedCards.some((parsed) => !parsed || parsed.zone === 'judge')) {
+        return { ok: false, error: '请选择两张手牌或装备弃置' };
+      }
+      const unique = new Set(zoneCardIds);
+      if (unique.size !== 2) return { ok: false, error: '不能重复选择同一张牌' };
+      const handCountBefore = source.handCards.length;
+      const equipmentCountBefore = source.equipment.length;
+      for (const parsed of parsedCards.sort((left, right) => right!.index - left!.index)) {
+        if (!discardZoneCard(source, parsed!.zone, parsed!.index, host.getDeck(), (message) => host.log(message))) {
+          return { ok: false, error: '所选牌无效' };
+        }
+      }
+      host.afterPlayerLostHandCards?.(source, handCountBefore - source.handCards.length);
+      host.afterPlayerLostEquipmentCards?.(source, equipmentCountBefore - source.equipment.length);
+      this.clearCardPlay(host);
+      host.setPrompt(null);
+      host.log(`${source.generalName} 发动【贯石斧】，弃置两张牌令【杀】强制命中 ${target.generalName}`);
+      await onDamage({
+        sourceId: source.id,
+        targetId: target.id,
+        amount: this.applyDamageBuffs(source, shaCard, 1),
+        damageCardName: context.committedCardEntry ?? shaCard.name,
+      });
+      return { ok: true };
+    }
+
+    return { ok: false, error: '无效选择' };
+  }
+
+  private resolveVirtualInitiateCardName(
+    source: EnginePlayerState,
+    entry: string,
+    requestedCardName: string,
+  ): string | undefined {
+    const actualName = cardNameFromHandEntry(entry);
+    if (requestedCardName === actualName) return actualName;
+    if (requestedCardName === '杀' && canUseAsSha(source, entry)) return '杀';
+    if (requestedCardName === '过河拆桥' && canUseAsGuohe(source, entry)) return '过河拆桥';
+    if (requestedCardName === '乐不思蜀' && canUseAsLebu(source, entry)) return '乐不思蜀';
+    return undefined;
   }
 
   private resolveHandIndex(
@@ -1004,12 +2253,7 @@ export class CardPlayService {
     handIndex?: number,
   ): number {
     const parsed = cardNameFromHandEntry(cardName);
-    if (
-      handIndex != null &&
-      handIndex >= 0 &&
-      handIndex < source.handCards.length &&
-      cardNameFromHandEntry(source.handCards[handIndex]!) === parsed
-    ) {
+    if (handIndex != null && handIndex >= 0 && handIndex < source.handCards.length) {
       return handIndex;
     }
     return source.handCards.findIndex((card) => cardNameFromHandEntry(card) === parsed);
@@ -1041,7 +2285,7 @@ export class CardPlayService {
       return { ok: true };
     }
     context.wuguRevealed = revealed;
-    context.wuguPickerQueue = sortAoeTargets(host.getState().players, source, alive).map(
+    context.wuguPickerQueue = sortTargetsFromSource(host.getState().players, source, alive).map(
       (player) => player.id,
     );
     setCardPlayContext(host.getState().resolution.context, context);
@@ -1109,6 +2353,7 @@ export class CardPlayService {
     if (!picker) return { ok: false, error: '玩家不存在' };
     const picked = revealed.splice(index, 1)[0]!;
     picker.handCards.push(picked);
+    host.afterPlayerGainedCards?.(picker, [picked]);
     host.log(`${picker.generalName} 从【五谷丰登】中获得【${picked}】`);
     context.wuguRevealed = revealed;
     context.wuguPickerQueue = (context.wuguPickerQueue ?? []).slice(1);
@@ -1124,7 +2369,13 @@ export class CardPlayService {
     action: 'discard' | 'take',
   ): { ok: boolean; error?: string; paused?: boolean } {
     const options = listZoneCards(target);
-    if (options.length === 0) {
+    const filteredOptions =
+      action === 'discard'
+        ? options.filter((option) =>
+            canDiscardZoneCard(source, target, option.zone, option.index),
+          )
+        : options;
+    if (filteredOptions.length === 0) {
       const context = this.requireCardPlay(host);
       if (context) {
         this.commitPlayedCard(host, source, card, context, [target]);
@@ -1151,7 +2402,7 @@ export class CardPlayService {
       cardName: card.name,
       targetPlayerIds: [target.id],
       message: `【${card.name}】：请选择 ${target.generalName} 区域内一张牌（${verb}）`,
-      zoneCardOptions: options.map((option) => ({
+      zoneCardOptions: filteredOptions.map((option) => ({
         id: option.id,
         label: option.label,
       })),

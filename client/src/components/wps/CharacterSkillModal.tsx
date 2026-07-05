@@ -1,6 +1,13 @@
 import { CharacterRegistry } from '@tk/engine';
 import type { RoomPlayer } from '@tk/shared';
-import { formatGeneralName, stripGeneralPrefixInText } from '../../utils/display';
+import {
+  formatCharacterLine,
+  formatGeneralName,
+  formatKingdomName,
+  formatPlayerName,
+  formatRoleName,
+  stripGeneralPrefixInText,
+} from '../../utils/display';
 import styles from './GameModal.module.css';
 
 interface CharacterSkillModalProps {
@@ -13,7 +20,6 @@ export function CharacterSkillModal({
   onClose,
 }: CharacterSkillModalProps) {
   const ch = CharacterRegistry.resolve(player.general ?? player.nickname);
-  const role = player.role ?? '—';
   const hp = player.hp ?? 0;
   const maxHp = player.maxHp ?? 0;
 
@@ -27,7 +33,7 @@ export function CharacterSkillModal({
       >
         <header className={styles.header}>
           <h2 id="char-modal-title">
-            {formatGeneralName(player) || formatGeneralName({ general: ch?.name })}
+            {formatCharacterLine(player) || formatGeneralName({ general: ch?.name })}
           </h2>
           <button type="button" className={styles.closeBtn} onClick={onClose}>
             ×
@@ -35,22 +41,12 @@ export function CharacterSkillModal({
         </header>
         <div className={styles.body}>
           <dl className={styles.meta}>
-            <dt>操控名</dt>
-            <dd>{formatGeneralName({ nickname: player.nickname })}</dd>
+            <dt>玩家</dt>
+            <dd>{formatPlayerName(player)}</dd>
             <dt>身份</dt>
-            <dd>【{role}】</dd>
+            <dd>【{formatRoleName(player)}】</dd>
             <dt>势力</dt>
-            <dd>
-              {ch?.kingdom === 'wei'
-                ? '魏'
-                : ch?.kingdom === 'shu'
-                  ? '蜀'
-                  : ch?.kingdom === 'wu'
-                    ? '吴'
-                    : ch?.kingdom === 'qun'
-                      ? '群'
-                      : '—'}
-            </dd>
+            <dd>{formatKingdomName(ch?.kingdom)}</dd>
             <dt>体力</dt>
             <dd>
               {hp}/{maxHp}

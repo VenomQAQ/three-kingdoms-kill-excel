@@ -24,6 +24,7 @@ const MAX_CODE_RETRIES = 10;
 const LORD_GENERAL_OPTION_COUNT = 5;
 const GENERAL_OPTION_COUNT = 3;
 const MANUAL_LEAVE_PENALTY = 5;
+const DISCONNECT_GRACE_MS = 5 * 60 * 1000;
 
 export interface LeaveRoomResult {
   room: Room | null;
@@ -69,6 +70,20 @@ export class RoomService implements OnModuleInit {
     if (!room) return null;
     const p = room.players.find((x) => x.id === playerId);
     if (p) p.connected = false;
+
+    if (room.hostId === playerId) {
+      this.syncLifecycle(room, {
+        hostTransferPending: true,
+        disconnectGraceUntil: Date.now() + DISCONNECT_GRACE_MS,
+      });
+      const nextHostId = this.transferHost(room, playerId);
+      if (!nextHostId) {
+        this.deleteRoom(room);
+        return null;
+      }
+    }
+
+    this.syncLifecycle(room, { disconnectGraceUntil: Date.now() + DISCONNECT_GRACE_MS });
     return room;
   }
   bindUserPlayer(userId: string, playerId: string): void {
@@ -88,9 +103,6 @@ export class RoomService implements OnModuleInit {
     const player = room?.players.find((p) => p.id === playerId);
     if (!room || !player) return null;
     player.nickname = nickname;
-    if (room.generalSelection?.currentPlayerId === playerId) {
-      room.generalSelection.currentPlayerNickname = nickname;
-    }
     return room;
   }
   /**
@@ -164,6 +176,7 @@ export class RoomService implements OnModuleInit {
       settings: { maxPlayers },
       createdAt: Date.now(),
     };
+    this.syncLifecycle(room);
     this.roomsById.set(room.id, room);
     this.roomIdByCode.set(code, room.id);
     this.playerRoom.set(hostId, room.id);
@@ -183,6 +196,7 @@ export class RoomService implements OnModuleInit {
     if (existing) {
       existing.connected = true;
       existing.nickname = nickname.trim() || existing.nickname;
+      this.syncLifecycle(room);
       this.actingPlayerBySocket.set(playerId, playerId);
       return room;
     }
@@ -196,6 +210,7 @@ export class RoomService implements OnModuleInit {
           rebound.id = playerId;
           rebound.connected = true;
           rebound.nickname = nickname.trim() || rebound.nickname;
+          this.syncLifecycle(room);
           this.playerRoom.delete(oldPlayerId);
           this.playerRoom.set(playerId, room.id);
           this.userPlayer.set(userId, playerId);
@@ -218,6 +233,7 @@ export class RoomService implements OnModuleInit {
       const oldPlayerId = rejoin.id;
       rejoin.id = playerId;
       rejoin.connected = true;
+      this.syncLifecycle(room);
       this.playerRoom.delete(oldPlayerId);
       this.playerRoom.set(playerId, room.id);
       this.actingPlayerBySocket.set(playerId, playerId);
@@ -242,6 +258,7 @@ export class RoomService implements OnModuleInit {
       ready: false,
       connected: true,
     });
+    this.syncLifecycle(room);
     this.playerRoom.set(playerId, room.id);
     this.actingPlayerBySocket.set(playerId, playerId);
     this.bindUserIdToPlayer(playerId, userId);
@@ -260,17 +277,34 @@ export class RoomService implements OnModuleInit {
     const idx = room.players.findIndex((p) => p.id === playerId);
     if (idx === -1) return { room, removed: false, disbanded: false };
 
+    const previousHostId = room.hostId;
+
     if (reason === 'disconnect') {
       room.players[idx].connected = false;
-      return { room, removed: false, disbanded: false, previousRoomId: room.id };
+      let newHostId: string | undefined;
+      if (room.hostId === playerId) {
+        this.syncLifecycle(room, { hostTransferPending: true, disconnectGraceUntil: Date.now() + DISCONNECT_GRACE_MS });
+        newHostId = this.transferHost(room, playerId);
+        if (!newHostId) {
+          this.deleteRoom(room);
+          return {
+            room: null,
+            removed: false,
+            disbanded: true,
+            previousRoomId: room.id,
+            previousHostId,
+          };
+        }
+      }
+      this.syncLifecycle(room, { disconnectGraceUntil: Date.now() + DISCONNECT_GRACE_MS });
+      return { room, removed: false, disbanded: false, previousRoomId: room.id, previousHostId, newHostId };
     }
-
-    const previousHostId = room.hostId;
     const shouldRemove =
       room.status === 'waiting' || reason === 'manual' || reason === 'evict' || reason === 'room-disband';
 
     if (!shouldRemove) {
       room.players[idx].connected = false;
+      this.syncLifecycle(room, { disconnectGraceUntil: Date.now() + DISCONNECT_GRACE_MS });
       return { room, removed: false, disbanded: false, previousRoomId: room.id, previousHostId };
     }
 
@@ -291,7 +325,8 @@ export class RoomService implements OnModuleInit {
 
     let newHostId: string | undefined;
     if (previousHostId === playerId) {
-      newHostId = this.transferHost(room);
+      this.syncLifecycle(room, { hostTransferPending: true });
+      newHostId = this.transferHost(room, playerId);
       if (!newHostId) {
         this.deleteRoom(room);
         return {
@@ -307,6 +342,7 @@ export class RoomService implements OnModuleInit {
     if (room.status === 'selecting') {
       this.rebuildGeneralSelectionAfterLeave(room);
     }
+    this.syncLifecycle(room);
 
     return {
       room,
@@ -326,6 +362,7 @@ export class RoomService implements OnModuleInit {
     const player = room.players.find((p) => p.id === playerId);
     if (!player) throw new RoomError('NOT_IN_ROOM', '不在房间内');
     player.ready = ready;
+    this.syncLifecycle(room);
     return room;
   }
 
@@ -347,9 +384,8 @@ export class RoomService implements OnModuleInit {
     if (!allReady) {
       throw new RoomError('NOT_ALL_READY', '还有玩家未准备');
     }
-    room.status = 'selecting';
-    const lordIndex = Math.max(0, room.players.findIndex((p) => p.id === room.hostId));
-    assignIdentities(room.players, lordIndex);
+    this.setRoomStatus(room, 'selecting');
+    assignIdentities(room.players);
     room.players.forEach((p) => {
       p.roleRevealed = p.role === '主公';
       p.general = undefined;
@@ -376,12 +412,10 @@ export class RoomService implements OnModuleInit {
     if (room.status !== 'selecting') {
       throw new RoomError('E_NOT_SELECTING', '当前不是选将阶段');
     }
-    const currentId = room.generalSelection?.currentPlayerId;
-    if (currentId !== playerId) {
-      throw new RoomError('E_NOT_YOUR_TURN', '当前不是你选将');
-    }
     this.applyGeneralSelection(room, playerId, generalId);
-    this.advanceGeneralSelection(room);
+    if (this.isGeneralSelectionComplete(room)) {
+      this.startSelectedGame(room);
+    }
     return room;
   }
 
@@ -404,6 +438,7 @@ export class RoomService implements OnModuleInit {
       isSandbox: true,
       sandbox: { phase: 'lobby', turnIndex: 0, round: 1, log: [] },
     };
+    this.syncLifecycle(room);
     this.roomsById.set(room.id, room);
     this.roomIdByCode.set(room.code, room.id);
     return room;
@@ -417,6 +452,7 @@ export class RoomService implements OnModuleInit {
     if (existing) {
       existing.connected = true;
       existing.nickname = trimmedNick || existing.nickname;
+      this.syncLifecycle(room);
       this.playerRoom.set(playerId, room.id);
       this.actingPlayerBySocket.set(playerId, playerId);
       return room;
@@ -431,6 +467,7 @@ export class RoomService implements OnModuleInit {
           rebound.id = playerId;
           rebound.connected = true;
           rebound.nickname = trimmedNick || rebound.nickname;
+          this.syncLifecycle(room);
           this.playerRoom.delete(oldId);
           this.playerRoom.set(playerId, room.id);
           this.userPlayer.set(userId, playerId);
@@ -453,6 +490,7 @@ export class RoomService implements OnModuleInit {
       const oldId = rejoin.id;
       rejoin.id = playerId;
       rejoin.connected = true;
+      this.syncLifecycle(room);
       this.playerRoom.delete(oldId);
       this.playerRoom.set(playerId, room.id);
       if (room.hostId === oldId) room.hostId = playerId;
@@ -477,6 +515,7 @@ export class RoomService implements OnModuleInit {
       connected: true,
       handCards: [],
     });
+    this.syncLifecycle(room);
     this.playerRoom.set(playerId, room.id);
     this.actingPlayerBySocket.set(playerId, playerId);
     this.bindUserIdToPlayer(playerId, userId);
@@ -556,7 +595,7 @@ export class RoomService implements OnModuleInit {
     if (room.players.length < 1) {
       throw new RoomError('NOT_ENOUGH_PLAYERS', '请至少添加 1 名角色');
     }
-    room.status = 'playing';
+    this.setRoomStatus(room, 'playing');
     const sampleGenerals = [
       '界刘备',
       '界关羽',
@@ -751,6 +790,19 @@ export class RoomService implements OnModuleInit {
     const engine = this.requireRoomEngine(room);
     const res = engine.rendeFinish(playerId);
     if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '无法结束仁德');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
+  gameQingnangRecover(playerId: string, targetId: string, handIndices: number | number[]): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.isSandbox) {
+      return this.sandboxQingnangRecover(playerId, playerId, targetId, handIndices);
+    }
+    this.assertPlaying(room);
+    const engine = this.requireRoomEngine(room);
+    const res = engine.qingnangRecover(playerId, targetId, handIndices);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '青囊失败');
     this.gameService.syncRoomFromEngine(room, engine);
     return room;
   }
@@ -980,6 +1032,20 @@ export class RoomService implements OnModuleInit {
     return room;
   }
 
+  sandboxQingnangRecover(
+    socketPlayerId: string,
+    actingPlayerId: string,
+    targetId: string,
+    handIndices: number | number[],
+  ): Room {
+    const room = this.getRoomByPlayerId(socketPlayerId);
+    const engine = this.requireSandboxEngine(room);
+    const res = engine.qingnangRecover(actingPlayerId, targetId, handIndices);
+    if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '青囊失败');
+    this.gameService.syncRoomFromEngine(room, engine);
+    return room;
+  }
+
   sandboxZhihengConfirm(
     socketPlayerId: string,
     actingPlayerId: string,
@@ -1147,7 +1213,19 @@ export class RoomService implements OnModuleInit {
     if (!room) return null;
     if (room.status !== 'finished') return room;
 
-    room.status = 'waiting';
+    const victory = room.sandbox?.victory;
+    if (victory) {
+      room.settlementRecords = [
+        ...(room.settlementRecords ?? []),
+        {
+          id: uuidv4(),
+          finishedAt: Date.now(),
+          winners: [...victory.winners],
+          message: victory.message,
+        },
+      ];
+    }
+    this.setRoomStatus(room, 'waiting');
     room.players.forEach((player) => {
       player.ready = false;
     });
@@ -1175,10 +1253,7 @@ export class RoomService implements OnModuleInit {
       optionsByPlayer.set(player.id, picks);
     }
     this.generalOptionsByRoom.set(room.id, optionsByPlayer);
-    const current = room.players.find((player) => player.role === '主公') ?? room.players[0]!;
     room.generalSelection = {
-      currentPlayerId: current.id,
-      currentPlayerNickname: current.nickname,
       deadlineAt: Date.now() + env.selectingTimeoutSec * 1000,
       timeoutSec: env.selectingTimeoutSec,
       selected: [],
@@ -1193,12 +1268,14 @@ export class RoomService implements OnModuleInit {
     const timer = setTimeout(() => {
       const latest = this.roomsById.get(room.id);
       if (!latest || latest.status !== 'selecting') return;
-      const currentId = latest.generalSelection?.currentPlayerId;
-      if (!currentId) return;
-      const defaultGeneralId = this.generalOptionsByRoom.get(latest.id)?.get(currentId)?.[0];
-      if (defaultGeneralId) {
-        this.applyGeneralSelection(latest, currentId, defaultGeneralId);
-        this.advanceGeneralSelection(latest);
+      for (const player of latest.players) {
+        const alreadySelected = latest.generalSelection?.selected.some((item) => item.playerId === player.id);
+        if (alreadySelected) continue;
+        const defaultGeneralId = this.generalOptionsByRoom.get(latest.id)?.get(player.id)?.[0];
+        if (defaultGeneralId) this.applyGeneralSelection(latest, player.id, defaultGeneralId);
+      }
+      if (this.isGeneralSelectionComplete(latest)) {
+        this.startSelectedGame(latest);
         this.roomChanged?.(latest);
       }
     }, delay);
@@ -1220,6 +1297,12 @@ export class RoomService implements OnModuleInit {
     if (!ch) throw new RoomError('E_INVALID_GENERAL_OPTION', '武将不存在');
     const player = room.players.find((p) => p.id === playerId);
     if (!player) throw new RoomError('PLAYER_NOT_FOUND', '玩家不存在');
+    const selectedByOther = room.generalSelection?.selected.some(
+      (item) => item.playerId !== playerId && item.generalId === generalId,
+    );
+    if (selectedByOther) {
+      throw new RoomError('E_INVALID_GENERAL_OPTION', '该武将已被选择');
+    }
     player.general = ch.name;
     room.generalSelection = room.generalSelection
       ? {
@@ -1232,26 +1315,15 @@ export class RoomService implements OnModuleInit {
       : room.generalSelection;
   }
 
-  private advanceGeneralSelection(room: Room): void {
-    const next = this.nextSelectingPlayer(room);
-    if (next) {
-      room.generalSelection = {
-        currentPlayerId: next.id,
-        currentPlayerNickname: next.nickname,
-        deadlineAt: Date.now() + env.selectingTimeoutSec * 1000,
-        timeoutSec: env.selectingTimeoutSec,
-        selected: room.generalSelection?.selected ?? [],
-      };
-      this.scheduleSelectingTimeout(room);
-      return;
-    }
-    this.startSelectedGame(room);
+  private isGeneralSelectionComplete(room: Room): boolean {
+    const selectedIds = new Set(room.generalSelection?.selected.map((item) => item.playerId) ?? []);
+    return room.players.every((player) => selectedIds.has(player.id));
   }
 
   private startSelectedGame(room: Room): void {
     this.clearSelectingTimer(room.id);
     this.generalOptionsByRoom.delete(room.id);
-    room.status = 'playing';
+    this.setRoomStatus(room, 'playing');
     room.generalSelection = undefined;
     room.players.forEach((p) => {
       p.handCards = [];
@@ -1279,7 +1351,7 @@ export class RoomService implements OnModuleInit {
 
   private filterSelectingRoomForPlayer(room: Room, playerId: string): Room {
     const clone: Room = JSON.parse(JSON.stringify(room)) as Room;
-    if (clone.generalSelection && clone.generalSelection.currentPlayerId === playerId) {
+    if (clone.generalSelection) {
       const optionIds = this.generalOptionsByRoom.get(room.id)?.get(playerId) ?? [];
       clone.generalSelection.myOptions = optionIds
         .map((id) => CharacterRegistry.getById(id))
@@ -1287,14 +1359,14 @@ export class RoomService implements OnModuleInit {
         .map((ch) => ({
           id: ch.id,
           name: ch.name,
+          kingdom: ch.kingdom,
+          hp: ch.maxHp,
           maxHp: ch.maxHp,
           skills: ch.skills.map((skill) => ({
             name: skill.name,
             description: skill.description,
           })),
         }));
-    } else if (clone.generalSelection) {
-      delete clone.generalSelection.myOptions;
     }
     for (const p of clone.players) {
       const isSelf = p.id === playerId;
@@ -1305,25 +1377,12 @@ export class RoomService implements OnModuleInit {
     return clone;
   }
 
-  private nextSelectingPlayer(room: Room): RoomPlayer | undefined {
-    const selectedIds = new Set(room.generalSelection?.selected.map((item) => item.playerId) ?? []);
-    const lordIndex = Math.max(0, room.players.findIndex((p) => p.role === '主公'));
-    for (let offset = 1; offset <= room.players.length; offset++) {
-      const player = room.players[(lordIndex + offset) % room.players.length];
-      if (player && !selectedIds.has(player.id)) return player;
-    }
-    return undefined;
-  }
-
   private remapSelectingPlayer(room: Room, oldPlayerId: string, newPlayerId: string): void {
     const options = this.generalOptionsByRoom.get(room.id);
     const oldOptions = options?.get(oldPlayerId);
     if (oldOptions) {
       options!.delete(oldPlayerId);
       options!.set(newPlayerId, oldOptions);
-    }
-    if (room.generalSelection?.currentPlayerId === oldPlayerId) {
-      room.generalSelection.currentPlayerId = newPlayerId;
     }
     if (room.generalSelection) {
       room.generalSelection.selected = room.generalSelection.selected.map((item) =>
@@ -1349,27 +1408,37 @@ export class RoomService implements OnModuleInit {
       return;
     }
 
-    const currentExists = room.players.some((p) => p.id === room.generalSelection?.currentPlayerId);
-    const next = currentExists
-      ? room.players.find((p) => p.id === room.generalSelection?.currentPlayerId)
-      : this.nextSelectingPlayer(room) ?? room.players[0];
-
-    if (!next) return;
     room.generalSelection = {
       ...room.generalSelection,
-      currentPlayerId: next.id,
-      currentPlayerNickname: next.nickname,
       deadlineAt: Date.now() + env.selectingTimeoutSec * 1000,
       timeoutSec: env.selectingTimeoutSec,
     };
     this.scheduleSelectingTimeout(room);
   }
 
-  private transferHost(room: Room): string | undefined {
-    const next = room.players.find((p) => !p.isVirtual && p.connected) ?? room.players.find((p) => !p.isVirtual);
+  private transferHost(room: Room, excludingPlayerId?: string): string | undefined {
+    const candidates = room.players.filter((p) => !p.isVirtual && p.id !== excludingPlayerId);
+    const next = candidates.find((p) => p.connected) ?? candidates[0];
     if (!next) return undefined;
     room.hostId = next.id;
+    this.syncLifecycle(room);
     return next.id;
+  }
+
+  private setRoomStatus(room: Room, status: Room['status']): void {
+    room.status = status;
+    this.syncLifecycle(room);
+  }
+
+  private syncLifecycle(
+    room: Room,
+    patch: { hostTransferPending?: boolean; disconnectGraceUntil?: number } = {},
+  ): void {
+    room.roomLifecycle = {
+      state: room.status,
+      hostTransferPending: patch.hostTransferPending ?? false,
+      disconnectGraceUntil: patch.disconnectGraceUntil,
+    };
   }
 
   private shuffle<T>(arr: T[]): T[] {

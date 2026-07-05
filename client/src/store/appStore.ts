@@ -73,6 +73,7 @@ interface AppState {
     handIndices?: number[],
   ) => void;
   sandboxRendeFinish: () => void;
+  sandboxQingnangRecover: (targetId: string, handIndices: number | number[]) => void;
   sandboxZhihengConfirm: (handIndices: number[]) => void;
   sandboxModifyJudge: (promptId: string, handIndex: number) => void;
   sandboxSkipModifyJudge: (promptId: string) => void;
@@ -93,6 +94,7 @@ interface AppState {
   register: (email: string, password: string, nickname: string, confirmPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
+  checkIn: () => Promise<void>;
   setCurrentVersion: (versionId: string) => void;
   markUnauthenticated: (reason?: string) => void;
 }
@@ -465,6 +467,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     routeGameEmit(socket, room, 'sandbox:rendeFinish', 'game:rendeFinish');
   },
 
+  sandboxQingnangRecover: (targetId, handIndices) => {
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    routeGameEmit(socket, room, 'sandbox:qingnangRecover', 'game:qingnangRecover', {
+      targetId,
+      handIndices: Array.isArray(handIndices) ? handIndices : [handIndices],
+    });
+  },
+
   sandboxZhihengConfirm: (handIndices) => {
     const { socket, room } = get();
     if (!socket || !room) return;
@@ -630,6 +641,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     await AuthApi.changePassword(oldPassword, newPassword);
     // 服务端已使所有 session 失效并广播 auth:invalidated
     set({ authStatus: 'guest', user: null, room: null, chatChannel: null });
+  },
+
+  checkIn: async () => {
+    const wallet = await AuthApi.checkIn();
+    set((s) => ({
+      user: s.user
+        ? {
+            ...s.user,
+            coins: wallet.coins,
+            experience: wallet.experience,
+            level: wallet.level,
+          }
+        : s.user,
+    }));
+    useToastStore
+      .getState()
+      .show(`签到成功：金币 +${wallet.reward.coins}，经验 +${wallet.reward.experience}`);
   },
 
   setCurrentVersion: (versionId: string) => {

@@ -30,6 +30,7 @@ export function skillsAtTiming(
   const ch = CharacterRegistry.resolve(player.generalName);
   if (!ch) return [];
   return ch.skills.filter((s) => {
+    if (player.skillUseCount._yijue_non_locked_disabled && s.type !== 'locked') return false;
     if (!s.timings.includes(timing)) return false;
     if (
       opts?.activeOnly &&
@@ -52,8 +53,14 @@ export function playerHasSkill(
   player: EnginePlayerState,
   skillId: string,
 ): boolean {
+  if (skillId === 'jianyan' && player.usedLimitedSkills?.qianxin) return true;
+
   const ch = CharacterRegistry.resolve(player.generalName);
-  return ch?.skills.some((s) => s.id === skillId) ?? false;
+  return (
+    ch?.skills.some(
+      (s) => s.id === skillId && (!player.skillUseCount._yijue_non_locked_disabled || s.type === 'locked'),
+    ) ?? false
+  );
 }
 
 /** 锁定技：修改响应次数等 */
@@ -163,8 +170,21 @@ export function characterSkillsForPrompt(
   player: EnginePlayerState,
 ): { id: string; name: string; description: string; type: string }[] {
   const ch = CharacterRegistry.resolve(player.generalName);
-  if (!ch) return [];
-  return ch.skills.map((s) => ({
+  const skills = ch ? [...ch.skills] : [];
+  if (player.usedLimitedSkills?.qianxin && !skills.some((skill) => skill.id === 'jianyan')) {
+    skills.push({
+      id: 'jianyan',
+      name: '荐言',
+      characterId: 'jie_xushu',
+      type: 'active',
+      description:
+        '出牌阶段限一次，你可以声明一种牌的类别或颜色，亮出牌堆顶符合声明的第一张牌并交给一名男性角色。',
+      timings: [GameTiming.PHASE_PLAY],
+      limitPerTurn: 1,
+    });
+  }
+
+  return skills.map((s) => ({
     id: s.id,
     name: s.name,
     description: s.description,

@@ -3,11 +3,11 @@ import { ChatMessage, Room, RoomPlayer } from '@tk/shared';
 import { useEffect, useRef, useState } from 'react';
 import type { HandCardPick } from '../../types/hand';
 import { COL_LABELS } from '../../data/decoy';
-import { formatGeneralName, stripGeneralPrefixInText } from '../../utils/display';
+import { formatCharacterLine, formatPlayerName, stripGeneralPrefixInText } from '../../utils/display';
 import styles from './SpreadsheetGrid.module.css';
 
 const HEADERS = ['用户', '角色名', '技能', '血量', '手牌', '装备区', '判定区', '回合状态'];
-const COL_WIDTHS = [180, 100, 72, 62, 80, 150, 110, 96];
+const COL_WIDTHS = [180, 140, 72, 62, 80, 150, 110, 96];
 const ROWS_PER_PLAYER = 2;
 
 interface BattleGridProps {
@@ -127,9 +127,7 @@ export function BattleGrid({
           }`;
 
           if (columnIndex === 0) {
-            const label = isHost
-              ? `[房主] ${formatGeneralName(player)}`
-              : formatGeneralName(player);
+            const label = formatPlayerName(player, isHost);
             return (
               <div
                 key={ref}
@@ -144,8 +142,6 @@ export function BattleGrid({
           }
 
           if (columnIndex === 1) {
-            const role = player.role ?? '反贼';
-            const isLord = role === '主公';
             return (
               <div
                 key={ref}
@@ -153,10 +149,7 @@ export function BattleGrid({
                 style={{ minWidth: width, width }}
                 onClick={() => onSelectCell(ref)}
               >
-                {formatGeneralName(player)}{' '}
-                <span className={isLord ? styles.roleLord : styles.roleNormal}>
-                  【{role}】
-                </span>
+                {formatCharacterLine(player)}
               </div>
             );
           }

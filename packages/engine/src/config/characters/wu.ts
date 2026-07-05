@@ -197,7 +197,7 @@ export const WU_CHARACTERS = [
     name: '孙尚香',
     kingdom: 'wu',
     maxHp: 3,
-    aliases: ['孙尚香', '弓腰姬'],
+    aliases: ['孙尚香', '界孙尚香', '弓腰姬'],
     skills: [
       {
         id: 'jieyin',

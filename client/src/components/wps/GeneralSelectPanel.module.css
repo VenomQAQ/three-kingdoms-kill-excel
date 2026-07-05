@@ -71,10 +71,20 @@
   cursor: pointer;
 }
 
+.option:disabled {
+  cursor: default;
+  opacity: 0.76;
+}
+
 .option:hover,
 .optionActive {
   border-color: #217346;
   box-shadow: 0 0 0 2px rgba(33, 115, 70, 0.12);
+}
+
+.option:disabled:hover {
+  border-color: #d9d9d9;
+  box-shadow: none;
 }
 
 .optionTop {

@@ -14,6 +14,16 @@ export interface AuthUser {
   level: number;
 }
 
+export interface CheckInResult {
+  coins: number;
+  experience: number;
+  level: number;
+  reward: {
+    coins: number;
+    experience: number;
+  };
+}
+
 export const AuthApi = {
   register: (email: string, password: string, nickname: string, confirmPassword = password) =>
     httpPost<AuthUser>('/api/auth/register', { email, password, confirmPassword, nickname }),
@@ -28,6 +38,8 @@ export const AuthApi = {
 
   updateProfile: (nickname: string) =>
     httpPatch<AuthUser>('/api/auth/profile', { nickname }),
+
+  checkIn: () => httpPost<CheckInResult>('/api/auth/check-in'),
 
   /** 页面挂载/rehydrate 时调用；未登录抛 HttpError code=E_UNAUTHORIZED */
   me: () => httpGet<AuthUser>('/api/auth/me'),

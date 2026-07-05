@@ -76,24 +76,50 @@ export function getValidTargets(
     return true;
   });
 
+  const skillFiltered = candidates.filter((target) => {
+    if (
+      (card.id === 'sha' || card.id === 'juedou') &&
+      target.handCards.length === 0 &&
+      playerHasSkill(target, 'kongcheng')
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  const tongjiTargets =
+    card.id === 'sha'
+      ? skillFiltered.filter(
+          (target) =>
+            target.id !== source.id &&
+            target.handCards.length > target.hp &&
+            playerHasSkill(target, 'tongji') &&
+            isInAttackRange(players, source, target),
+        )
+      : [];
+  if (tongjiTargets.length > 0) return tongjiTargets;
+
   const range = rule.range;
   if (!range || range.type === 'none' || range.type === 'unlimited') {
-    return candidates;
+    return skillFiltered;
+  }
+  if (card.type === 'trick' && playerHasSkill(source, 'qicai')) {
+    return skillFiltered;
   }
   if (range.type === 'attack') {
     const atk = getAttackRange(source);
-    return candidates.filter(
+    return skillFiltered.filter(
       (t) => t.id === source.id || distanceBetween(players, source, t) <= atk,
     );
   }
   if (range.type === 'fixed' && range.value != null) {
-    return candidates.filter(
+    return skillFiltered.filter(
       (t) =>
         t.id === source.id ||
         distanceBetween(players, source, t) <= range.value!,
     );
   }
-  return candidates;
+  return skillFiltered;
 }
 
 export function needsTargetSelection(card: CardDefinition): boolean {

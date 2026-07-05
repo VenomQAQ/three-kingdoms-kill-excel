@@ -1,6 +1,8 @@
 import type { CardDefinition } from '../types/card';
 import type { EnginePlayerState } from '../types/game';
 import type { DeckPile } from './deck-pile';
+import { CardRegistry } from '../registry/card-registry';
+import { playerHasSkill } from './timing-runner';
 
 export type ZoneCardArea = 'hand' | 'equipment' | 'judge';
 
@@ -85,6 +87,20 @@ export function parseZoneCardId(
   return { zone: m[1] as ZoneCardArea, index: Number(m[2]) };
 }
 
+export function canDiscardZoneCard(
+  actor: EnginePlayerState,
+  target: EnginePlayerState,
+  zone: ZoneCardArea,
+  index: number,
+): boolean {
+  if (zone !== 'equipment') return true;
+  if (actor.id === target.id || !playerHasSkill(target, 'qicai')) return true;
+  const equipment = target.equipment[index];
+  if (!equipment) return false;
+  const definition = CardRegistry.getByName(equipment);
+  return definition?.subType !== 'armor' && definition?.subType !== 'treasure';
+}
+
 /** 弃置目标区域内指定牌 */
 export function discardZoneCard(
   target: EnginePlayerState,
@@ -92,7 +108,9 @@ export function discardZoneCard(
   index: number,
   deck: DeckPile | undefined,
   log: (msg: string) => void,
+  actor?: EnginePlayerState,
 ): boolean {
+  if (actor && !canDiscardZoneCard(actor, target, zone, index)) return false;
   if (zone === 'hand') {
     if (index < 0 || index >= target.handCards.length) return false;
     const removed = target.handCards.splice(index, 1)[0]!;

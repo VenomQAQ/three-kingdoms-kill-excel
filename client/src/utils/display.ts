@@ -1,3 +1,4 @@
+import { CharacterRegistry } from '@tk/engine';
 import type { GamePrompt, Room, RoomPlayer } from '@tk/shared';
 
 export function stripGeneralPrefix(name?: string | null): string {
@@ -16,6 +17,39 @@ export function formatGeneralName(
   return stripGeneralPrefix(player?.general ?? player?.nickname ?? '');
 }
 
+export function formatPlayerName(player: Pick<RoomPlayer, 'nickname' | 'isVirtual'>, isHost = false): string {
+  const virtualSuffix = player.isVirtual ? ' (虚拟)' : '';
+  return `${isHost ? '[房主]' : ''}${player.nickname}${virtualSuffix}`;
+}
+
+export function formatKingdomName(kingdom?: string | null): string {
+  switch (kingdom) {
+    case 'wei':
+      return '魏';
+    case 'shu':
+      return '蜀';
+    case 'wu':
+      return '吴';
+    case 'qun':
+      return '群';
+    default:
+      return '—';
+  }
+}
+
+export function formatRoleName(player?: Pick<RoomPlayer, 'role' | 'roleRevealed'> | null): string {
+  if (!player?.role) return '?';
+  if (player.role === '主公' || player.roleRevealed) return player.role;
+  return '?';
+}
+
+export function formatCharacterLine(player?: Partial<RoomPlayer> | null): string {
+  const general = formatGeneralName(player);
+  if (!general) return '—';
+  const character = CharacterRegistry.resolve(player?.general ?? player?.nickname ?? '');
+  return `${formatKingdomName(character?.kingdom)}-${general}【${formatRoleName(player)}】`;
+}
+
 export function toChineseCount(count: number): string {
   const labels = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
   return labels[count] ?? String(count);
@@ -31,6 +65,10 @@ function sanitizePrompt(prompt: GamePrompt | null | undefined): GamePrompt | nul
     judgeResult: stripGeneralPrefixInText(prompt.judgeResult),
     message: stripGeneralPrefixInText(prompt.message),
     zoneCardOptions: prompt.zoneCardOptions?.map((option) => ({
+      ...option,
+      label: stripGeneralPrefixInText(option.label),
+    })),
+    skillCardOptions: prompt.skillCardOptions?.map((option) => ({
       ...option,
       label: stripGeneralPrefixInText(option.label),
     })),

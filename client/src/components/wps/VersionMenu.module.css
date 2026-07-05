@@ -1,6 +1,6 @@
 .versionGroup {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: flex-start;
   position: relative;
 }
@@ -36,6 +36,22 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.menuToggle {
+  align-self: stretch;
+  width: 18px;
+  margin-left: -4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.menuToggle:hover {
+  background: #e8f5ec;
+  border-color: #b8d8c6;
 }
 
 .menu {
@@ -76,4 +92,120 @@
 
 .menuItemActive::before {
   content: '✓ ';
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.dialog {
+  width: min(720px, calc(100vw - 36px));
+  max-height: min(680px, calc(100vh - 36px));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border: 1px solid #c8c8c8;
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14);
+  color: #262626;
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #e5e5e5;
+  background: #f7f7f7;
+}
+
+.dialogHeader h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.closeBtn {
+  border: none;
+  background: transparent;
+  color: #666;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
+.dialogBody {
+  overflow: auto;
+  padding: 14px 16px 16px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px 14px;
+  font-size: 12px;
+  margin-bottom: 14px;
+}
+
+.summaryGrid span {
+  color: #666;
+}
+
+.summaryGrid strong {
+  font-weight: 600;
+}
+
+.section {
+  margin-top: 14px;
+}
+
+.section h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tagList span {
+  padding: 4px 7px;
+  border: 1px solid #d8d8d8;
+  border-radius: 3px;
+  background: #fafafa;
+  font-size: 12px;
+}
+
+.cardGroups p {
+  margin: 6px 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cardGroups strong {
+  display: inline-block;
+  min-width: 56px;
+  margin-right: 8px;
+}
+
+.statusText,
+.errorText {
+  margin: 0;
+  font-size: 13px;
+}
+
+.errorText {
+  color: #9a3412;
 }

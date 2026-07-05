@@ -3,14 +3,13 @@ export type RoomStatus = 'waiting' | 'selecting' | 'playing' | 'finished';
 export interface GeneralOption {
   id: string;
   name: string;
+  kingdom: 'wei' | 'shu' | 'wu' | 'qun';
+  hp: number;
   maxHp: number;
-  hp?: number;
   skills: Array<{ name: string; description: string }>;
 }
 
 export interface GeneralSelectionState {
-  currentPlayerId: string;
-  currentPlayerNickname: string;
   deadlineAt: number;
   timeoutSec: number;
   selected: Array<{ playerId: string; generalId: string; generalName: string }>;
@@ -68,7 +67,8 @@ export type PromptType =
   | 'discard_cards'
   | 'modify_judge'
   | 'select_zone_card'
-  | 'pick_revealed';
+  | 'pick_revealed'
+  | 'assign_revealed';
 
 export interface PromptSkillInfo {
   id: string;
@@ -93,9 +93,21 @@ export interface GamePrompt {
   discardCount?: number;
   discardHandIndices?: number[];
   zoneCardOptions?: { id: string; label: string }[];
+  skillCardOptions?: { id: string; label: string }[];
   guanxingCards?: string[];
   characterSkills?: PromptSkillInfo[];
   autoCloseAfterSubmit?: boolean;
+  skillAction?:
+    | 'give_cards'
+    | 'discard_recover'
+    | 'discard_draw'
+    | 'target_choice'
+    | 'discard_card_target_pair'
+    | 'give_card_duel_target'
+    | 'discard_red_then_choose'
+    | 'pindian'
+    | 'recover_choice'
+    | 'virtual_basic';
   judgeCardName?: string;
   judgeResult?: string;
   judgeTargetId?: string;
@@ -120,6 +132,19 @@ export interface RoomSettings {
   maxPlayers: number;
 }
 
+export interface RoomLifecycleState {
+  state: RoomStatus;
+  hostTransferPending?: boolean;
+  disconnectGraceUntil?: number;
+}
+
+export interface RoomSettlementRecord {
+  id: string;
+  finishedAt: number;
+  winners: string[];
+  message: string;
+}
+
 export interface Room {
   id: string;
   code: string;
@@ -136,6 +161,8 @@ export interface Room {
   isSandbox?: boolean;
   sandbox?: SandboxGameState;
   generalSelection?: GeneralSelectionState;
+  roomLifecycle?: RoomLifecycleState;
+  settlementRecords?: RoomSettlementRecord[];
 }
 
 export interface RoomListItem {
@@ -149,6 +176,27 @@ export interface RoomListItem {
   isSandbox?: boolean;
   isMember?: boolean;
   joinLabel?: '加入' | '返回';
+  _v: 1;
+}
+
+export interface VersionDetail {
+  id: string;
+  name: string;
+  minPlayers: number;
+  maxPlayers: number;
+  generals: Array<{
+    id: string;
+    name: string;
+    kingdom: 'wei' | 'shu' | 'wu' | 'qun';
+    hp: number;
+  }>;
+  cards: {
+    basic: string[];
+    trick: string[];
+    equipment: string[];
+  };
+  unlockHint: string;
+  readOnly: true;
   _v: 1;
 }
 
@@ -194,6 +242,7 @@ export interface ClientToServerEvents {
     handIndices?: number[];
   }) => void;
   'sandbox:rendeFinish': () => void;
+  'sandbox:qingnangRecover': (payload: { targetId: string; handIndex?: number; handIndices?: number[] }) => void;
   'sandbox:zhihengConfirm': (payload: { handIndices: number[] }) => void;
   'sandbox:modifyJudge': (payload: { promptId: string; handIndex: number }) => void;
   'sandbox:skipModifyJudge': (payload: { promptId: string }) => void;
@@ -218,6 +267,7 @@ export interface ClientToServerEvents {
     handIndices?: number[];
   }) => void;
   'game:rendeFinish': () => void;
+  'game:qingnangRecover': (payload: { targetId: string; handIndex?: number; handIndices?: number[] }) => void;
   'game:zhihengConfirm': (payload: { handIndices: number[] }) => void;
   'game:modifyJudge': (payload: { promptId: string; handIndex: number }) => void;
   'game:skipModifyJudge': (payload: { promptId: string }) => void;
@@ -237,6 +287,12 @@ export interface ServerToClientEvents {
   'room:state': (room: Room) => void;
   'room:error': (error: { code: string; message: string }) => void;
   'room:playerLeft': (payload: { playerId: string }) => void;
+  'room.lifecycle.state_changed': (payload: {
+    roomId: string;
+    lifecycle: RoomLifecycleState;
+    hostId: string;
+    _v: 1;
+  }) => void;
   'chat:message': (message: ChatMessage) => void;
   'game:started': (payload: { roomId: string }) => void;
   'game:finished': (payload: { roomId: string; victory: { winners: string[]; message: string } }) => void;

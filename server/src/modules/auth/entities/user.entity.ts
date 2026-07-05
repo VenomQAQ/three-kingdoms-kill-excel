@@ -37,6 +37,9 @@ export class User {
   @Column('int', { default: 1 })
   level!: number;
 
+  @Column('datetime', { nullable: true })
+  lastCheckInAt!: Date | null;
+
   @CreateDateColumn({ type: 'datetime' })
   createdAt!: Date;
 

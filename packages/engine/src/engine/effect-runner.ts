@@ -16,6 +16,7 @@ export interface EffectContext {
   card: CardDefinition;
   log: (msg: string) => void;
   deck?: DeckPile;
+  onLostEquipment?: (player: EnginePlayerState, lostCount: number) => void;
 }
 
 /** 执行配置化效果原语（L1） */
@@ -55,7 +56,8 @@ export function runCardEffects(ctx: EffectContext): void {
         break;
       }
       case 'equip': {
-        equipToSlot(ctx.source, ctx.card, ctx.deck, ctx.log);
+        const lostCount = equipToSlot(ctx.source, ctx.card, ctx.deck, ctx.log);
+        ctx.onLostEquipment?.(ctx.source, lostCount);
         break;
       }
       case 'discard': {
@@ -65,7 +67,9 @@ export function runCardEffects(ctx: EffectContext): void {
           for (let i = 0; i < count; i++) {
             const z =
               zone === 'any' ? 'any' : zone === 'equipment' ? 'equipment' : 'hand';
+            const equipmentCountBefore = t.equipment.length;
             if (!discardOneFromZone(t, z, ctx.deck, ctx.log)) break;
+            ctx.onLostEquipment?.(t, equipmentCountBefore - t.equipment.length);
           }
         }
         break;
@@ -74,7 +78,9 @@ export function runCardEffects(ctx: EffectContext): void {
         const count = (effect.params?.count as number) ?? 1;
         for (const t of ctx.targets) {
           for (let i = 0; i < count; i++) {
+            const equipmentCountBefore = t.equipment.length;
             if (!takeOneFromZone(t, ctx.source, ctx.deck, ctx.log)) break;
+            ctx.onLostEquipment?.(t, equipmentCountBefore - t.equipment.length);
           }
         }
         break;

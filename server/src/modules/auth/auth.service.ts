@@ -18,6 +18,8 @@ import { SocketAuthService } from './socket-auth.service';
 const QQ_EMAIL_RE = /^\d{5,11}@qq\.com$/i;
 const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9!@#$%^&*_.-]{8,32}$/;
 const NICKNAME_UPDATE_INTERVAL_MS = 60_000;
+const DAILY_CHECK_IN_COINS = 50;
+const DAILY_CHECK_IN_EXPERIENCE = 10;
 
 function throwCode(exception: 'bad' | 'conflict' | 'unauth', code: string, message: string): never {
   if (exception === 'bad') throw new BadRequestException({ ok: false, code, message, _v: 1 });
@@ -54,6 +56,16 @@ export interface AuthPair {
   accessExpiresIn: number;
   refreshToken: string;
   refreshExpiresAt: Date;
+}
+
+export interface CheckInResult {
+  coins: number;
+  experience: number;
+  level: number;
+  reward: {
+    coins: number;
+    experience: number;
+  };
 }
 
 @Injectable()
@@ -198,6 +210,40 @@ export class AuthService {
     return user;
   }
 
+  // ---- Daily check-in ----
+
+  async checkIn(userId: string): Promise<CheckInResult> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throwCode('unauth', ErrorCodes.UNAUTHORIZED, 'Session expired');
+
+    if (isSameLocalDate(user.lastCheckInAt, new Date())) {
+      throwCode('bad', ErrorCodes.CHECK_IN_ALREADY_DONE, 'Already checked in today');
+    }
+
+    user.coins += DAILY_CHECK_IN_COINS;
+    user.experience += DAILY_CHECK_IN_EXPERIENCE;
+    user.lastCheckInAt = new Date();
+    await this.userRepo.save(user);
+
+    const wallet = {
+      coins: user.coins,
+      experience: user.experience,
+      level: user.level,
+    };
+    this.socketAuth.emitToUser(userId, 'user:walletChanged', {
+      ...wallet,
+      _v: 1,
+    });
+
+    return {
+      ...wallet,
+      reward: {
+        coins: DAILY_CHECK_IN_COINS,
+        experience: DAILY_CHECK_IN_EXPERIENCE,
+      },
+    };
+  }
+
   // ---- Refresh ----
 
   async refresh(rawRefresh: string) {
@@ -235,4 +281,13 @@ export class AuthService {
       throwCode('bad', ErrorCodes.INVALID_NICKNAME, '昵称长度需 2-12 字符，且不可包含 <>');
     }
   }
+}
+
+function isSameLocalDate(a: Date | null | undefined, b: Date): boolean {
+  if (!a) return false;
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
 }

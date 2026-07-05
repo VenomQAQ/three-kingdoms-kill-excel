@@ -41,11 +41,12 @@ describe('identity', () => {
     expect(pack.filter((r) => r === '内奸')).toHaveLength(1);
   });
 
-  it('assignIdentities 主公分配给房主座位', () => {
+  it('assignIdentities 随机分配全员身份并保留座位顺序', () => {
     const seats = [{ role: '' }, { role: '' }, { role: '' }];
     assignIdentities(seats, 1);
-    expect(seats[1]?.role).toBe('主公');
+    expect(seats.filter((s) => s.role === '主公')).toHaveLength(1);
     expect(seats.map((s) => s.role)).toContain('反贼');
+    expect(seats.map((s) => s.seat)).toEqual([1, 2, 3]);
   });
 
   it('checkVictory 主公方消灭反贼内奸获胜', () => {

@@ -36,28 +36,36 @@ export function equipToSlot(
   card: CardDefinition,
   deck: DeckPile | undefined,
   log: (msg: string) => void,
-): void {
+): number {
+  let lostCount = 0;
   const slot = getEquipSlot(card);
   if (!slot) {
     if (!player.equipment.includes(card.name)) {
       player.equipment.push(card.name);
       log(`${player.generalName} 装备【${card.name}】`);
     }
-    return;
+    return lostCount;
   }
 
   const existing = getEquippedInSlot(player, slot);
   if (existing) {
     const idx = player.equipment.indexOf(existing);
-    if (idx >= 0) player.equipment.splice(idx, 1);
+    if (idx >= 0) {
+      player.equipment.splice(idx, 1);
+      lostCount += 1;
+    }
     deck?.discardCard(existing);
     log(`${player.generalName} 替换装备，【${existing}】进入弃牌堆`);
   }
 
   const dupIdx = player.equipment.indexOf(card.name);
-  if (dupIdx >= 0) player.equipment.splice(dupIdx, 1);
+  if (dupIdx >= 0) {
+    player.equipment.splice(dupIdx, 1);
+    lostCount += 1;
+  }
   player.equipment.push(card.name);
   log(`${player.generalName} 装备【${card.name}】（${slotLabel(slot)}）`);
+  return lostCount;
 }
 
 export function unequipByName(

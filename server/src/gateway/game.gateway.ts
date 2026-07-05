@@ -150,7 +150,7 @@ export class GameGateway
       if (inRoom) {
         this.reconnect.scheduleReclaim(userId);
         const roomState = this.roomService.markPlayerDisconnected(playerId);
-        if (roomState) this.broadcastRoomState(roomState.id);
+        if (roomState) this.broadcastRoomLifecycle(roomState);
       }
       this.socketPlayer.delete(client.id);
       this.socketAuth.onDisconnect(client as unknown as Socket);
@@ -162,7 +162,7 @@ export class GameGateway
       const { room, removed, previousRoomId } = this.roomService.leaveRoom(playerId, 'disconnect');
       if (room) {
         client.to(room.id).emit('room:playerLeft', { playerId });
-        this.broadcastRoomState(room.id);
+        this.broadcastRoomLifecycle(room);
       } else if (previousRoomId) {
         this.server.to(previousRoomId).emit('room:playerLeft', { playerId });
       }
@@ -256,7 +256,7 @@ export class GameGateway
       if (room) {
         void client.leave(room.id);
         client.to(room.id).emit('room:playerLeft', { playerId });
-        this.broadcastRoomState(room.id);
+        this.broadcastRoomLifecycle(room);
       } else if (previousRoomId) {
         void client.leave(previousRoomId);
         this.server.to(previousRoomId).emit('room:playerLeft', { playerId });
@@ -514,6 +514,26 @@ export class GameGateway
     }
   }
 
+  @SubscribeMessage('sandbox:qingnangRecover')
+  handleSandboxQingnangRecover(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { targetId: string; handIndex?: number; handIndices?: number[] },
+  ) {
+    const socketId = this.getPlayerId(client);
+    const actingId = this.getActingPlayerId(client);
+    try {
+      const room = this.roomService.sandboxQingnangRecover(
+        socketId,
+        actingId,
+        payload?.targetId ?? '',
+        payload?.handIndices ?? payload?.handIndex ?? -1,
+      );
+      this.server.to(room.id).emit('room:state', room);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
   @SubscribeMessage('sandbox:zhihengConfirm')
   handleSandboxZhiheng(
     @ConnectedSocket() client: GameSocket,
@@ -746,6 +766,20 @@ export class GameGateway
   async handleGameRendeFinish(@ConnectedSocket() client: GameSocket) {
     await this.dispatchFormalGame(client, (playerId) =>
       this.roomService.gameRendeFinish(playerId),
+    );
+  }
+
+  @SubscribeMessage('game:qingnangRecover')
+  async handleGameQingnangRecover(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { targetId: string; handIndex?: number; handIndices?: number[] },
+  ) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.gameQingnangRecover(
+        playerId,
+        payload?.targetId ?? '',
+        payload?.handIndices ?? payload?.handIndex ?? -1,
+      ),
     );
   }
 
@@ -1039,6 +1073,18 @@ export class GameGateway
     if (room) {
       void this.broadcastGameState(room);
     }
+  }
+
+  private broadcastRoomLifecycle(room: Room) {
+    if (room.roomLifecycle) {
+      this.server.to(room.id).emit('room.lifecycle.state_changed', {
+        roomId: room.id,
+        lifecycle: room.roomLifecycle,
+        hostId: room.hostId,
+        _v: 1,
+      });
+    }
+    void this.broadcastGameState(room);
   }
 
   private async chargeManualLeavePenalty(client: GameSocket, amount: number): Promise<void> {

@@ -34,6 +34,29 @@ export interface Capabilities {
   session: SessionInfo;
 }
 
+export interface VersionDetail {
+  id: string;
+  name: string;
+  minPlayers: number;
+  maxPlayers: number;
+  generals: Array<{
+    id: string;
+    name: string;
+    kingdom: 'wei' | 'shu' | 'wu' | 'qun';
+    hp: number;
+  }>;
+  cards: {
+    basic: string[];
+    trick: string[];
+    equipment: string[];
+  };
+  unlockHint: string;
+  readOnly: true;
+  _v: 1;
+}
+
 export const CapabilitiesApi = {
   get: () => httpGet<Capabilities>('/api/capabilities'),
+  getVersionDetail: (versionId: string) =>
+    httpGet<VersionDetail>(`/api/versions/${encodeURIComponent(versionId)}`),
 };

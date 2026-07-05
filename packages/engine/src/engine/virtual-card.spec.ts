@@ -39,4 +39,15 @@ describe('virtual-card', () => {
     const cards = validResponseCardsForPlayer(p, 'sha', p.handCards);
     expect(cards).toContain('闪');
   });
+
+  it('急救可将红色牌当桃打出', () => {
+    const p = mkPlayer(['jijiu'], ['♥3【杀】', '♦5【闪】', '♣7【杀】']);
+    p.generalName = '界华佗';
+
+    const cards = validResponseCardsForPlayer(p, 'tao', p.handCards);
+
+    expect(cards).toContain('♥3【杀】');
+    expect(cards).toContain('♦5【闪】');
+    expect(cards).not.toContain('♣7【杀】');
+  });
 });

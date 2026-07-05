@@ -136,11 +136,13 @@ export class EffectExecutor {
     }
 
     const judgeName =
+      ctx.deck?.drawOne() ??
       (ctx.event.payload.damageCardName as string | undefined) ??
       (ctx.event.payload.cardName as string | undefined) ??
       '判定';
     const result = createCardInstance(judgeName);
     ctx.log(`${ctx.source.generalName} 判定：${formatCardInstance(result)}`);
+    ctx.deck?.discardCard(judgeName);
 
     const redAction = effect.params?.onRed as string | undefined;
     const blackAction = effect.params?.onBlack as string | undefined;
@@ -168,7 +170,10 @@ export class EffectExecutor {
     if (targets.length === 0) return;
     switch (action) {
       case 'damage':
-        this.damage(ctx, { action: 'damage', params: { amount: 1 } });
+        this.damage(
+          { ...ctx, targets },
+          { action: 'damage', params: { amount: 1 } },
+        );
         break;
       case 'discard':
         this.discard(

@@ -9,7 +9,8 @@ export type PromptType =
   | 'discard_cards'
   | 'modify_judge'
   | 'select_zone_card'
-  | 'pick_revealed';
+  | 'pick_revealed'
+  | 'assign_revealed';
 
 export interface PromptSkillInfo {
   id: string;
@@ -42,12 +43,26 @@ export interface GamePrompt {
   discardHandIndices?: number[];
   /** 选区域牌：手牌/装备选项 */
   zoneCardOptions?: { id: string; label: string }[];
+  /** 需要随技能一起选择目标时的区域牌选项 */
+  skillCardOptions?: { id: string; label: string }[];
   /** 观星：可调整的牌堆顶牌 */
   guanxingCards?: string[];
   /** 当前操控角色技能（出牌确认 / 发动技能弹窗展示） */
   characterSkills?: PromptSkillInfo[];
   /** 提交一次后即关闭弹窗 */
   autoCloseAfterSubmit?: boolean;
+  /** 技能提交动作：区分给牌、弃牌回复、目标选项等同类 use_skill 流程 */
+  skillAction?:
+    | 'give_cards'
+    | 'discard_recover'
+    | 'discard_draw'
+    | 'target_choice'
+    | 'discard_card_target_pair'
+    | 'give_card_duel_target'
+    | 'discard_red_then_choose'
+    | 'pindian'
+    | 'recover_choice'
+    | 'virtual_basic';
   /** 判定结果展示 */
   judgeCardName?: string;
   judgeResult?: string;
@@ -72,6 +87,8 @@ export interface EnginePlayerState {
   maxHp: number;
   handCards: string[];
   equipment: string[];
+  /** 木牛流马扣置的「粮」 */
+  muniuCards?: string[];
   judgeCards: string[];
   /** 本回合已使用【杀】次数 */
   shaUsedCount: number;
