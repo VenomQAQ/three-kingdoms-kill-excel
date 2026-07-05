@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LobbyChatMessage } from '../../store/chatSlice';
+import { formatChatTime } from '../../utils/chatTime';
 import styles from './LobbyChatPanel.module.css';
 
 interface LobbyChatPanelProps {
@@ -7,6 +8,7 @@ interface LobbyChatPanelProps {
   visible: boolean;
   canSend: boolean;
   onSend: (content: string) => void;
+  onViewProfile?: (userId: string) => void;
   onlineCount?: number;
 }
 
@@ -15,6 +17,7 @@ export function LobbyChatPanel({
   visible,
   canSend,
   onSend,
+  onViewProfile,
   onlineCount,
 }: LobbyChatPanelProps) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -52,7 +55,15 @@ export function LobbyChatPanel({
         )}
         {messages.map((message) => (
           <div key={message.id} className={styles.msg}>
-            <span className={styles.name}>{message.nickname}</span>
+            <button
+              type="button"
+              className={styles.nameBtn}
+              onClick={() => onViewProfile?.(message.userId)}
+              title="查看玩家资料"
+            >
+              {message.nickname}
+            </button>
+            <span className={styles.time}>{formatChatTime(message.ts)}</span>
             <span className={styles.text}>{message.content}</span>
           </div>
         ))}

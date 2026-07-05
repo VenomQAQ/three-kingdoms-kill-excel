@@ -42,9 +42,28 @@
   font-size: 12px;
 }
 
-.name {
+.name,
+.nameBtn {
   color: #217346;
   font-weight: 600;
+  margin-right: 6px;
+}
+
+.nameBtn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.nameBtn:hover {
+  text-decoration: underline;
+}
+
+.time {
+  color: #999999;
+  font-size: 11px;
   margin-right: 6px;
 }
 

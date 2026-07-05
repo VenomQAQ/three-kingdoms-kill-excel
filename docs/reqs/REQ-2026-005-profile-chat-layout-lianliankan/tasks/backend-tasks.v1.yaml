@@ -1,0 +1,50 @@
+req: REQ-2026-005-profile-chat-layout-lianliankan
+version: v1
+source_design: ../design/backend-tech-design.v1.md
+tasks:
+  - id: BE-01
+    title: 扩展 shared 类型和错误码
+    refs: [R-PROFILE-01, R-LLK-05]
+    status: completed
+    evidence:
+      - packages/shared/src/index.ts
+      - server/src/common/error-codes.ts
+  - id: BE-02
+    title: RoomPlayer 下发 userId
+    refs: [R-PROFILE-01]
+    status: completed
+    evidence:
+      - server/src/modules/room/room.service.ts
+  - id: BE-03
+    title: 实现公开玩家资料接口
+    refs: [R-PROFILE-01, R-PROFILE-02]
+    status: completed
+    evidence:
+      - server/src/modules/auth/user-profile.controller.ts
+      - server/src/modules/auth/auth.service.ts
+  - id: BE-04
+    title: 实现连连看配置接口
+    refs: [R-LLK-02, R-LLK-04, R-LLK-06]
+    status: completed
+    evidence:
+      - server/src/modules/lianliankan/lianliankan.config.ts
+      - server/src/modules/lianliankan/lianliankan.controller.ts
+  - id: BE-05
+    title: 实现连连看 session 实体和创建接口
+    refs: [R-LLK-05]
+    status: completed
+    evidence:
+      - server/src/modules/lianliankan/entities/lianliankan-session.entity.ts
+      - server/src/modules/lianliankan/lianliankan.service.ts
+  - id: BE-06
+    title: 实现连连看 finish 幂等结算接口
+    refs: [R-LLK-05, R-LLK-06]
+    status: completed
+    evidence:
+      - server/src/modules/lianliankan/lianliankan.service.ts
+  - id: BE-07
+    title: 钱包扣费奖励后广播 user:walletChanged
+    refs: [R-ACCOUNT-01, R-LLK-05, R-LLK-06]
+    status: completed
+    evidence:
+      - server/src/modules/lianliankan/lianliankan.service.ts

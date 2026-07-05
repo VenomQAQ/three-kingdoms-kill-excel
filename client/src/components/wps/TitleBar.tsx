@@ -2,9 +2,10 @@ import styles from './TitleBar.module.css';
 
 interface TitleBarProps {
   fileName: string;
+  accountLabel: string;
 }
 
-export function TitleBar({ fileName }: TitleBarProps) {
+export function TitleBar({ fileName, accountLabel }: TitleBarProps) {
   return (
     <div className={styles.bar}>
       <div className={styles.left}>
@@ -23,6 +24,7 @@ export function TitleBar({ fileName }: TitleBarProps) {
       <div className={styles.search}>
         <input type="text" placeholder="搜索功能、模板、帮助…" readOnly />
       </div>
+      <span className={styles.account}>{accountLabel}</span>
       <button type="button" className={styles.share}>
         共享
       </button>

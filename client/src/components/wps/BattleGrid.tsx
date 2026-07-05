@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { HandCardPick } from '../../types/hand';
 import { COL_LABELS } from '../../data/decoy';
 import { formatCharacterLine, formatPlayerName, stripGeneralPrefixInText } from '../../utils/display';
+import { formatChatTime } from '../../utils/chatTime';
+import { useCellFiller } from '../../utils/useCellFiller';
 import styles from './SpreadsheetGrid.module.css';
 
 const HEADERS = ['用户', '角色名', '技能', '血量', '手牌', '装备区', '判定区', '回合状态'];
@@ -21,6 +23,8 @@ interface BattleGridProps {
   onSelectHand: (card: string, index: number) => void;
   onPlayCard: (card: string, handIndex?: number) => void;
   onViewSkills: (player: RoomPlayer) => void;
+  onViewProfile?: (player: RoomPlayer) => void;
+  onViewChatProfile?: (message: ChatMessage) => void;
   onViewCard: (cardName: string) => void;
   onSendChat: (content: string) => void;
 }
@@ -46,11 +50,14 @@ export function BattleGrid({
   selectedCell,
   onSelectCell,
   onViewSkills,
+  onViewProfile,
+  onViewChatProfile,
   onViewCard,
   onSendChat,
 }: BattleGridProps) {
   const [sideCollapsed, setSideCollapsed] = useState(false);
   const [chatInput, setChatInput] = useState('');
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const logScrollRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
@@ -73,10 +80,9 @@ export function BattleGrid({
   const playerStartRow = 2;
   const logs = room.sandbox?.log ?? [];
   const orderedLogs = [...logs].reverse();
-  const totalRows = Math.max(
-    playerStartRow + room.players.length * ROWS_PER_PLAYER + 18,
-    32,
-  );
+  const dataRowCount = playerStartRow + room.players.length * ROWS_PER_PLAYER;
+  const filler = useCellFiller(wrapRef, dataRowCount);
+  const totalRows = dataRowCount + filler.rows;
 
   const handleChatSubmit = () => {
     const trimmed = chatInput.trim();
@@ -131,9 +137,12 @@ export function BattleGrid({
             return (
               <div
                 key={ref}
-                className={baseClassName}
+                className={`${baseClassName} ${styles.linkCell}`}
                 style={{ minWidth: width, width }}
-                onClick={() => onSelectCell(ref)}
+                onClick={() => {
+                  onSelectCell(ref);
+                  onViewProfile?.(player);
+                }}
               >
                 {label}
                 {isDead ? <span className={styles.deadTag}>（阵亡）</span> : null}
@@ -292,7 +301,7 @@ export function BattleGrid({
   return (
     <div className={`${styles.boardLayout} ${sideCollapsed ? styles.sideCollapsed : ''}`}>
       <div className={styles.gridPane}>
-        <div className={styles.wrap}>
+        <div className={styles.wrap} ref={wrapRef}>
           <div className={styles.corner} />
           <div className={styles.colHeaders}>
             {cols.map((col, index) => (
@@ -338,15 +347,16 @@ export function BattleGrid({
 
             {Array.from(
               {
-                length:
-                  totalRows -
-                  (playerStartRow + room.players.length * ROWS_PER_PLAYER),
+                length: totalRows - dataRowCount,
               },
               (_, index) => {
-                const rowNum =
-                  playerStartRow + room.players.length * ROWS_PER_PLAYER + index;
+                const rowNum = dataRowCount + index;
+                const isLastRow = index === totalRows - dataRowCount - 1;
                 return (
-                  <div key={rowNum} className={styles.row}>
+                  <div
+                    key={rowNum}
+                    className={`${styles.row} ${styles.fillerRow}${isLastRow ? ` ${styles.fillerRowStretch}` : ''}`}
+                  >
                     <div className={styles.rowHeader}>{rowNum}</div>
                     {cols.map((col, columnIndex) => (
                       <div
@@ -359,6 +369,7 @@ export function BattleGrid({
                         onClick={() => onSelectCell(`${col}${rowNum}`)}
                       />
                     ))}
+                    <div className={styles.fillerCellFlex} />
                   </div>
                 );
               },
@@ -366,17 +377,6 @@ export function BattleGrid({
           </div>
         </div>
       </div>
-
-      {sideCollapsed ? (
-        <button
-          type="button"
-          className={styles.collapsedHandle}
-          onClick={() => setSideCollapsed(false)}
-          title="展开操作记录"
-        >
-          ▶
-        </button>
-      ) : null}
 
       <aside className={`${styles.sidePane} ${sideCollapsed ? styles.collapsed : ''}`}>
         <section className={styles.sidePanel}>
@@ -416,7 +416,15 @@ export function BattleGrid({
             ) : (
               chatMessages.map((message) => (
                 <div key={message.id} className={styles.chatLine}>
-                  <span className={styles.chatName}>{message.nickname}</span>
+                  <button
+                    type="button"
+                    className={styles.chatNameBtn}
+                    onClick={() => onViewChatProfile?.(message)}
+                    title="查看玩家资料"
+                  >
+                    {message.nickname}
+                  </button>
+                  <span className={styles.chatTime}>{formatChatTime(message.timestamp)}</span>
                   <span>{message.content}</span>
                 </div>
               ))

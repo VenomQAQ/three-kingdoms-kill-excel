@@ -13,6 +13,7 @@ interface RoomListGridProps {
   selectedCell: string;
   onSelectCell: (ref: string) => void;
   onJoinRoom: (code: string) => void;
+  onViewProfile?: (userId: string) => void;
   isGuest?: boolean;
   onGuestAction?: () => void;
   bgColorToken?: string;
@@ -30,6 +31,7 @@ export function RoomListGrid({
   selectedCell,
   onSelectCell,
   onJoinRoom,
+  onViewProfile,
   isGuest = false,
   onGuestAction,
   bgColorToken = '#ffffff',
@@ -102,6 +104,7 @@ export function RoomListGrid({
                       break;
                     case 3:
                       value = room.ownerNickname;
+                      if (room.ownerUserId) extraClass += ` ${styles.linkCell}`;
                       break;
                     case 4:
                       value = room.versionName ?? room.versionId ?? 'standard-2014';
@@ -121,6 +124,11 @@ export function RoomListGrid({
                         return;
                       }
                       onJoinRoom(room.code);
+                    };
+                  } else if (ci === 3 && room.ownerUserId) {
+                    onClick = () => {
+                      onSelectCell(ref);
+                      onViewProfile?.(room.ownerUserId!);
                     };
                   }
                 }

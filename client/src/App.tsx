@@ -21,14 +21,17 @@ import { StatusBar } from './components/wps/StatusBar';
 import { DecoyGrid } from './components/wps/DecoyGrid';
 import { RoomListGrid } from './components/wps/RoomListGrid';
 import { GameGrid } from './components/wps/GameGrid';
+import { LianliankanGrid } from './components/wps/LianliankanGrid';
 import { ChatPanel } from './components/wps/ChatPanel';
 import { LobbyChatPanel } from './components/wps/LobbyChatPanel';
 import { LoginDialog } from './components/wps/LoginDialog';
 import { ChangePasswordDialog } from './components/wps/ChangePasswordDialog';
+import { PlayerProfileModal } from './components/wps/PlayerProfileModal';
 import { Toast } from './components/wps/Toast';
 import {
   CURRENT_ROOM_SHEET_ID,
   DEFAULT_FILE_NAMES,
+  LIANLIANKAN_SHEET_ID,
   ROOM_LIST_SHEET_ID,
   SANDBOX_ROOM_CODE,
   SALES_SHEET_ID,
@@ -71,12 +74,24 @@ function App() {
   const [formulaInput, setFormulaInput] = useState('');
   const [sandboxCharName, setSandboxCharName] = useState('');
   const [skillModalPlayer, setSkillModalPlayer] = useState<RoomPlayer | null>(null);
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
+  const [virtualProfileName, setVirtualProfileName] = useState<string | null>(null);
   const [detailCardName, setDetailCardName] = useState<string | null>(null);
   const [promptCollapsed, setPromptCollapsed] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
 
   const showToast = useToastStore((s) => s.show);
+
+  const handleViewPlayerProfile = useCallback((player: RoomPlayer) => {
+    setProfileUserId(player.userId ?? null);
+    setVirtualProfileName(player.userId ? null : player.nickname || player.general || '虚拟角色');
+  }, []);
+
+  const closePlayerProfile = useCallback(() => {
+    setProfileUserId(null);
+    setVirtualProfileName(null);
+  }, []);
 
   const {
     connect,
@@ -127,7 +142,21 @@ function App() {
     subscribeLobbyChat,
     unsubscribeLobbyChat,
     sendLobbyChat,
+    user,
+    lianliankanConfig,
+    lianliankanSession,
+    lianliankanLoading,
+    loadLianliankanConfig,
+    startLianliankan,
+    finishLianliankan,
   } = useAppStore();
+
+  const handleViewChatProfile = useCallback((message: { playerId?: string; userId?: string; nickname: string }) => {
+    const roomPlayer = message.playerId ? room?.players.find((player) => player.id === message.playerId) : null;
+    const userId = message.userId ?? roomPlayer?.userId ?? null;
+    setProfileUserId(userId);
+    setVirtualProfileName(userId ? null : message.nickname || roomPlayer?.nickname || '虚拟角色');
+  }, [room?.players]);
 
   useEffect(() => {
     // REQ-2026-001 · FE-2/FE-9 · 首屏并发拉 capabilities + me；无论成功失败都不阻塞后续 socket 连接
@@ -145,7 +174,20 @@ function App() {
   const bgColorToken = capabilities?.bgColorToken ?? '#ffffff';
   const onLobbySheet = activeSheet === ROOM_LIST_SHEET_ID;
   const onCurrentRoomSheet = activeSheet === CURRENT_ROOM_SHEET_ID;
+  const onLianliankanSheet = activeSheet === LIANLIANKAN_SHEET_ID;
   const onSalesSheet = activeSheet === SALES_SHEET_ID;
+
+  useEffect(() => {
+    if (onLianliankanSheet && !lianliankanConfig) {
+      void loadLianliankanConfig().catch((err) => {
+        const code = err instanceof HttpError ? err.code : undefined;
+        useAppStore.getState().showError(
+          code,
+          err instanceof Error ? err.message : '连连看配置加载失败',
+        );
+      });
+    }
+  }, [onLianliankanSheet, lianliankanConfig, loadLianliankanConfig]);
 
   useEffect(() => {
     if (!room || bossMode || typeof window === 'undefined') return;
@@ -535,7 +577,7 @@ function App() {
       ];
     }
 
-    if (onSalesSheet) {
+    if (onSalesSheet || onLianliankanSheet) {
       return [];
     }
 
@@ -632,7 +674,7 @@ function App() {
       );
     }
     return base;
-  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onSalesSheet, actingPlayer]);
+  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onSalesSheet, actingPlayer]);
 
   const handleFormulaSubmit = useCallback(async () => {
     const raw = formulaInput.trim();
@@ -789,9 +831,13 @@ function App() {
         ? '选将中'
         : '等待中';
 
+  const accountLabel = user
+    ? `Lv.${user.level} ${user.nickname} · ${user.coins}金币`
+    : '未登录';
+
   return (
     <div className={styles.app}>
-      <TitleBar fileName={fileName} />
+      <TitleBar fileName={fileName} accountLabel={accountLabel} />
       <Ribbon
         actions={ribbonActions}
         onAction={handleRibbonAction}
@@ -920,9 +966,11 @@ function App() {
             selectedCell={selectedCell}
             selectedHand={selectedHand}
             onSelectCell={setSelectedCell}
-          onSelectHand={handleSelectHand}
+            onSelectHand={handleSelectHand}
             onPlayCard={handlePlayCard}
             onViewSkills={setSkillModalPlayer}
+            onViewProfile={handleViewPlayerProfile}
+            onViewChatProfile={handleViewChatProfile}
             onViewCard={setDetailCardName}
             onSendChat={sendChat}
             isSandbox={isSandbox}
@@ -940,6 +988,7 @@ function App() {
                 selectedCell={selectedCell}
                 onSelectCell={setSelectedCell}
                 onJoinRoom={(code) => requireAuth(() => joinRoom(code))}
+                onViewProfile={setProfileUserId}
                 isGuest={isGuest}
                 onGuestAction={() => {
                   showToast('请先登录');
@@ -955,14 +1004,39 @@ function App() {
                 visible
                 canSend={isAuthed}
                 onSend={sendLobbyChat}
+                onViewProfile={(userId) => {
+                  setProfileUserId(userId);
+                  setVirtualProfileName(null);
+                }}
               />
             )}
           </>
+        ) : displaySheet === LIANLIANKAN_SHEET_ID ? (
+          <LianliankanGrid
+            config={lianliankanConfig}
+            session={lianliankanSession}
+            loading={lianliankanLoading}
+            selectedCell={selectedCell}
+            isAuthed={isAuthed}
+            coins={user?.coins}
+            onSelectCell={setSelectedCell}
+            onStart={startLianliankan}
+            onFinish={finishLianliankan}
+            onRequireLogin={() => {
+              showToast('请先登录');
+              setShowLoginDialog(true);
+            }}
+          />
         ) : (
           <DecoyGrid selectedCell={selectedCell} onSelectCell={setSelectedCell} />
         )}
         {displaySheet === CURRENT_ROOM_SHEET_ID && room && !bossMode && !isPlaying && (
-          <ChatPanel messages={chatMessages} visible onSend={sendChat} />
+          <ChatPanel
+            messages={chatMessages}
+            visible
+            onSend={sendChat}
+            onViewProfile={handleViewChatProfile}
+          />
         )}
       </div>
       <SheetTabs
@@ -992,6 +1066,13 @@ function App() {
         <CardDetailModal
           cardName={detailCardName}
           onClose={() => setDetailCardName(null)}
+        />
+      )}
+      {(profileUserId || virtualProfileName) && (
+        <PlayerProfileModal
+          userId={profileUserId}
+          virtualName={virtualProfileName ?? undefined}
+          onClose={closePlayerProfile}
         />
       )}
       {isPlaying && room && gamePrompt && !promptCollapsed && (

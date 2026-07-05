@@ -1,0 +1,103 @@
+req: REQ-2026-005-profile-chat-layout-lianliankan
+version: v1
+source_prd: ../prd/prd.v2.md
+cases:
+  - id: QA-UI-01
+    title: 武将名前缀界在战场展示中被去除
+    refs: [AC-UI-01, R-UI-01]
+    priority: P0
+    expected:
+      - 不出现界刘备、界关羽等前缀形式
+      - 普通词世界、边界不被误删
+  - id: QA-CHAT-01
+    title: 大厅聊天展示当天发送时间
+    refs: [AC-CHAT-01, R-CHAT-01]
+    priority: P0
+    expected:
+      - 消息展示昵称、HH:mm 时间与内容
+  - id: QA-CHAT-02
+    title: 房间与战场聊天展示发送时间
+    refs: [AC-CHAT-02, R-CHAT-01]
+    priority: P0
+    expected:
+      - 房间聊天和战场聊天均展示 HH:mm 时间
+  - id: QA-CHAT-03
+    title: 跨天历史消息展示日期与时间
+    refs: [AC-CHAT-03, R-CHAT-01]
+    priority: P1
+    expected:
+      - 消息时间格式为 MM-DD HH:mm
+  - id: QA-PROFILE-01
+    title: 点击战场玩家名打开资料弹窗
+    refs: [AC-PROFILE-01, AC-PROFILE-02]
+    priority: P0
+    expected:
+      - 弹窗展示昵称、等级、金币、总局数、胜场、负场、胜率
+      - 不展示邮箱
+  - id: QA-PROFILE-02
+    title: 点击虚拟角色展示空态
+    refs: [AC-PROFILE-03]
+    priority: P1
+    expected:
+      - 弹窗显示虚拟角色空态，不请求用户资料接口
+  - id: QA-ACCOUNT-01
+    title: 顶部账号信息显示等级昵称金币
+    refs: [AC-ACCOUNT-01]
+    priority: P0
+    expected:
+      - 显示 Lv.x 昵称 · n金币，金币变化后即时刷新
+  - id: QA-BATTLE-01
+    title: 战场侧栏折叠交互稳定
+    refs: [AC-BATTLE-01]
+    priority: P0
+    expected:
+      - 折叠态只保留一个展开入口，无重复按钮或不可用空白
+  - id: QA-BATTLE-02
+    title: 战场展开折叠均铺满单元格
+    refs: [AC-BATTLE-02]
+    priority: P0
+    expected:
+      - 1440x900、1920x1080、2560x1440 下非背景空白比例不超过 3%
+  - id: QA-LLK-01
+    title: 连连看 Sheet 可进入
+    refs: [AC-LLK-01]
+    priority: P0
+    expected:
+      - 展示 WPS 风格连连看表格界面
+  - id: QA-LLK-02
+    title: 连连看可切换主题和展示模式
+    refs: [AC-LLK-02]
+    priority: P0
+    expected:
+      - 图块内容按主题变化，同一局切换模式不改变棋盘状态
+  - id: QA-LLK-03
+    title: 连连看三档难度配置生效
+    refs: [AC-LLK-03]
+    priority: P0
+    expected:
+      - easy 6x6/180s/8，normal 8x8/150s/15，hard 10x10/120s/30
+  - id: QA-LLK-04
+    title: 金币不足不能开始连连看
+    refs: [AC-LLK-04]
+    priority: P0
+    expected:
+      - 返回 E_WALLET_INSUFFICIENT_COINS，不创建 session，余额不变
+  - id: QA-LLK-05
+    title: 连连看胜利扣费并奖励
+    refs: [AC-LLK-05]
+    priority: P0
+    expected:
+      - easy 开局扣 5，胜利奖励 8，TitleBar 金币同步刷新
+  - id: QA-LLK-06
+    title: 连连看重复提交不重复奖励
+    refs: [AC-LLK-06]
+    priority: P0
+    expected:
+      - 第二次返回 alreadySettled true，金币不再次增加
+  - id: QA-LLK-07
+    title: 连连看 Sheet 铺满
+    refs: [AC-LLK-07]
+    priority: P0
+    expected:
+      - 表格单元格铺满视口，无营销式卡片或大块空白
+

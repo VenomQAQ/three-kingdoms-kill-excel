@@ -1,0 +1,39 @@
+req: REQ-2026-005-profile-chat-layout-lianliankan
+version: v1
+status: pass-with-questions
+timestamp: "2026-07-05T23:40:00+08:00"
+prd: ../prd/prd.v1.md
+reviews:
+  frontend:
+    status: pass-with-questions
+    file: ./frontend-feasibility.v1.md
+    questions:
+      - FE-Q1: 玩家资料接口返回字段未定
+      - FE-Q2: 连连看结算若只前端判断易作弊
+      - FE-Q3: 右上角账号信息位置需固化
+      - FE-Q4: 战绩 userId 与 room playerId 映射需明确
+  backend:
+    status: pass-with-questions
+    file: ./backend-feasibility.v1.md
+    questions:
+      - BE-Q1: 公开资料是否展示金币
+      - BE-Q2: RoomPlayer.id 与 userId 映射需明确
+      - BE-Q3: 战绩数据来源当前不完整
+      - BE-Q4: 连连看路径校验边界需明确
+      - BE-Q5: 金币不足错误码需定义
+  qa:
+    status: pass-with-questions
+    file: ./qa-testability.v1.md
+    questions:
+      - QA-Q1: 是否继续使用 3% 像素铺满判据
+      - QA-Q2: 连连看服务端校验强度需明确
+      - QA-Q3: 聊天跨天格式需明确
+      - QA-Q4: 玩家资料无战绩空态需明确
+required_product_resolutions:
+  - 玩家公开资料字段与隐私边界
+  - RoomPlayer 到 UserProfile 的稳定映射
+  - 连连看扣费、结算、幂等和校验强度
+  - 战场与连连看铺满验收判据
+  - 顶部账号信息的最终 UI 位置
+  - 聊天时间格式和跨天规则
+

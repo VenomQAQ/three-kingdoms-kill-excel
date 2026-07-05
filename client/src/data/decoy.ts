@@ -18,20 +18,23 @@ export const SANDBOX_ROOM_CODE = '70755712';
 
 export const ROOM_LIST_SHEET_ID = 'room-list';
 export const CURRENT_ROOM_SHEET_ID = 'current-room';
+export const LIANLIANKAN_SHEET_ID = 'lianliankan';
 export const SALES_SHEET_ID = 'sales';
 export const GAME_SHEET_ID = CURRENT_ROOM_SHEET_ID;
-export const DECOY_SHEET_IDS = [ROOM_LIST_SHEET_ID, SALES_SHEET_ID] as const;
+export const DECOY_SHEET_IDS = [ROOM_LIST_SHEET_ID, LIANLIANKAN_SHEET_ID, SALES_SHEET_ID] as const;
 
 export type SheetId = (typeof DECOY_SHEET_IDS)[number] | typeof GAME_SHEET_ID;
 
 export const SHEET_LABELS: Record<SheetId, string> = {
   [ROOM_LIST_SHEET_ID]: '房间列表',
   [CURRENT_ROOM_SHEET_ID]: '当前房间',
+  [LIANLIANKAN_SHEET_ID]: '连连看',
   [SALES_SHEET_ID]: '区域销售',
 };
 
 export const DEFAULT_FILE_NAMES: Record<SheetId, string> = {
   [ROOM_LIST_SHEET_ID]: '房间列表.xlsx',
   [CURRENT_ROOM_SHEET_ID]: '当前房间.xlsx',
+  [LIANLIANKAN_SHEET_ID]: '连连看挑战.xlsx',
   [SALES_SHEET_ID]: '区域销售汇总.xlsx',
 };

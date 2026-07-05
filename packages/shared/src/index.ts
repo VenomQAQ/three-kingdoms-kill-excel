@@ -21,6 +21,7 @@ export const SANDBOX_ROOM_CODE = '70755712';
 
 export interface RoomPlayer {
   id: string;
+  userId?: string;
   nickname: string;
   seat?: number;
   ready: boolean;
@@ -171,6 +172,7 @@ export interface RoomListItem {
   playerCount: number;
   maxPlayers: number;
   ownerNickname: string;
+  ownerUserId?: string;
   versionId?: string;
   versionName: string;
   isSandbox?: boolean;
@@ -306,6 +308,85 @@ export interface ServerToClientEvents {
     _v: 1;
   }) => void;
   'sandbox:actor': (payload: { actingPlayerId: string }) => void;
+}
+
+export interface PlayerPublicProfile {
+  userId: string;
+  nickname: string;
+  level: number;
+  coins: number;
+  stats: {
+    total: number;
+    wins: number;
+    losses: number;
+    winRate: number;
+  };
+  updatedAt: number;
+  _v: 1;
+}
+
+export type LianliankanDisplayMode = 'emoji' | 'text';
+export type LianliankanDifficultyId = 'easy' | 'normal' | 'hard';
+export type LianliankanSessionStatus = 'playing' | 'won' | 'lost' | 'expired';
+
+export interface LianliankanThemeItem {
+  id: string;
+  text: string;
+  emoji: string;
+  similarGroup?: string;
+}
+
+export interface LianliankanTheme {
+  themeId: string;
+  name: string;
+  items: LianliankanThemeItem[];
+  similarGroups: Array<{ groupId: string; itemIds: string[] }>;
+}
+
+export interface LianliankanDifficulty {
+  difficultyId: LianliankanDifficultyId;
+  name: string;
+  rows: number;
+  cols: number;
+  kindCount: number;
+  timeLimitSec: number;
+  entryFee: number;
+  rewardCoins: number;
+  similarGroupWeight: number;
+}
+
+export interface LianliankanConfig {
+  themes: LianliankanTheme[];
+  difficulties: LianliankanDifficulty[];
+  defaultThemeId: string;
+  defaultDifficultyId: LianliankanDifficultyId;
+  _v: 1;
+}
+
+export interface LianliankanTile {
+  tileId: string;
+  itemId: string;
+  row: number;
+  col: number;
+}
+
+export interface LianliankanSession {
+  sessionId: string;
+  mode: 'solo' | 'race';
+  roomId?: string;
+  themeId: string;
+  difficultyId: LianliankanDifficultyId;
+  status: LianliankanSessionStatus;
+  rows: number;
+  cols: number;
+  timeLimitSec: number;
+  entryFee: number;
+  rewardCoins: number;
+  startedAt: number;
+  deadlineAt: number;
+  finishedAt?: number;
+  board: LianliankanTile[];
+  _v: 1;
 }
 
 export type RoomCreateAck =

@@ -427,9 +427,28 @@
   border-bottom: 1px solid #f0f0f0;
 }
 
-.chatName {
+.chatName,
+.chatNameBtn {
   color: #217346;
   font-weight: 600;
+  margin-right: 6px;
+}
+
+.chatNameBtn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.chatNameBtn:hover {
+  text-decoration: underline;
+}
+
+.chatTime {
+  color: #999999;
+  font-size: 11px;
   margin-right: 6px;
 }
 
@@ -605,4 +624,170 @@
   border-right: 1px solid #e5e5e5;
   border-bottom: 1px solid #e5e5e5;
   background: var(--bg-cell);
+}
+
+.deadRow .rowHeader,
+.deadRow .cell {
+  color: #999999;
+  background: #f7f7f7;
+}
+
+.deadTag,
+.deadMark {
+  color: #999999;
+  font-size: 11px;
+}
+
+.collapsedHandle {
+  width: 32px;
+  border: none;
+  border-left: 1px solid #d0d0d0;
+  background: #fafafa;
+  color: #666666;
+  cursor: pointer;
+}
+
+.llkToolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 5px 10px;
+  border-bottom: 1px solid #d0d0d0;
+  background: #fafafa;
+  font-size: 12px;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.llkToolbar label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.llkToolbar select {
+  height: 26px;
+  border: 1px solid #cfcfcf;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #333333;
+  font-size: 12px;
+}
+
+.llkStartBtn {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid #217346;
+  border-radius: 3px;
+  background: #217346;
+  color: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.llkStartBtn:disabled {
+  border-color: #d9d9d9;
+  background: #f0f0f0;
+  color: #999999;
+  cursor: not-allowed;
+}
+
+.llkSegmented {
+  display: inline-flex;
+  height: 26px;
+  border: 1px solid #cfcfcf;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
+.llkSegmented button {
+  min-width: 42px;
+  padding: 0 8px;
+  border-right: 1px solid #cfcfcf;
+  background: #ffffff;
+  color: #444444;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.llkSegmented button:last-child {
+  border-right: none;
+}
+
+.llkSegmented .llkSegmentActive {
+  background: #e8f5ec;
+  color: #217346;
+  font-weight: 600;
+}
+
+.llkMeta {
+  color: #555555;
+  white-space: nowrap;
+}
+
+.llkNotice {
+  color: #c00000;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.llkColHeader {
+  min-width: 92px;
+  width: 92px;
+}
+
+.llkRow {
+  min-height: 48px;
+}
+
+.llkCell {
+  min-width: 92px;
+  width: 92px;
+  min-height: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-top: none;
+  border-left: none;
+  background: #ffffff;
+  line-height: 1.2;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.llkFillerCell {
+  min-width: 92px;
+  width: 92px;
+  background: var(--bg-cell);
+  cursor: cell;
+}
+
+.llkFillerColHeader {
+  color: #999999;
+}
+
+.llkCell:disabled {
+  cursor: cell;
+  background: #ffffff;
+}
+
+.llkCell:hover:not(:disabled) {
+  background: #f0f8f4;
+}
+
+.llkTileSelected {
+  background: #e8f5ec;
+  box-shadow: inset 0 0 0 2px #217346;
+}
+
+.llkEmoji {
+  font-size: 18px;
+  line-height: 1;
 }

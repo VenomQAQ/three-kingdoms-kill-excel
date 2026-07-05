@@ -42,7 +42,7 @@ describe('identity', () => {
   });
 
   it('assignIdentities 随机分配全员身份并保留座位顺序', () => {
-    const seats = [{ role: '' }, { role: '' }, { role: '' }];
+    const seats: Array<{ role: string; seat?: number }> = [{ role: '' }, { role: '' }, { role: '' }];
     assignIdentities(seats, 1);
     expect(seats.filter((s) => s.role === '主公')).toHaveLength(1);
     expect(seats.map((s) => s.role)).toContain('反贼');

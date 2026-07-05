@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import type { CSSProperties } from 'react';
-import { Room } from '@tk/shared';
+import { Room, RoomPlayer } from '@tk/shared';
 import styles from './SpreadsheetGrid.module.css';
 import { COL_LABELS } from '../../data/decoy';
 import { useCellFiller } from '../../utils/useCellFiller';
@@ -13,6 +13,7 @@ interface LobbyGridProps {
   onSelectCell: (ref: string) => void;
   isSandbox?: boolean;
   onToggleReady?: () => void;
+  onViewProfile?: (player: RoomPlayer) => void;
   bgColorToken?: string;
 }
 
@@ -28,6 +29,7 @@ export function LobbyGrid({
   onSelectCell,
   isSandbox = false,
   onToggleReady,
+  onViewProfile,
   bgColorToken = '#ffffff',
 }: LobbyGridProps) {
   const cols = COL_LABELS.slice(0, HEADERS.length);
@@ -102,6 +104,7 @@ export function LobbyGrid({
                         break;
                       case 1:
                         value = formatPlayerName(rowPlayer, rowPlayer.id === room.hostId);
+                        extra += ` ${styles.linkCell}`;
                         break;
                       case 2:
                         value = rowPlayer.general ?? '—';
@@ -146,6 +149,7 @@ export function LobbyGrid({
                     onClick={() => {
                       onSelectCell(ref);
                       if (isMyReadyCell) onToggleReady();
+                      if (ci === 1 && rowPlayer) onViewProfile?.(rowPlayer);
                     }}
                   >
                     {value}

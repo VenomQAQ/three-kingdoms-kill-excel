@@ -1,0 +1,64 @@
+req: REQ-2026-005-profile-chat-layout-lianliankan
+version: v1
+source_design: ../design/frontend-tech-design.v1.md
+tasks:
+  - id: FE-01
+    title: 增加连连看 SheetId 和标签
+    refs: [R-LLK-01]
+    status: completed
+    evidence:
+      - client/src/data/decoy.ts
+      - client/src/components/wps/SheetTabs.tsx
+  - id: FE-02
+    title: TitleBar 展示等级昵称金币
+    refs: [R-ACCOUNT-01]
+    status: completed
+    evidence:
+      - client/src/App.tsx
+      - client/src/components/wps/TitleBar.tsx
+  - id: FE-03
+    title: 聊天面板展示发送时间
+    refs: [R-CHAT-01]
+    status: completed
+    evidence:
+      - client/src/components/wps/ChatPanel.tsx
+      - client/src/components/wps/LobbyChatPanel.tsx
+      - client/src/utils/chatTime.ts
+  - id: FE-04
+    title: 新增玩家资料 API 与弹窗
+    refs: [R-PROFILE-01, R-PROFILE-02]
+    status: completed
+    evidence:
+      - client/src/api/profile.ts
+      - client/src/components/wps/PlayerProfileModal.tsx
+  - id: FE-05
+    title: 玩家名称点击入口接入资料弹窗
+    refs: [R-PROFILE-01]
+    status: completed
+    evidence:
+      - client/src/components/wps/BattleGrid.tsx
+      - client/src/components/wps/LobbyGrid.tsx
+      - client/src/components/wps/RoomListGrid.tsx
+      - client/src/App.tsx
+  - id: FE-06
+    title: 重做 BattleGrid 侧栏折叠与铺满 filler
+    refs: [R-BATTLE-01, R-BATTLE-02]
+    status: completed
+    evidence:
+      - client/src/components/wps/BattleGrid.tsx
+      - client/src/components/wps/SpreadsheetGrid.module.css
+  - id: FE-07
+    title: 实现连连看 API client 和状态机
+    refs: [R-LLK-01, R-LLK-05, R-LLK-06]
+    status: completed
+    evidence:
+      - client/src/api/lianliankan.ts
+      - client/src/store/appStore.ts
+      - client/src/components/wps/LianliankanGrid.tsx
+  - id: FE-08
+    title: 实现 LianliankanGrid 主题/难度/展示模式/路径规则
+    refs: [R-LLK-02, R-LLK-03, R-LLK-04, R-LLK-08]
+    status: completed
+    evidence:
+      - client/src/components/wps/LianliankanGrid.tsx
+      - client/src/utils/lianliankan.ts

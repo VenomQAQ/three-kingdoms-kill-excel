@@ -17,6 +17,8 @@ interface GameGridProps {
   onSelectHand: (card: string, index: number) => void;
   onPlayCard: (card: string, handIndex?: number) => void;
   onViewSkills: (player: import('@tk/shared').RoomPlayer) => void;
+  onViewProfile?: (player: import('@tk/shared').RoomPlayer) => void;
+  onViewChatProfile?: (message: ChatMessage) => void;
   onViewCard: (cardName: string) => void;
   onSendChat: (content: string) => void;
   isSandbox?: boolean;
@@ -35,6 +37,8 @@ export function GameGrid({
   onSelectHand,
   onPlayCard,
   onViewSkills,
+  onViewProfile,
+  onViewChatProfile,
   onViewCard,
   onSendChat,
   isSandbox = false,
@@ -54,6 +58,8 @@ export function GameGrid({
         onSelectHand={onSelectHand}
         onPlayCard={onPlayCard}
         onViewSkills={onViewSkills}
+        onViewProfile={onViewProfile}
+        onViewChatProfile={onViewChatProfile}
         onViewCard={onViewCard}
         onSendChat={onSendChat}
       />
@@ -81,6 +87,7 @@ export function GameGrid({
         onSelectCell={onSelectCell}
         isSandbox={isSandbox}
         onToggleReady={onToggleReady}
+        onViewProfile={onViewProfile}
       />
     </div>
   );

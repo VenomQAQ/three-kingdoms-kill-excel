@@ -193,8 +193,8 @@ export class GameGateway
         playerId,
         payload?.nickname ?? '',
         payload?.versionId,
+        userId,
       );
-      if (userId) this.roomService.bindUserPlayer(userId, playerId);
       void client.join(room.id);
       client.emit('room:created', room);
       ack?.({ ok: true, room, playerId });

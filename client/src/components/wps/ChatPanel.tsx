@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChatMessage } from '@tk/shared';
+import { formatChatTime } from '../../utils/chatTime';
 import styles from './ChatPanel.module.css';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
   visible: boolean;
   onSend: (content: string) => void;
+  onViewProfile?: (message: ChatMessage) => void;
 }
 
-export function ChatPanel({ messages, visible, onSend }: ChatPanelProps) {
+export function ChatPanel({ messages, visible, onSend, onViewProfile }: ChatPanelProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState('');
 
@@ -36,7 +38,15 @@ export function ChatPanel({ messages, visible, onSend }: ChatPanelProps) {
         )}
         {messages.map((message) => (
           <div key={message.id} className={styles.msg}>
-            <span className={styles.name}>{message.nickname}</span>
+            <button
+              type="button"
+              className={styles.nameBtn}
+              onClick={() => onViewProfile?.(message)}
+              title="查看玩家资料"
+            >
+              {message.nickname}
+            </button>
+            <span className={styles.time}>{formatChatTime(message.timestamp)}</span>
             <span className={styles.text}>{message.content}</span>
           </div>
         ))}

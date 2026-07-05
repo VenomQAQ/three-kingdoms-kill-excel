@@ -1,6 +1,7 @@
 import styles from './SheetTabs.module.css';
 import {
   CURRENT_ROOM_SHEET_ID,
+  LIANLIANKAN_SHEET_ID,
   ROOM_LIST_SHEET_ID,
   SALES_SHEET_ID,
   SHEET_LABELS,
@@ -13,7 +14,7 @@ interface SheetTabsProps {
   currentRoomDisabled?: boolean;
 }
 
-const ALL_SHEETS: SheetId[] = [ROOM_LIST_SHEET_ID, CURRENT_ROOM_SHEET_ID, SALES_SHEET_ID];
+const ALL_SHEETS: SheetId[] = [ROOM_LIST_SHEET_ID, CURRENT_ROOM_SHEET_ID, LIANLIANKAN_SHEET_ID, SALES_SHEET_ID];
 
 export function SheetTabs({ active, onSelect, currentRoomDisabled }: SheetTabsProps) {
   return (

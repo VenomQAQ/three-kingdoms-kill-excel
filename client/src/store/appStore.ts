@@ -14,6 +14,8 @@ import { SANDBOX_ROOM_CODE } from '../data/decoy';
 import { translateError } from '../data/errorMessages';
 import { sanitizeRoom } from '../utils/display';
 import { AuthApi, AuthUser, CapabilitiesApi, Capabilities, HttpError } from '../api';
+import { LianliankanApi } from '../api';
+import type { LianliankanConfig, LianliankanSession } from '@tk/shared';
 import {
   appendLobbyMessage,
   ChatChannel,
@@ -47,6 +49,9 @@ interface AppState {
   user: AuthUser | null;
   capabilities: Capabilities | null;
   currentVersion: string;
+  lianliankanConfig: LianliankanConfig | null;
+  lianliankanSession: LianliankanSession | null;
+  lianliankanLoading: boolean;
 
   setNickname: (nickname: string) => Promise<void>;
   connect: () => void;
@@ -95,6 +100,9 @@ interface AppState {
   logout: () => Promise<void>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
   checkIn: () => Promise<void>;
+  loadLianliankanConfig: () => Promise<void>;
+  startLianliankan: (themeId: string, difficultyId: string) => Promise<LianliankanSession | null>;
+  finishLianliankan: (result: 'won' | 'lost', remainingTiles: number) => Promise<void>;
   setCurrentVersion: (versionId: string) => void;
   markUnauthenticated: (reason?: string) => void;
 }
@@ -160,6 +168,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   user: null,
   capabilities: null,
   currentVersion: 'standard-2014',
+  lianliankanConfig: null,
+  lianliankanSession: null,
+  lianliankanLoading: false,
 
   setNickname: async (nickname) => {
     const trimmed = nickname.trim();
@@ -658,6 +669,57 @@ export const useAppStore = create<AppState>((set, get) => ({
     useToastStore
       .getState()
       .show(`签到成功：金币 +${wallet.reward.coins}，经验 +${wallet.reward.experience}`);
+  },
+
+  loadLianliankanConfig: async () => {
+    const config = await LianliankanApi.getConfig();
+    set({ lianliankanConfig: config });
+  },
+
+  startLianliankan: async (themeId, difficultyId) => {
+    if (get().authStatus !== 'authed') {
+      set({ lastError: '请先登录' });
+      return null;
+    }
+    set({ lianliankanLoading: true });
+    try {
+      const result = await LianliankanApi.createSession({ themeId, difficultyId, mode: 'solo' });
+      set((s) => ({
+        lianliankanSession: result.session,
+        user: s.user ? { ...s.user, ...result.wallet } : s.user,
+      }));
+      return result.session;
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      get().showError(code, err instanceof Error ? err.message : '开局失败');
+      return null;
+    } finally {
+      set({ lianliankanLoading: false });
+    }
+  },
+
+  finishLianliankan: async (result, remainingTiles) => {
+    const session = get().lianliankanSession;
+    if (!session) return;
+    try {
+      const settled = await LianliankanApi.finishSession(session.sessionId, {
+        result,
+        clientFinishedAt: Date.now(),
+        remainingTiles,
+      });
+      set((s) => ({
+        lianliankanSession: s.lianliankanSession
+          ? { ...s.lianliankanSession, status: settled.status, finishedAt: Date.now() }
+          : s.lianliankanSession,
+        user: s.user ? { ...s.user, ...settled.wallet } : s.user,
+      }));
+      if (settled.status === 'won') {
+        useToastStore.getState().show(`挑战成功：金币 +${settled.rewardCoins}`);
+      }
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      get().showError(code, err instanceof Error ? err.message : '结算失败');
+    }
   },
 
   setCurrentVersion: (versionId: string) => {

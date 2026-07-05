@@ -130,6 +130,7 @@ export class RoomService implements OnModuleInit {
     const player = room.players.find((p) => p.id === oldPlayerId);
     if (!player) return null;
     player.id = newPlayerId;
+    player.userId = userId;
     player.connected = true;
     this.playerRoom.delete(oldPlayerId);
     this.playerRoom.set(newPlayerId, roomId);
@@ -150,7 +151,7 @@ export class RoomService implements OnModuleInit {
     return room;
   }
 
-  createRoom(hostId: string, nickname: string, versionId: string = DEFAULT_VERSION_ID): Room {
+  createRoom(hostId: string, nickname: string, versionId: string = DEFAULT_VERSION_ID, userId?: string | null): Room {
     const version = findVersion(versionId);
     if (!version) {
       throw new RoomError('E_VERSION_UNKNOWN', `未知版本 ${versionId}`);
@@ -167,6 +168,7 @@ export class RoomService implements OnModuleInit {
       players: [
         {
           id: hostId,
+          userId: userId ?? undefined,
           nickname: nickname.trim() || '玩家',
           ready: false,
           connected: true,
@@ -181,6 +183,7 @@ export class RoomService implements OnModuleInit {
     this.roomIdByCode.set(code, room.id);
     this.playerRoom.set(hostId, room.id);
     this.actingPlayerBySocket.set(hostId, hostId);
+    this.bindUserIdToPlayer(hostId, userId);
     return room;
   }
 
@@ -208,6 +211,7 @@ export class RoomService implements OnModuleInit {
         if (rebound) {
           const oldPlayerId = rebound.id;
           rebound.id = playerId;
+          rebound.userId = userId;
           rebound.connected = true;
           rebound.nickname = nickname.trim() || rebound.nickname;
           this.syncLifecycle(room);
@@ -232,6 +236,7 @@ export class RoomService implements OnModuleInit {
     if (rejoin) {
       const oldPlayerId = rejoin.id;
       rejoin.id = playerId;
+      rejoin.userId = userId ?? rejoin.userId;
       rejoin.connected = true;
       this.syncLifecycle(room);
       this.playerRoom.delete(oldPlayerId);
@@ -254,6 +259,7 @@ export class RoomService implements OnModuleInit {
     }
     room.players.push({
       id: playerId,
+      userId: userId ?? undefined,
       nickname: nickname.trim() || '玩家',
       ready: false,
       connected: true,
@@ -465,6 +471,7 @@ export class RoomService implements OnModuleInit {
         if (rebound) {
           const oldId = rebound.id;
           rebound.id = playerId;
+          rebound.userId = userId;
           rebound.connected = true;
           rebound.nickname = trimmedNick || rebound.nickname;
           this.syncLifecycle(room);
@@ -489,6 +496,7 @@ export class RoomService implements OnModuleInit {
     if (rejoin) {
       const oldId = rejoin.id;
       rejoin.id = playerId;
+      rejoin.userId = userId ?? rejoin.userId;
       rejoin.connected = true;
       this.syncLifecycle(room);
       this.playerRoom.delete(oldId);
@@ -510,6 +518,7 @@ export class RoomService implements OnModuleInit {
     if (!hasRealHost) room.hostId = playerId;
     room.players.push({
       id: playerId,
+      userId: userId ?? undefined,
       nickname: trimmedNick || `测试员${room.players.length + 1}`,
       ready: true,
       connected: true,
@@ -1158,14 +1167,15 @@ export class RoomService implements OnModuleInit {
       .filter((r) => r.players.length > 0 || r.isSandbox)
       .filter((r) => !versionFilter || (r.versionId ?? DEFAULT_VERSION_ID) === versionFilter)
       .map((r) => {
+        const host = r.players.find((p) => p.id === r.hostId);
         const isMember = r.players.some((p) => p.id === viewerPlayerId || p.id === mappedPlayerId);
         return {
           code: r.code,
           status: r.status,
           playerCount: r.players.length,
           maxPlayers: r.maxPlayers,
-          ownerNickname:
-            r.players.find((p) => p.id === r.hostId)?.nickname ?? '—',
+          ownerNickname: host?.nickname ?? '—',
+          ownerUserId: host?.userId,
           versionId: r.versionId ?? DEFAULT_VERSION_ID,
           versionName:
             r.versionName ?? findVersion(r.versionId ?? DEFAULT_VERSION_ID)?.name ?? '未知版本',
