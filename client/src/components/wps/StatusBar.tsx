@@ -2,14 +2,13 @@ import styles from './StatusBar.module.css';
 
 interface StatusBarProps {
   roomCode?: string;
-  connected: boolean;
+  connected?: boolean;
   playerCount?: number;
   zoom?: number;
 }
 
 export function StatusBar({
   roomCode,
-  connected,
   playerCount,
   zoom = 100,
 }: StatusBarProps) {
@@ -21,8 +20,6 @@ export function StatusBar({
     <div className={styles.bar}>
       <span className={styles.left}>{left}</span>
       <span className={styles.right}>
-        <span className={connected ? styles.dotOn : styles.dotOff} />
-        {connected ? '已连接' : '未连接'}
         <span className={styles.zoomWrap}>
           <span className={styles.zoomBtn}>−</span>
           <span className={styles.zoomVal}>{zoom}%</span>

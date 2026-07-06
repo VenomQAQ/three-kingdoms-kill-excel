@@ -1,6 +1,6 @@
 import styles from './Toolbar.module.css';
 
-const ICONS = ['保存', '撤销', '重做', '复制', '粘贴', 'B', 'I', 'U', '对齐', '合并', '筛选', '排序'];
+const ICONS = ['保存', '撤销', '重做', '复制', '设置', 'B', 'I', 'U', '对齐', '合并', '筛选', '排序'];
 
 export function Toolbar() {
   return (
