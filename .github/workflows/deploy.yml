@@ -28,7 +28,7 @@ jobs:
       - name: Rsync to server
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_USER: ${{ secrets.SSH_USER || 'tkdeploy' }}
         run: |
           rsync -avz \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes" \
@@ -44,6 +44,6 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
+          username: ${{ secrets.SSH_USER || 'tkdeploy' }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: bash /www/wwwroot/three-kingdoms-kill/scripts/deploy-remote.sh

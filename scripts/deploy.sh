@@ -7,7 +7,7 @@
 #
 # 可选环境变量:
 #   DEPLOY_HOST      默认 119.91.123.149
-#   DEPLOY_USER      默认 root
+#   DEPLOY_USER      默认 tkdeploy（专用部署用户，勿用 root）
 #   DEPLOY_PORT      默认 22
 #   DEPLOY_SSH_KEY   SSH 私钥路径（不设置则用系统默认密钥）
 
@@ -17,7 +17,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ===== 部署目标（可按需改）=====
 DEPLOY_HOST="${DEPLOY_HOST:-119.91.123.149}"
-DEPLOY_USER="${DEPLOY_USER:-root}"
+DEPLOY_USER="${DEPLOY_USER:-tkdeploy}"
 DEPLOY_PORT="${DEPLOY_PORT:-22}"
 REMOTE_DIR="/www/wwwroot/three-kingdoms-kill"
 SITE_URL="${DEPLOY_SITE_URL:-https://game.nomore.store}"

@@ -29,7 +29,9 @@ clean_dist_dir() {
 
   # 宝塔会在网站目录自动生成 .user.ini，且可能带 immutable 属性，阻塞 Vite 清空 dist
   if [[ -f "${dist_dir}/.user.ini" ]]; then
-    chattr -i "${dist_dir}/.user.ini" 2>/dev/null || true
+    if ! chattr -i "${dist_dir}/.user.ini" 2>/dev/null; then
+      sudo -n chattr -i "${dist_dir}/.user.ini" 2>/dev/null || true
+    fi
     rm -f "${dist_dir}/.user.ini"
   fi
 
