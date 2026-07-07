@@ -1,6 +1,7 @@
 ﻿import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Room, RoomListItem } from '@tk/shared';
+import { DEFAULT_BOSS_KEY } from '../../utils/bossKey';
 import { LIANLIANKAN_CONFIG } from '../../../../server/src/modules/lianliankan/lianliankan.config';
 import { InfoBar } from './InfoBar';
 import { MonopolyGrid } from './MonopolyGrid';
@@ -99,12 +100,10 @@ describe('REQ-2026-006 UI acceptance', () => {
         open
         defaultGameType="monopoly"
         onDefaultGameTypeChange={vi.fn()}
-        bossMode={false}
-        onBossModeChange={vi.fn()}
+        bossKeyShortcut={DEFAULT_BOSS_KEY}
+        onBossKeyShortcutChange={vi.fn()}
         bgColorToken="#ffffff"
         onBgColorTokenChange={vi.fn()}
-        showMonopolyCellColors={false}
-        onShowMonopolyCellColorsChange={vi.fn()}
         onChangeNickname={vi.fn()}
         onChangePassword={vi.fn()}
         onClose={vi.fn()}
@@ -117,6 +116,7 @@ describe('REQ-2026-006 UI acceptance', () => {
     expect(html).toContain('老板键');
     expect(html).toContain('背景色');
     expect(html).toContain('大富翁');
+    expect(html).not.toContain('隐藏地块颜色');
   });
 
   it('adjusts lianliankan difficulty sizes and adds richer themes', () => {
@@ -180,7 +180,7 @@ describe('REQ-2026-006 UI acceptance', () => {
     expect(html).toContain('广州火车站');
     expect(html).toContain('玩家资产');
     expect(html).toContain('购买');
-    expect(html).toContain('游玩免费');
+    expect(html).toContain('中国版大富翁开始');
     expect(html).not.toContain('房主</span>');
     expect(html).toContain('玩家二');
   });

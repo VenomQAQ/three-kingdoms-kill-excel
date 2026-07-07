@@ -15,6 +15,7 @@ interface GameGridProps {
   selectedCell: string;
   selectedHand: HandCardPick | null;
   showMonopolyCellColors?: boolean;
+  onShowMonopolyCellColorsChange?: (enabled: boolean) => void;
   onSelectCell: (ref: string) => void;
   onSelectHand: (card: string, index: number) => void;
   onPlayCard: (card: string, handIndex?: number) => void;
@@ -41,6 +42,7 @@ export function GameGrid({
   selectedCell,
   selectedHand,
   showMonopolyCellColors = false,
+  onShowMonopolyCellColorsChange,
   onSelectCell,
   onSelectHand,
   onPlayCard,
@@ -67,6 +69,7 @@ export function GameGrid({
           playerId={playerId}
           selectedCell={selectedCell}
           showCellColors={showMonopolyCellColors}
+          onShowCellColorsChange={onShowMonopolyCellColorsChange}
           onSelectCell={onSelectCell}
           onRoll={onMonopolyRoll ?? (() => undefined)}
           onBuy={onMonopolyBuy ?? (() => undefined)}

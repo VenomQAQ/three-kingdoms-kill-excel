@@ -1467,6 +1467,7 @@ export class RoomService implements OnModuleInit {
     state.turnIndex = (state.turnIndex + 1) % state.players.length;
     if (state.turnIndex === 0) state.round += 1;
     state.pendingAction = null;
+    state.lastDrawnCard = null;
     state.log = state.log.slice(-12);
   }
 

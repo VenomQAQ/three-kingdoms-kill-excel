@@ -19,6 +19,8 @@
 .gridPane {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  width: 100%;
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -795,14 +797,17 @@
 .monopolyWrap {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: 0;
   height: 100%;
+  width: 100%;
   background: #ffffff;
 }
 
 .monopolyToolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   min-height: 38px;
   padding: 5px 10px;
@@ -815,6 +820,29 @@
 
 .monopolyToolbar span {
   white-space: nowrap;
+}
+
+.monopolyToolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.monopolyToolbarToggle {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #cfcfcf;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #333333;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.monopolyToolbarToggle:hover {
+  border-color: #217346;
+  background: #f0f8f4;
 }
 
 .monopolyDrawnCard {
@@ -848,22 +876,73 @@
 }
 
 .monopolyBody {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  display: flex;
+  align-items: stretch;
   min-height: 0;
   flex: 1;
+  width: 100%;
+  overflow: hidden;
+}
+
+.monopolyMain {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
 .monopolyBoard {
   display: grid;
-  grid-template-columns: 40px repeat(11, minmax(58px, 1fr));
+  grid-template-columns: 40px repeat(11, 72px);
   grid-template-rows: 22px repeat(11, minmax(44px, 1fr));
-  align-content: start;
+  align-content: stretch;
+  flex: 0 0 auto;
+  width: max-content;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border-right: none;
+}
+
+.monopolyFiller {
+  flex: 1 1 0;
+  min-width: 120px;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: 22px repeat(11, minmax(44px, 1fr));
   overflow: hidden;
   border-right: 1px solid #d0d0d0;
+  background: #ffffff;
+}
+
+.monopolyFillerCell {
+  min-width: 0;
+  min-height: 0;
+  padding: 0 8px;
+  border: none;
+  border-right: 1px solid #e5e5e5;
+  border-bottom: 1px solid #e5e5e5;
+  background: #ffffff;
+  color: #333333;
+  font-size: 12px;
+  line-height: 22px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: cell;
+}
+
+.monopolyFillerCell:hover {
+  background: #fafafa;
+}
+
+.monopolyFillerCell.headerCell {
+  font-weight: 600;
+  background: linear-gradient(180deg, #f8f8f8 0%, #f0f0f0 100%);
 }
 
 .monopolyBoard .colHeaders {
@@ -999,12 +1078,13 @@
 .monopolyTokenGroup {
   position: absolute;
   right: 4px;
-  bottom: 3px;
+  top: 3px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   align-items: flex-end;
   max-width: 64px;
+  z-index: 1;
 }
 
 .monopolyToken {
@@ -1022,11 +1102,37 @@
   text-overflow: ellipsis;
 }
 
+.monopolyPlayerNameCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.monopolyOnlineDot,
+.monopolyOfflineDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.monopolyOnlineDot {
+  background: #52c41a;
+}
+
+.monopolyOfflineDot {
+  background: #ff4d4f;
+}
+
 .monopolySide {
   display: flex;
   flex-direction: column;
+  flex: 0 0 360px;
   width: 360px;
   min-width: 360px;
+  max-width: 360px;
   min-height: 0;
   overflow: hidden;
   border-left: 1px solid #d0d0d0;
@@ -1034,9 +1140,43 @@
 }
 
 .monopolyTable {
-  overflow-x: auto;
+  width: 100%;
   flex-shrink: 0;
   border-bottom: 1px solid #d0d0d0;
+}
+
+.monopolyAssetRow {
+  display: grid !important;
+  grid-template-columns: 40px minmax(88px, 1.1fr) 64px minmax(0, 1fr);
+  min-height: 22px;
+  width: 100%;
+}
+
+.monopolyAssetRow .rowHeader {
+  width: 40px;
+  min-width: 40px;
+}
+
+.monopolyAssetRow .cell,
+.monopolyAssetRow .monopolyPlayerNameCell,
+.monopolyAssetRow button.cell {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none;
+  flex: initial;
+  flex-shrink: 1;
+}
+
+.monopolyAssetPlayerCol {
+  text-align: left;
+}
+
+.monopolyAssetCashCol {
+  text-align: right;
+}
+
+.monopolyAssetPositionCol {
+  text-align: left;
 }
 
 .monopolyLogPanel {
@@ -1120,18 +1260,30 @@
 
 @media (max-width: 760px) {
   .monopolyBody {
-    grid-template-columns: 1fr;
+    flex-direction: column;
     overflow: auto;
   }
 
-  .monopolyBoard {
-    border-right: none;
-    border-bottom: 1px solid #d0d0d0;
+  .monopolyMain {
+    flex-direction: column;
     min-height: 560px;
+  }
+
+  .monopolyBoard {
+    border-bottom: 1px solid #d0d0d0;
+    height: auto;
+  }
+
+  .monopolyFiller {
+    display: none;
   }
 
   .monopolySide {
     min-height: 320px;
     border-left: none;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    flex-basis: auto;
   }
 }

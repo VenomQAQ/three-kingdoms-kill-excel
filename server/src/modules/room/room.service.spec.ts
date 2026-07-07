@@ -90,8 +90,45 @@ describe('RoomService formal general selection', () => {
     try {
       service.monopolyRoll('host');
       expect(state.players[0]?.position).toBe(0);
-      expect(state.lastDrawnCard).toEqual(expect.objectContaining({ pool: 'chance', id: 'chance-01' }));
       expect(state.players[0]?.cash).toBe(17000);
+      expect(state.turnIndex).toBe(1);
+      expect(state.pendingAction).toBeNull();
+      expect(state.log.some((line) => line.includes('抽到'))).toBe(true);
+      expect(state.lastDrawnCard).toBeNull();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('advances turn after chance card moves to an owned rail and clears drawn card state', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主', undefined, undefined, 'monopoly');
+    service.joinRoom(room.code, 'p2', '玩家二');
+    service.setReady('host', true);
+    service.setReady('p2', true);
+    service.startGame('host');
+
+    const state = room.monopoly!;
+    const railIndex = state.board.findIndex((cell) => cell.name === '沈阳火车站');
+    expect(railIndex).toBeGreaterThan(-1);
+    state.board[railIndex]!.ownerId = 'p2';
+    state.players[0]!.position = 5;
+    state.players[1]!.cash = 15000;
+
+    vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(8 / 13);
+
+    try {
+      service.monopolyRoll('host');
+      expect(state.players[0]?.position).toBe(railIndex);
+      expect(state.turnIndex).toBe(1);
+      expect(state.pendingAction).toBeNull();
+      expect(state.lastDrawnCard).toBeNull();
+      expect(state.players[0]?.cash).toBeLessThan(15000);
+      expect(state.players[1]?.cash).toBeGreaterThan(15000);
+      expect(state.log.some((line) => line.includes('火车站'))).toBe(true);
     } finally {
       vi.restoreAllMocks();
     }

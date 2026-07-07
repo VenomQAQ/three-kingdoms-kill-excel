@@ -445,3 +445,31 @@
   color: #666666;
   font-size: 12px;
 }
+
+.statusDotOnline,
+.statusDotOffline {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.statusDotOnline {
+  background: #52c41a;
+}
+
+.statusDotOffline {
+  background: #ff4d4f;
+}
+
+.list {
+  margin: 0;
+  padding-left: 18px;
+  color: #333333;
+}
+
+.list li + li {
+  margin-top: 6px;
+}

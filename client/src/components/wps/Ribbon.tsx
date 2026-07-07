@@ -51,6 +51,7 @@ interface RibbonProps {
   onCheckIn?: () => void;
   checkInDisabled?: boolean;
   onOpenSettings?: () => void;
+  hideSkillsPanel?: boolean;
 }
 
 export function Ribbon({
@@ -68,6 +69,7 @@ export function Ribbon({
   onCheckIn,
   checkInDisabled,
   onOpenSettings,
+  hideSkillsPanel = false,
 }: RibbonProps) {
   const [tab, setTab] = useState<RibbonTab>('home');
   const currentSkills = useMemo(() => {
@@ -145,36 +147,40 @@ export function Ribbon({
             ))}
           </div>
           <div className={styles.groupDivider} />
-          <div className={styles.fontGroup}>
-            <span className={styles.fontInput}>微软雅黑</span>
-            <span className={styles.fontInput} style={{ minWidth: '24px' }}>11</span>
-            <button type="button" className={styles.fmtBtn}>B</button>
-            <button type="button" className={styles.fmtBtn}>I</button>
-            <button type="button" className={styles.fmtBtn}>U</button>
-          </div>
-          <div className={styles.skillsPanel}>
-            {currentSkills.length > 0 ? (
-              <div className={styles.skillList}>
-                {currentSkills.map((skill) => {
-                  const disabled = !canUseSkills || turnPhase !== 'play';
-                  return (
-                    <button
-                      key={skill.id}
-                      type="button"
-                      className={styles.skillBtn}
-                      disabled={disabled}
-                      onClick={() => !disabled && onUseSkill?.(skill.id)}
-                      title={stripGeneralPrefixInText(skill.description)}
-                    >
-                      {stripGeneralPrefixInText(skill.name)}
-                    </button>
-                  );
-                })}
+          {!hideSkillsPanel ? (
+            <>
+              <div className={styles.fontGroup}>
+                <span className={styles.fontInput}>微软雅黑</span>
+                <span className={styles.fontInput} style={{ minWidth: '24px' }}>11</span>
+                <button type="button" className={styles.fmtBtn}>B</button>
+                <button type="button" className={styles.fmtBtn}>I</button>
+                <button type="button" className={styles.fmtBtn}>U</button>
               </div>
-            ) : (
-              <span className={styles.skillEmpty}>当前角色无可显示技能</span>
-            )}
-          </div>
+              <div className={styles.skillsPanel}>
+                {currentSkills.length > 0 ? (
+                  <div className={styles.skillList}>
+                    {currentSkills.map((skill) => {
+                      const disabled = !canUseSkills || turnPhase !== 'play';
+                      return (
+                        <button
+                          key={skill.id}
+                          type="button"
+                          className={styles.skillBtn}
+                          disabled={disabled}
+                          onClick={() => !disabled && onUseSkill?.(skill.id)}
+                          title={stripGeneralPrefixInText(skill.description)}
+                        >
+                          {stripGeneralPrefixInText(skill.name)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <span className={styles.skillEmpty}>当前角色无可显示技能</span>
+                )}
+              </div>
+            </>
+          ) : null}
         </div>
       ) : (
         <div className={styles.ribbonPlaceholder}>

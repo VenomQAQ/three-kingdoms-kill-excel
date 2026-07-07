@@ -5,6 +5,8 @@ import { useAppStore } from '../../store/appStore';
 import { useToastStore } from '../../store/toastStore';
 import modalStyles from './GameModal.module.css';
 
+const QQ_EMAIL_RE = /^[1-9]\d{4,10}@qq\.com$/i;
+
 interface ChangePasswordDialogProps {
   open: boolean;
   onClose: () => void;
@@ -13,17 +15,25 @@ interface ChangePasswordDialogProps {
 
 export function ChangePasswordDialog({ open, onClose, onSuccess }: ChangePasswordDialogProps) {
   const changePassword = useAppStore((s) => s.changePassword);
+  const userEmail = useAppStore((s) => s.user?.email ?? '');
   const showToast = useToastStore((s) => s.show);
+  const [email, setEmail] = useState('');
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const oldRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) oldRef.current?.focus();
-  }, [open]);
+    if (!open) return;
+    setEmail(userEmail);
+    setOldPassword('');
+    setNewPassword('');
+    setConfirm('');
+    setError(null);
+    emailRef.current?.focus();
+  }, [open, userEmail]);
 
   useEffect(() => {
     if (!open) return;
@@ -40,10 +50,27 @@ export function ChangePasswordDialog({ open, onClose, onSuccess }: ChangePasswor
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const accountEmail = userEmail.trim().toLowerCase();
+
+    if (!QQ_EMAIL_RE.test(normalizedEmail)) {
+      setError('请输入有效的 QQ 邮箱');
+      return;
+    }
+    if (normalizedEmail !== accountEmail) {
+      setError('QQ 邮箱与当前登录账号不一致');
+      return;
+    }
+    if (!oldPassword) {
+      setError('请输入旧密码');
+      return;
+    }
     if (newPassword !== confirm) {
       setError(translateError('E_PASSWORD_MISMATCH'));
       return;
     }
+
     setLoading(true);
     try {
       await changePassword(oldPassword, newPassword);
@@ -71,9 +98,19 @@ export function ChangePasswordDialog({ open, onClose, onSuccess }: ChangePasswor
         </div>
         <form className={modalStyles.body} onSubmit={handleSubmit}>
           <label className={modalStyles.fieldLabel}>
-            原密码
+            QQ 邮箱
             <input
-              ref={oldRef}
+              ref={emailRef}
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </label>
+          <label className={modalStyles.fieldLabel}>
+            旧密码
+            <input
               type="password"
               autoComplete="current-password"
               value={oldPassword}
@@ -111,7 +148,7 @@ export function ChangePasswordDialog({ open, onClose, onSuccess }: ChangePasswor
               取消
             </button>
             <button type="submit" className={modalStyles.primary} disabled={loading}>
-              {loading ? '提交中…' : '确认修改'}
+              {loading ? '提交中…' : '保存'}
             </button>
           </div>
         </form>

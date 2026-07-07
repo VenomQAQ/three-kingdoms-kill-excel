@@ -1,0 +1,6 @@
+req_id: REQ-2026-008-monopoly-ui-polish
+stage: "③开发"
+status: completed
+updated_at: 2026-07-07T11:38+08:00
+artifacts:
+  prd: docs/reqs/REQ-2026-008-monopoly-ui-polish/prd/prd.v1.md

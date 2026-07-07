@@ -42,6 +42,12 @@ import { useAppStore } from './store/appStore';
 import { useToastStore } from './store/toastStore';
 import { HttpError } from './api';
 import { formatGeneralName } from './utils/display';
+import {
+  loadBossKeyShortcut,
+  matchesBossKeyShortcut,
+  saveBossKeyShortcut,
+  type BossKeyShortcut,
+} from './utils/bossKey';
 import gridStyles from './components/wps/SpreadsheetGrid.module.css';
 import styles from './App.module.css';
 
@@ -82,6 +88,7 @@ function App() {
     return window.localStorage.getItem('tk_monopoly_cell_colors') === '1';
   });
   const [activeSheet, setActiveSheet] = useState<SheetId>(ROOM_LIST_SHEET_ID);
+  const [bossKeyShortcut, setBossKeyShortcut] = useState<BossKeyShortcut>(() => loadBossKeyShortcut());
   const [bossMode, setBossMode] = useState(false);
   const [selectedCell, setSelectedCell] = useState('A1');
   const [selectedHand, setSelectedHand] = useState<HandCardPick | null>(null);
@@ -279,26 +286,21 @@ function App() {
   }, [fetchRoomList]);
 
   useEffect(() => {
+    saveBossKeyShortcut(bossKeyShortcut);
+  }, [bossKeyShortcut]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'H') {
-        e.preventDefault();
-        setBossMode((prev) => {
-          const next = !prev;
-          if (next) {
-            document.title = '第 1 季度区域销售汇总.xlsx';
-            window.localStorage.setItem('tk_browser_title', '第 1 季度区域销售汇总.xlsx');
-            setActiveSheet(SALES_SHEET_ID);
-          } else {
-            const fallbackTitle = window.localStorage.getItem('tk_browser_title')?.trim() || '三国杀表格.xlsx';
-            document.title = fallbackTitle.slice(0, 40);
-          }
-          return next;
-        });
-      }
+      if (!matchesBossKeyShortcut(e, bossKeyShortcut)) return;
+      e.preventDefault();
+      setBossMode(true);
+      document.title = '第 1 季度区域销售汇总.xlsx';
+      window.localStorage.setItem('tk_browser_title', '第 1 季度区域销售汇总.xlsx');
+      setActiveSheet(SALES_SHEET_ID);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [bossKeyShortcut]);
 
   useEffect(() => {
     if (room && !bossMode) {
@@ -308,6 +310,7 @@ function App() {
 
   const isSandbox = room?.isSandbox || room?.code === SANDBOX_ROOM_CODE;
   const isPlaying = room?.status === 'playing' || room?.status === 'finished';
+  const isMonopolyPlaying = room?.gameType === 'monopoly' && isPlaying;
   const controlId = isSandbox ? (actingPlayerId ?? playerId) : playerId;
   const controlPlayer = room?.players.find((p) => p.id === controlId);
   const actingPlayer = controlPlayer;
@@ -971,6 +974,7 @@ function App() {
         onCheckIn={() => void handleCheckIn()}
         checkInDisabled={authStatus === 'loading'}
         onOpenSettings={() => setShowSettingsDialog(true)}
+        hideSkillsPanel={isMonopolyPlaying}
       />
       <InfoBar
         nickname={nickname}
@@ -978,7 +982,7 @@ function App() {
         accountLabel={accountLabel}
         roomCode={bossMode ? undefined : room?.code}
         roomStatus={room ? roomStatusLabel : undefined}
-        actingName={formatGeneralName(actingPlayer)}
+        actingName={isMonopolyPlaying ? undefined : formatGeneralName(actingPlayer)}
         turnName={formatTurnName(room?.gameType, turnPlayer)}
         isAuthed={isAuthed}
         onLoginClick={() => setShowLoginDialog(true)}
@@ -1094,6 +1098,7 @@ function App() {
             selectedCell={selectedCell}
             selectedHand={selectedHand}
             showMonopolyCellColors={showMonopolyCellColors}
+            onShowMonopolyCellColorsChange={setShowMonopolyCellColors}
             onSelectCell={setSelectedCell}
             onSelectHand={handleSelectHand}
             onPlayCard={handlePlayCard}
@@ -1182,7 +1187,10 @@ function App() {
       </div>
       <SheetTabs
         active={displaySheet}
-        onSelect={setActiveSheet}
+        onSelect={(sheet) => {
+          setActiveSheet(sheet);
+          if (sheet !== SALES_SHEET_ID) setBossMode(false);
+        }}
         currentRoomDisabled={!showCurrentRoomSheet}
       />
       <StatusBar
@@ -1201,14 +1209,15 @@ function App() {
         open={showSettingsDialog}
         defaultGameType={defaultGameType}
         onDefaultGameTypeChange={handleDefaultGameTypeChange}
-        bossMode={bossMode}
-        onBossModeChange={setBossMode}
+        bossKeyShortcut={bossKeyShortcut}
+        onBossKeyShortcutChange={setBossKeyShortcut}
         bgColorToken={bgColorToken}
         onBgColorTokenChange={setBgColorToken}
-        showMonopolyCellColors={showMonopolyCellColors}
-        onShowMonopolyCellColorsChange={setShowMonopolyCellColors}
         onChangeNickname={handleChangeNickname}
-        onChangePassword={() => setShowChangePasswordDialog(true)}
+        onChangePassword={() => {
+          setShowSettingsDialog(false);
+          setShowChangePasswordDialog(true);
+        }}
         onClose={() => setShowSettingsDialog(false)}
       />
       {skillModalPlayer && (

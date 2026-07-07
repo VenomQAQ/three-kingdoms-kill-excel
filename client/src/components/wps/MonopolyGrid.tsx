@@ -8,6 +8,11 @@ import {
 } from '@tk/shared';
 import { DECOY_HEADERS, DECOY_ROWS } from '../../data/decoy';
 import { formatChatTime } from '../../utils/chatTime';
+import {
+  buildMonopolyPlayerAssetsView,
+  MonopolyPlayerAssetsModal,
+  type MonopolyPlayerAssetsView,
+} from './MonopolyPlayerAssetsModal';
 import styles from './SpreadsheetGrid.module.css';
 
 interface MonopolyGridProps {
@@ -16,17 +21,29 @@ interface MonopolyGridProps {
   playerId: string | null;
   selectedCell: string;
   showCellColors?: boolean;
+  onShowCellColorsChange?: (enabled: boolean) => void;
   onSelectCell: (ref: string) => void;
   onRoll: () => void;
   onBuy: () => void;
   onUpgrade: () => void;
   onSkip: () => void;
-  onViewProfile?: (player: import('@tk/shared').RoomPlayer) => void;
   onViewChatProfile?: (message: ChatMessage) => void;
   onSendChat: (content: string) => void;
 }
 
 const BOARD_SIZE = 11;
+const FILLER_ROW_COUNT = BOARD_SIZE + 1;
+const FILLER_COL_MIN_WIDTH = 72;
+
+function spreadsheetColumnLabel(index: number): string {
+  let label = '';
+  let current = index;
+  while (current >= 0) {
+    label = String.fromCharCode('A'.charCodeAt(0) + (current % 26)) + label;
+    current = Math.floor(current / 26) - 1;
+  }
+  return label;
+}
 const CORNER_LABELS = new Map<number, string>([
   [0, '起点'],
   [10, '进牢'],
@@ -36,7 +53,6 @@ const CORNER_LABELS = new Map<number, string>([
 const BOARD_COLUMNS = Array.from({ length: BOARD_SIZE }, (_, index) =>
   String.fromCharCode('A'.charCodeAt(0) + index),
 );
-const PLAYER_COLUMNS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 function cellTypeLabel(type: MonopolyBoardCell['type']) {
   switch (type) {
@@ -61,16 +77,6 @@ function cellTypeLabel(type: MonopolyBoardCell['type']) {
     default:
       return '事件';
   }
-}
-
-function propertyNames(player: MonopolyPlayerState, board: MonopolyBoardCell[]) {
-  return player.properties
-    .map((index) => {
-      const cell = board.find((item) => item.index === index);
-      return cell ? `${cell.name} Lv.${cell.level ?? 1}` : null;
-    })
-    .filter(Boolean)
-    .join('、') || '-';
 }
 
 function ringPosition(index: number): { x: number; y: number } {
@@ -161,20 +167,36 @@ export function MonopolyGrid({
   playerId,
   selectedCell,
   showCellColors = false,
+  onShowCellColorsChange,
   onSelectCell,
   onRoll,
   onBuy,
   onUpgrade,
   onSkip,
-  onViewProfile,
   onViewChatProfile,
   onSendChat,
 }: MonopolyGridProps) {
   const [chatInput, setChatInput] = useState('');
   const [confirmAction, setConfirmAction] = useState<'buy' | 'upgrade' | null>(null);
+  const [assetsView, setAssetsView] = useState<MonopolyPlayerAssetsView | null>(null);
+  const [fillerCols, setFillerCols] = useState(6);
   const logScrollRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const fillerRef = useRef<HTMLDivElement>(null);
   const state = room.monopoly;
+
+  useEffect(() => {
+    const el = fillerRef.current;
+    if (!el) return;
+    const updateCols = () => {
+      const next = Math.max(1, Math.floor(el.clientWidth / FILLER_COL_MIN_WIDTH));
+      setFillerCols((prev) => (prev === next ? prev : next));
+    };
+    updateCols();
+    const observer = new ResizeObserver(updateCols);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (logScrollRef.current) {
@@ -203,7 +225,6 @@ export function MonopolyGrid({
     && (currentCell.type === 'city' || currentCell.type === 'rail' || currentCell.type === 'utility');
   const canUpgrade = isMyTurn && state.pendingAction === 'upgrade_or_skip' && currentCell?.type === 'city' && currentCell.ownerId === playerId;
   const canRoll = isMyTurn && !state.pendingAction && room.status === 'playing';
-  const diceText = state.lastDice ? `${state.lastDice[0]}+${state.lastDice[1]}` : '-';
   const upgradeCost = currentCell ? nextUpgradeCost(currentCell) : null;
   const upgradedRent = currentCell ? nextLevelRent(currentCell) : null;
 
@@ -217,24 +238,34 @@ export function MonopolyGrid({
   const confirmTitle = confirmAction === 'upgrade' ? '升级地块' : '购买地块';
   const confirmCost = confirmAction === 'upgrade' ? upgradeCost : currentCell?.price;
 
+  const openAssets = (player: MonopolyPlayerState) => {
+    const roomPlayer = room.players.find((item) => item.id === player.playerId);
+    setAssetsView(buildMonopolyPlayerAssetsView(player, state.board, roomPlayer?.connected ?? false));
+  };
+
   return (
     <div className={styles.monopolyWrap}>
       <div className={styles.monopolyToolbar}>
         <span>回合 {state.round}</span>
-        <span>当前：{current?.nickname ?? '-'}</span>
-        <span>骰子：{diceText}</span>
-        {state.lastDrawnCard ? (
-          <span className={styles.monopolyDrawnCard}>
-            {state.lastDrawnCard.pool === 'chance' ? '机会' : '命运'}：{state.lastDrawnCard.text}
-          </span>
+        {onShowCellColorsChange ? (
+          <button
+            type="button"
+            className={styles.monopolyToolbarToggle}
+            onClick={() => onShowCellColorsChange(!showCellColors)}
+          >
+            {showCellColors ? '隐藏地块颜色' : '显示地块颜色'}
+          </button>
         ) : null}
-        <button type="button" onClick={onRoll} disabled={!canRoll}>掷骰</button>
-        <button type="button" onClick={() => setConfirmAction('buy')} disabled={!canBuy}>购买</button>
-        <button type="button" onClick={() => setConfirmAction('upgrade')} disabled={!canUpgrade}>升级</button>
-        <button type="button" onClick={onSkip} disabled={!isMyTurn || !state.pendingAction}>跳过</button>
+        <div className={styles.monopolyToolbarActions}>
+          <button type="button" onClick={onRoll} disabled={!canRoll}>掷骰</button>
+          <button type="button" onClick={() => setConfirmAction('buy')} disabled={!canBuy}>购买</button>
+          <button type="button" onClick={() => setConfirmAction('upgrade')} disabled={!canUpgrade}>升级</button>
+          <button type="button" onClick={onSkip} disabled={!isMyTurn || !state.pendingAction}>跳过</button>
+        </div>
       </div>
       <div className={styles.monopolyBody}>
-        <div className={styles.monopolyBoard}>
+        <div className={styles.monopolyMain}>
+          <div className={styles.monopolyBoard}>
           <div className={styles.corner} />
           {BOARD_COLUMNS.map((col, index) => (
             <div key={col} className={styles.colHeader} style={{ gridColumn: index + 2, gridRow: 1 }}>{col}</div>
@@ -280,8 +311,8 @@ export function MonopolyGrid({
               </button>
             );
           })}
-          {state.board.map((cell, index) => {
-            const pos = ringPosition(index);
+          {state.board.map((cell) => {
+            const pos = ringPosition(cell.index);
             const ref = `${BOARD_COLUMNS[pos.x]}${pos.y + 1}`;
             const playersHere = state.players.filter((player) => player.position === cell.index);
             const hasMeHere = playersHere.some((player) => player.playerId === playerId);
@@ -299,40 +330,74 @@ export function MonopolyGrid({
                 {showCellColors && boardAccent(cell) ? (
                   <span className={styles.monopolyCellBand} style={{ backgroundColor: boardAccent(cell) }} aria-hidden="true" />
                 ) : null}
-                <span className={styles.monopolyCellName}>{cell.name}</span>
-                <span className={styles.monopolyCellMeta}>{cellSummary(cell, state.board, owner)}</span>
                 {otherTags.length > 0 ? (
                   <span className={styles.monopolyTokenGroup}>
-                  {otherTags.map((tag, tagIndex) => (
+                    {otherTags.map((tag, tagIndex) => (
                       <span key={`${cell.index}-${tagIndex}-${tag}`} className={styles.monopolyToken}>{tag}</span>
                     ))}
                   </span>
                 ) : null}
+                <span className={styles.monopolyCellName}>{cell.name}</span>
+                <span className={styles.monopolyCellMeta}>{cellSummary(cell, state.board, owner)}</span>
               </button>
             );
           })}
+          </div>
+          <div
+            className={styles.monopolyFiller}
+            ref={fillerRef}
+            style={{ gridTemplateColumns: `repeat(${fillerCols}, minmax(72px, 1fr))` }}
+          >
+            {Array.from({ length: fillerCols * FILLER_ROW_COUNT }, (_, index) => {
+              const rowIndex = Math.floor(index / fillerCols);
+              const colIndex = index % fillerCols;
+              const colLabel = spreadsheetColumnLabel(BOARD_SIZE + colIndex);
+              const ref = `${colLabel}${rowIndex + 1}`;
+              const isHeader = rowIndex === 0;
+              return (
+                <button
+                  key={ref}
+                  type="button"
+                  className={`${styles.monopolyFillerCell} ${ref === selectedCell ? styles.selected : ''} ${isHeader ? styles.headerCell : ''}`}
+                  onClick={() => onSelectCell(ref)}
+                  aria-label={ref}
+                >
+                  {isHeader ? colLabel : ''}
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className={styles.monopolySide}>
           <div className={styles.sidePanelTitle}>玩家资产</div>
           <div className={styles.monopolyTable}>
-            <div className={styles.row}>
+            <div className={`${styles.row} ${styles.monopolyAssetRow}`}>
               <div className={styles.rowHeader}>1</div>
-              {['玩家', '现金', '位置', '资产', '状态', '资料'].map((header, index) => (
-                <div key={header} className={`${styles.cell} ${styles.headerCell}`} style={{ minWidth: index === 3 ? 180 : 72, width: index === 3 ? 180 : 72 }}>{header}</div>
-              ))}
+              <div className={`${styles.cell} ${styles.headerCell} ${styles.monopolyAssetPlayerCol}`}>玩家</div>
+              <div className={`${styles.cell} ${styles.headerCell} ${styles.monopolyAssetCashCol}`}>现金</div>
+              <div className={`${styles.cell} ${styles.headerCell} ${styles.monopolyAssetPositionCol}`}>位置</div>
             </div>
             {state.players.map((player, index) => {
               const roomPlayer = room.players.find((item) => item.id === player.playerId);
               const rowNum = index + 2;
+              const connected = roomPlayer?.connected ?? false;
               return (
-                <div key={player.playerId} className={`${styles.row}${player.playerId === current?.playerId ? ` ${styles.turnRow}` : ''}`}>
+                <div key={player.playerId} className={`${styles.row} ${styles.monopolyAssetRow}${player.playerId === current?.playerId ? ` ${styles.turnRow}` : ''}`}>
                   <div className={styles.rowHeader}>{rowNum}</div>
-                  {[player.nickname, String(player.cash), state.board[player.position]?.name ?? '-', propertyNames(player, state.board), player.bankrupt ? '破产' : '正常'].map((value, ci) => (
-                    <div key={`${PLAYER_COLUMNS[ci]}${rowNum}`} className={styles.cell} style={{ minWidth: ci === 3 ? 180 : 72, width: ci === 3 ? 180 : 72 }}>{value}</div>
-                  ))}
-                  <button type="button" className={`${styles.cell} ${styles.linkCell}`} style={{ minWidth: 72, width: 72 }} onClick={() => roomPlayer && onViewProfile?.(roomPlayer)}>
-                    查看
+                  <button
+                    type="button"
+                    className={`${styles.cell} ${styles.linkCell} ${styles.monopolyPlayerNameCell} ${styles.monopolyAssetPlayerCol}`}
+                    onClick={() => openAssets(player)}
+                    title="玩家资产详情"
+                  >
+                    <span
+                      className={connected ? styles.monopolyOnlineDot : styles.monopolyOfflineDot}
+                      aria-hidden="true"
+                    />
+                    {player.nickname}
                   </button>
+                  <div className={`${styles.cell} ${styles.monopolyAssetCashCol}`}>{player.cash}</div>
+                  <div className={`${styles.cell} ${styles.monopolyAssetPositionCol}`}>{state.board[player.position]?.name ?? '-'}</div>
                 </div>
               );
             })}
@@ -411,6 +476,7 @@ export function MonopolyGrid({
           </div>
         </div>
       ) : null}
+      <MonopolyPlayerAssetsModal view={assetsView} board={state.board} onClose={() => setAssetsView(null)} />
     </div>
   );
 }
