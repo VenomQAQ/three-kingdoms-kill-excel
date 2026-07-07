@@ -276,7 +276,7 @@ export class GameGateway
     const playerId = this.getPlayerId(client);
     try {
       const room = this.roomService.switchRoomGame(playerId, payload?.gameType ?? 'sanguosha');
-      const gameName = room.gameType === 'monopoly' ? '世界版大富翁' : '三国杀';
+      const gameName = room.gameType === 'monopoly' ? '大富翁中国之旅' : '三国杀';
       const message = this.chatService.system(room.id, `房主已将当前游戏切换为 ${gameName}`);
       await this.broadcastGameState(room);
       this.server.to(room.id).emit('chat:message', { ...message, _v: 1 } as any);

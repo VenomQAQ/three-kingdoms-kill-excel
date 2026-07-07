@@ -17,6 +17,8 @@ import { SocketAuthService } from './socket-auth.service';
 import type { PlayerPublicProfile } from '@tk/shared';
 import { LianliankanSessionEntity } from '../lianliankan/entities/lianliankan-session.entity';
 import { parseStatsJson } from './game-stats';
+import { RoomService } from '../room/room.service';
+import { ReconnectService } from '../room/reconnect.service';
 
 const QQ_EMAIL_RE = /^\d{5,11}@qq\.com$/i;
 const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9!@#$%^&*_.-]{8,32}$/;
@@ -84,6 +86,8 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly limiter: LoginRateLimiter,
     private readonly socketAuth: SocketAuthService,
+    private readonly rooms: RoomService,
+    private readonly reconnect: ReconnectService,
   ) {}
 
   // ---- Register ----
@@ -157,9 +161,28 @@ export class AuthService {
 
   // ---- Logout ----
 
-  async logout(refreshToken?: string): Promise<void> {
-    if (!refreshToken) return;
-    await this.tokens.revokeByToken(refreshToken, 'logout');
+  async logout(refreshToken?: string, accessToken?: string): Promise<void> {
+    let userId: string | undefined;
+    if (accessToken) {
+      const payload = this.tokens.verifyAccess(accessToken);
+      userId = payload?.sub;
+    }
+    if (!userId && refreshToken) {
+      userId = (await this.tokens.resolveUserIdByToken(refreshToken)) ?? undefined;
+    }
+    if (userId) {
+      this.reconnect.cancelReclaim(userId);
+      this.rooms.evictByUser(userId);
+      this.socketAuth.emitToUser(userId, 'auth:invalidated', {
+        reason: 'logout',
+        _v: 1,
+      });
+      this.socketAuth.disconnectByUser(userId);
+      this.logger.log(`logout user=${userId}`);
+    }
+    if (refreshToken) {
+      await this.tokens.revokeByToken(refreshToken, 'logout');
+    }
   }
 
   // ---- Change Password ----

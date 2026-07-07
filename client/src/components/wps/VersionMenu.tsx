@@ -24,7 +24,7 @@ export function VersionMenu({
   const [detailError, setDetailError] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const current = versions.find((v) => v.id === currentVersionId) ?? versions[0];
-  const currentLabel = gameType === 'monopoly' ? '世界版大富翁' : current?.name ?? '版本';
+  const currentLabel = gameType === 'monopoly' ? '大富翁中国之旅' : current?.name ?? '版本';
 
   useEffect(() => {
     if (!open) return;
@@ -99,7 +99,7 @@ export function VersionMenu({
               onGameTypeChange?.('monopoly');
             }}
           >
-            世界版大富翁
+            大富翁中国之旅
           </button>
         </div>
       )}

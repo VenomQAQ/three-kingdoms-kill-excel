@@ -46,12 +46,14 @@ describe('monopoly card resolver', () => {
     expect(state.players[0]?.cash).toBe(17000);
   });
 
-  it('applies go_to_jail without pass-start bonus', () => {
+  it('applies go_to_jail without pass-start bonus and starts jail sentence', () => {
     const state = createState({ players: [{ playerId: 'p1', nickname: '玩家一', position: 5, cash: 15000, properties: [] }] });
     const card = MONOPOLY_CHANCE_CARDS.find((item) => item.id === 'chance-04')!;
     applyMonopolyCard(state, 'p1', card, 'chance');
     expect(state.players[0]?.position).toBe(39);
     expect(state.players[0]?.cash).toBe(15000);
+    expect(state.players[0]?.jailTurnsRemaining).toBe(MONOPOLY_RULES.jailTurns);
+    expect(state.log.some((line) => line.includes('「入牢」'))).toBe(true);
   });
 
   it('applies move_to_cell with pass-start bonus when wrapping', () => {

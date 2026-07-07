@@ -270,7 +270,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     });
     (socket as any).on('auth:invalidated', (payload: any) => {
-      const reason = payload?.reason === 'password-changed' ? '密码已修改，请重新登录' : '登录已失效，请重新登录';
+      if (payload?.reason === 'logout' && get().authStatus !== 'authed') return;
+      const reason =
+        payload?.reason === 'password-changed'
+          ? '密码已修改，请重新登录'
+          : payload?.reason === 'logout'
+            ? '已退出登录'
+            : '登录已失效，请重新登录';
       get().markUnauthenticated(reason);
     });
     (socket as any).on('user:nicknameChanged', (payload: any) => {
@@ -693,6 +699,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   logout: async () => {
+    const { room } = get();
+    if (room) {
+      get().leaveRoom('manual');
+    }
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem('roomContext');
+    }
     try {
       await AuthApi.logout();
     } catch (err) {
@@ -784,12 +797,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   /** socket 收到 auth:invalidated 时调用 */
   markUnauthenticated: (reason) => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem('roomContext');
+    }
+    const showError =
+      reason && reason !== '已退出登录' ? reason : undefined;
     set({
       authStatus: 'guest',
       user: null,
       room: null,
       chatChannel: null,
-      lastError: reason ?? translateError('E_UNAUTHORIZED'),
+      lastError: showError ?? (reason ? null : translateError('E_UNAUTHORIZED')),
     });
     reconnectSocketWithAuth();
   },

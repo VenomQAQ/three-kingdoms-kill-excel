@@ -99,10 +99,12 @@ export interface MonopolyCardDef {
 }
 
 export interface MonopolyRulesConfig {
+  minPlayers: number;
   maxPlayers: number;
   startCash: number;
   passStartBonus: number;
   jailCellName: string;
+  jailTurns: number;
   houseLevel: number;
   hotelLevel: number;
 }

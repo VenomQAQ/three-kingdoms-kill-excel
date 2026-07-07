@@ -26,7 +26,7 @@ const ROOM_COL_WIDTHS = [56, 176, 88, 72, 88, 184];
 const FIXED_ROWS = 3;
 
 function gameName(gameType?: GameType): string {
-  return gameType === 'monopoly' ? '世界版大富翁' : '三国杀标准版';
+  return gameType === 'monopoly' ? '大富翁中国之旅' : '三国杀标准版';
 }
 
 function statusLabel(status: Room['status']): string {

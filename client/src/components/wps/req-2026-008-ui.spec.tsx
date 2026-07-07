@@ -18,14 +18,14 @@ const monopolyRoom: Room = {
   id: 'room-monopoly',
   code: '87654321',
   hostId: 'p1',
-  maxPlayers: 4,
+  maxPlayers: 8,
   versionName: '中国版大富翁',
   players: [
     { id: 'p1', userId: 'u1', nickname: '房主', ready: true, connected: true },
     { id: 'p2', userId: 'u2', nickname: '玩家二', ready: true, connected: false },
   ],
   status: 'playing',
-  settings: { maxPlayers: 4 },
+  settings: { maxPlayers: 8 },
   createdAt: Date.now(),
   gameType: 'monopoly',
   monopoly: {

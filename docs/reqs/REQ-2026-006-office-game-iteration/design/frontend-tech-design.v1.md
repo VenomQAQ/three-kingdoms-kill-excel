@@ -12,7 +12,7 @@
 | `SheetTabs.tsx` | 右键菜单与 localStorage label map |
 | `PlayerProfileModal.tsx` | 战绩 tab 化，读取 `statsByGame` |
 | `RoomListGrid.tsx` | 增加类型列和创建类型选择配套展示 |
-| `MonopolyGrid.tsx` | 新增 Excel 风格世界版大富翁棋盘 |
+| `MonopolyGrid.tsx` | 新增 Excel 风格大富翁中国之旅棋盘 |
 
 ## 2. 状态设计
 

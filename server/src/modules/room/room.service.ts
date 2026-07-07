@@ -16,6 +16,7 @@ import {
   MONOPOLY_RULES,
   MonopolyGameState,
   canUpgradeCell,
+  formatMonopolyLocation,
   resolveCellUpgradeCost,
   syncCellRent,
   Room,
@@ -43,6 +44,7 @@ const LORD_GENERAL_OPTION_COUNT = 5;
 const GENERAL_OPTION_COUNT = 3;
 const MANUAL_LEAVE_PENALTY = 5;
 const DISCONNECT_GRACE_MS = 5 * 60 * 1000;
+const MONOPOLY_MIN_PLAYERS = MONOPOLY_RULES.minPlayers;
 const MONOPOLY_MAX_PLAYERS = MONOPOLY_RULES.maxPlayers;
 const MONOPOLY_START_CASH = MONOPOLY_RULES.startCash;
 const MONOPOLY_PASS_START_BONUS = MONOPOLY_RULES.passStartBonus;
@@ -173,6 +175,7 @@ export class RoomService implements OnModuleInit {
       this.gameService.remapPlayerId(room.id, oldPlayerId, newPlayerId);
       const engine = this.gameService.getRoomEngine(room.id);
       if (engine) this.gameService.syncRoomFromEngine(room, engine);
+      this.remapMonopolyPlayerId(room, oldPlayerId, newPlayerId);
     } else if (!room.isSandbox && room.status === 'selecting') {
       this.remapSelectingPlayer(room, oldPlayerId, newPlayerId);
     }
@@ -261,9 +264,13 @@ export class RoomService implements OnModuleInit {
           if (room.hostId === oldPlayerId) room.hostId = playerId;
           this.remapSelectingPlayer(room, oldPlayerId, playerId);
           if (room.status === 'playing') {
-            this.gameService.remapPlayerId(room.id, oldPlayerId, playerId);
-            const engine = this.gameService.getRoomEngine(room.id);
-            if (engine) this.gameService.syncRoomFromEngine(room, engine);
+            if (room.gameType === 'monopoly') {
+              this.remapMonopolyPlayerId(room, oldPlayerId, playerId);
+            } else {
+              this.gameService.remapPlayerId(room.id, oldPlayerId, playerId);
+              const engine = this.gameService.getRoomEngine(room.id);
+              if (engine) this.gameService.syncRoomFromEngine(room, engine);
+            }
           }
           return room;
         }
@@ -284,9 +291,13 @@ export class RoomService implements OnModuleInit {
       if (room.hostId === oldPlayerId) room.hostId = playerId;
       this.remapSelectingPlayer(room, oldPlayerId, playerId);
       if (room.status === 'playing') {
-        this.gameService.remapPlayerId(room.id, oldPlayerId, playerId);
-        const engine = this.gameService.getRoomEngine(room.id);
-        if (engine) this.gameService.syncRoomFromEngine(room, engine);
+        if (room.gameType === 'monopoly') {
+          this.remapMonopolyPlayerId(room, oldPlayerId, playerId);
+        } else {
+          this.gameService.remapPlayerId(room.id, oldPlayerId, playerId);
+          const engine = this.gameService.getRoomEngine(room.id);
+          if (engine) this.gameService.syncRoomFromEngine(room, engine);
+        }
       }
       return room;
     }
@@ -552,8 +563,8 @@ export class RoomService implements OnModuleInit {
     if (room.status !== 'waiting') {
       throw new RoomError('ALREADY_STARTED', '对局已开始');
     }
-    if (room.players.length < 2) {
-      throw new RoomError('NOT_ENOUGH_PLAYERS', '至少需要 2 名玩家');
+    if (room.players.length < MONOPOLY_MIN_PLAYERS) {
+      throw new RoomError('NOT_ENOUGH_PLAYERS', `至少需要 ${MONOPOLY_MIN_PLAYERS} 名玩家`);
     }
     const allReady = room.players.every((p) => p.ready);
     if (!allReady) {
@@ -1338,6 +1349,15 @@ export class RoomService implements OnModuleInit {
     if (state.pendingAction) {
       throw new RoomError('ACTION_PENDING', '请先处理当前位置');
     }
+    if (current.jailTurnsRemaining && current.jailTurnsRemaining > 0) {
+      current.jailTurnsRemaining -= 1;
+      state.log.push(
+        `${current.nickname} 在监狱中服刑，剩余 ${current.jailTurnsRemaining} 回合`,
+      );
+      this.advanceMonopolyTurn(state);
+      state.log = state.log.slice(-12);
+      return room;
+    }
     const dice: [number, number] = [this.rollDie(), this.rollDie()];
     const steps = dice[0] + dice[1];
     const nextPosition = (current.position + steps) % state.board.length;
@@ -1348,7 +1368,7 @@ export class RoomService implements OnModuleInit {
     current.position = nextPosition;
     state.lastDice = dice;
     const cell = state.board[nextPosition]!;
-    state.log.push(`${current.nickname} 掷出 ${dice[0]}+${dice[1]}，到达 ${cell.name}`);
+    state.log.push(`${current.nickname} 掷出 ${dice[0]}+${dice[1]}，到达${formatMonopolyLocation(cell.name)}`);
     this.resolveMonopolyCell(state, current.playerId, cell.index);
     state.log = state.log.slice(-12);
     return room;
@@ -1368,7 +1388,7 @@ export class RoomService implements OnModuleInit {
     current.properties.push(cell.index);
     cell.ownerId = playerId;
     syncCellRent(cell, state.board);
-    state.log.push(`${current.nickname} 购买 ${cell.name}，花费 ${cell.price} 金币`);
+    state.log.push(`${current.nickname} 购买${formatMonopolyLocation(cell.name)}，花费${cell.price}金币`);
     state.pendingAction = null;
     this.advanceMonopolyTurn(state);
     return room;
@@ -1389,7 +1409,7 @@ export class RoomService implements OnModuleInit {
     current.cash -= cost;
     cell.level = (cell.level ?? 1) + 1;
     syncCellRent(cell, state.board);
-    state.log.push(`${current.nickname} 升级 ${cell.name} 到 Lv.${cell.level}，花费 ${cost} 金币`);
+    state.log.push(`${current.nickname} 升级${formatMonopolyLocation(cell.name)}到 Lv.${cell.level}，花费${cost}金币`);
     state.pendingAction = null;
     this.advanceMonopolyTurn(state);
     return room;
@@ -1402,7 +1422,7 @@ export class RoomService implements OnModuleInit {
     if (!current || current.playerId !== playerId) throw new RoomError('NOT_YOUR_TURN', '当前不是你的回合');
     const cell = state.board[current.position];
     if (state.pendingAction === 'buy_or_skip' && cell) {
-      state.log.push(`${current.nickname} 放弃购买 ${cell.name}`);
+      state.log.push(`${current.nickname} 放弃购买${formatMonopolyLocation(cell.name)}`);
     }
     state.pendingAction = null;
     this.advanceMonopolyTurn(state);
@@ -1461,6 +1481,21 @@ export class RoomService implements OnModuleInit {
 
   private isMonopolyPurchasable(cell: { type: string; ownerId?: string }): boolean {
     return (cell.type === 'city' || cell.type === 'rail' || cell.type === 'utility') && !cell.ownerId;
+  }
+
+  private remapMonopolyPlayerId(room: Room, oldPlayerId: string, newPlayerId: string): void {
+    if (room.gameType !== 'monopoly' || !room.monopoly) return;
+    const state = room.monopoly;
+    for (const player of state.players) {
+      if (player.playerId === oldPlayerId) {
+        player.playerId = newPlayerId;
+      }
+    }
+    for (const cell of state.board) {
+      if (cell.ownerId === oldPlayerId) {
+        cell.ownerId = newPlayerId;
+      }
+    }
   }
 
   private advanceMonopolyTurn(state: MonopolyGameState): void {

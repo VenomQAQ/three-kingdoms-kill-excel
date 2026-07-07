@@ -795,6 +795,9 @@
 }
 
 .monopolyWrap {
+  --monopoly-board-cell-size: 96px;
+  --monopoly-board-cell-min-height: 58px;
+
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -889,13 +892,14 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: hidden;
+  overflow-x: auto;
 }
 
 .monopolyBoard {
   display: grid;
-  grid-template-columns: 40px repeat(11, 72px);
-  grid-template-rows: 22px repeat(11, minmax(44px, 1fr));
+  grid-template-columns: 40px repeat(11, var(--monopoly-board-cell-size, 96px));
+  grid-template-rows: 22px repeat(11, minmax(var(--monopoly-board-cell-min-height, 58px), 1fr));
   align-content: stretch;
   flex: 0 0 auto;
   width: max-content;
@@ -912,7 +916,7 @@
   min-height: 0;
   height: 100%;
   display: grid;
-  grid-template-rows: 22px repeat(11, minmax(44px, 1fr));
+  grid-template-rows: 22px repeat(11, minmax(var(--monopoly-board-cell-min-height, 58px), 1fr));
   overflow: hidden;
   border-right: 1px solid #d0d0d0;
   background: #ffffff;
@@ -973,13 +977,13 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
   width: auto;
   min-height: 0;
   height: auto;
-  padding: 5px 6px;
-  line-height: 14px;
+  padding: 6px 7px 5px;
+  line-height: 13px;
   border-top: none;
   border-left: none;
   background: #ffffff;
@@ -1039,25 +1043,31 @@
 }
 
 .monopolyCellName {
-  display: block;
+  display: -webkit-box;
   max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  word-break: break-all;
   font-weight: 600;
   color: #333333;
-  font-size: 12px;
-  margin-top: 7px;
+  font-size: 11px;
+  line-height: 13px;
+  margin-top: 12px;
 }
 
 .monopolyCellMeta {
-  display: block;
+  display: -webkit-box;
   max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  word-break: break-all;
   color: #666666;
   font-size: 10px;
+  line-height: 12px;
 }
 
 .turnRowCell {
@@ -1256,6 +1266,30 @@
   border-color: #217346;
   background: #217346;
   color: #ffffff;
+}
+
+.monopolyCellDetailLevels {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid #ececec;
+}
+
+.monopolyCellDetailSectionTitle {
+  font-weight: 600;
+  color: #444444;
+}
+
+.monopolyCellDetailLevelRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.monopolyCellDetailUpgrade {
+  color: #666666;
 }
 
 @media (max-width: 760px) {

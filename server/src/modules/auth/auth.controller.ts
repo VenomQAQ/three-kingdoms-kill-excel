@@ -18,6 +18,7 @@ import { AuthService } from './auth.service';
 import {
   AuthGuard,
   AuthedRequest,
+  readAccessCookie,
   readRefreshCookie,
 } from './auth.guard';
 
@@ -115,7 +116,8 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const refresh = readRefreshCookie(req);
-    await this.authService.logout(refresh ?? undefined);
+    const access = readAccessCookie(req);
+    await this.authService.logout(refresh ?? undefined, access ?? undefined);
     this.clearAuthCookies(res);
     return { ok: true, _v: 1 };
   }

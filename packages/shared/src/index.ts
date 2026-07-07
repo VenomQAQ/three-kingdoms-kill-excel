@@ -169,6 +169,8 @@ export interface MonopolyPlayerState {
   cash: number;
   properties: number[];
   bankrupt?: boolean;
+  /** 监狱剩余服刑回合（不含入狱当回合） */
+  jailTurnsRemaining?: number;
 }
 
 export interface MonopolyDrawnCard {

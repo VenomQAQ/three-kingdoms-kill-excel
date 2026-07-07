@@ -19,14 +19,14 @@ const monopolyRoom: Room = {
   id: 'room-monopoly',
   code: '87654321',
   hostId: 'p1',
-  maxPlayers: 4,
+  maxPlayers: 8,
   versionName: '中国版大富翁',
   players: [
     { id: 'p1', userId: 'u1', nickname: '房主', ready: true, connected: true },
     { id: 'p2', userId: 'u2', nickname: '玩家二', ready: true, connected: true },
   ],
   status: 'playing',
-  settings: { maxPlayers: 4 },
+  settings: { maxPlayers: 8 },
   createdAt: Date.now(),
   gameType: 'monopoly',
   monopoly: {
@@ -40,10 +40,10 @@ const monopolyRoom: Room = {
       if (index === 0) return { index, name: '起点', country: '世界', type: 'start' as const, price: 2000, displayPrice: 2000, rent: 0 };
       if (index === 1) return { index, name: '苏州', country: '华东', type: 'city' as const, price: 3200, displayPrice: 3200, rent: 420, level: 1, colorGroup: 'green' };
       if (index === 4) return { index, name: '命运', country: '世界', type: 'fate' as const, price: 0, rent: 0 };
-      if (index === 5) return { index, name: '广州火车站', country: '交通', type: 'rail' as const, price: 2000, displayPrice: 2000, rent: 320 };
-      if (index === 10) return { index, name: '进牢', country: '世界', type: 'jail' as const, price: 0, rent: 0 };
+      if (index === 5) return { index, name: '黑龙江', country: '东北', type: 'rail' as const, price: 2000, displayPrice: 2000, rent: 320 };
+      if (index === 10) return { index, name: '监狱', country: '世界', type: 'jail' as const, price: 0, rent: 0 };
       if (index === 34) return { index, name: '北京', country: '华北', type: 'city' as const, price: 3000, displayPrice: 3000, rent: 400, level: 1, colorGroup: 'pink' };
-      if (index === 38) return { index, name: '苏州火车站', country: '交通', type: 'rail' as const, price: 2000, displayPrice: 2000, rent: 320 };
+      if (index === 38) return { index, name: '虹桥机场', country: '华东', type: 'rail' as const, price: 2000, displayPrice: 2000, rent: 320 };
       if (index === 39) return { index, name: '入牢', country: '世界', type: 'jail' as const, price: 0, rent: 0 };
       return fallback;
     }),
@@ -136,7 +136,7 @@ describe('REQ-2026-006 UI acceptance', () => {
         code: '87654321',
         status: 'waiting',
         playerCount: 2,
-        maxPlayers: 4,
+        maxPlayers: 8,
         ownerNickname: '房主',
         versionName: '中国版大富翁',
         gameType: 'monopoly',
@@ -157,7 +157,7 @@ describe('REQ-2026-006 UI acceptance', () => {
     expect(html).not.toContain('创建类型');
     expect(html).toContain('大富翁');
     expect(html).toContain('中国版大富翁');
-    expect(html).toContain('2/4');
+    expect(html).toContain('2/8');
   });
 
   it('renders the world monopoly game as spreadsheet cells with free-play log', () => {
@@ -177,7 +177,7 @@ describe('REQ-2026-006 UI acceptance', () => {
     );
 
     expect(html).toContain('苏州');
-    expect(html).toContain('广州火车站');
+    expect(html).toContain('黑龙江');
     expect(html).toContain('玩家资产');
     expect(html).toContain('购买');
     expect(html).toContain('中国版大富翁开始');

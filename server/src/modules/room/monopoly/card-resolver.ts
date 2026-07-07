@@ -9,6 +9,7 @@ import {
   MONOPOLY_RULES,
   canUpgradeCell,
   countPropertyBuildings,
+  formatMonopolyLocation,
   resolveCellRent,
   resolveCellUpgradeCost,
 } from '@tk/shared';
@@ -38,8 +39,23 @@ function countPropertyRepair(player: MonopolyPlayerState, board: MonopolyBoardCe
   return { houses, hotels };
 }
 
+function isLocationCell(cell: MonopolyBoardCell): boolean {
+  return cell.type === 'city' || cell.type === 'rail' || cell.type === 'utility' || cell.type === 'jail';
+}
+
+function locationLabel(cell: MonopolyBoardCell): string {
+  return formatMonopolyLocation(cell.name);
+}
+
 function isPurchasable(cell: MonopolyBoardCell): boolean {
   return (cell.type === 'city' || cell.type === 'rail' || cell.type === 'utility') && !cell.ownerId;
+}
+
+function enterJail(state: MonopolyGameState, player: MonopolyPlayerState, cell: MonopolyBoardCell): void {
+  player.jailTurnsRemaining = MONOPOLY_RULES.jailTurns;
+  state.log.push(
+    `${player.nickname} 进入${locationLabel(cell)}，需服刑 ${MONOPOLY_RULES.jailTurns} 回合（不含本回合）`,
+  );
 }
 
 function forwardDistance(from: number, to: number, boardLength: number): number {
@@ -96,19 +112,24 @@ export function resolveMonopolyLandingCell(
 
   if (isPurchasable(cell)) {
     state.pendingAction = 'buy_or_skip';
-    state.log.push(`${cell.name} 尚未归属，可用 ${cell.price} 金币购买`);
+    state.log.push(`${locationLabel(cell)}尚未归属，可用 ${cell.price} 金币购买`);
     return { pendingAction: 'buy_or_skip' };
+  }
+
+  if (cell.type === 'jail') {
+    enterJail(state, player, cell);
+    return { pendingAction: null };
   }
 
   if (cell.type === 'city' && cell.ownerId === playerId && canUpgradeCell(cell)) {
     const cost = resolveCellUpgradeCost(cell);
     if (cost != null) {
       state.pendingAction = 'upgrade_or_skip';
-      state.log.push(`${cell.name} 可升级，费用 ${cost} 金币`);
+      state.log.push(`${locationLabel(cell)}可升级，费用 ${cost} 金币`);
       return { pendingAction: 'upgrade_or_skip' };
     }
   } else if (cell.type === 'city' && cell.ownerId === playerId) {
-    state.log.push(`${cell.name} 已满级，跳过升级`);
+    state.log.push(`${locationLabel(cell)}已满级，跳过升级`);
   }
 
   const rentMultiplier = options.rentMultiplier ?? 1;
@@ -188,7 +209,9 @@ function applyMonopolyCardEffect(
         state.log.push(`${player.nickname} 经过起点，获得 ${effect.passStartBonus} 金币`);
       }
       player.position = target.index;
-      state.log.push(`${player.nickname} 前往 ${target.name}`);
+      state.log.push(
+        `${player.nickname} 前往${isLocationCell(target) ? locationLabel(target) : target.name}`,
+      );
       return { moved: true };
     }
     case 'move_steps': {
@@ -206,7 +229,6 @@ function applyMonopolyCardEffect(
       const jail = findCellByName(state.board, effect.targetName ?? MONOPOLY_RULES.jailCellName);
       if (jail) {
         player.position = jail.index;
-        state.log.push(`${player.nickname} 被送入 ${jail.name}`);
       }
       return { moved: true };
     }
@@ -261,7 +283,7 @@ function applyMonopolyCardEffect(
         state.log.push(`${player.nickname} 经过起点，获得 ${effect.passStartBonus} 金币`);
       }
       player.position = rail.index;
-      state.log.push(`${player.nickname} 前往最近的 ${rail.name}`);
+      state.log.push(`${player.nickname} 前往最近的${locationLabel(rail)}`);
       return {
         moved: true,
         landingOptions: { rentMultiplier: effect.rentMultiplier ?? 1 },

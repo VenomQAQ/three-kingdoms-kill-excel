@@ -11,9 +11,10 @@ import { LoginRateLimiter } from './login-rate-limiter';
 import { SocketAuthService } from './socket-auth.service';
 import { UserProfileController } from './user-profile.controller';
 import { LianliankanSessionEntity } from '../lianliankan/entities/lianliankan-session.entity';
+import { RoomModule } from '../room/room.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, RefreshToken, LianliankanSessionEntity])],
+  imports: [TypeOrmModule.forFeature([User, RefreshToken, LianliankanSessionEntity]), RoomModule],
   providers: [
     PasswordService,
     TokenService,

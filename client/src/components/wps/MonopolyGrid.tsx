@@ -13,6 +13,11 @@ import {
   MonopolyPlayerAssetsModal,
   type MonopolyPlayerAssetsView,
 } from './MonopolyPlayerAssetsModal';
+import {
+  buildMonopolyCellDetailView,
+  MonopolyCellDetailModal,
+  type MonopolyCellDetailView,
+} from './MonopolyCellDetailModal';
 import styles from './SpreadsheetGrid.module.css';
 
 interface MonopolyGridProps {
@@ -33,7 +38,7 @@ interface MonopolyGridProps {
 
 const BOARD_SIZE = 11;
 const FILLER_ROW_COUNT = BOARD_SIZE + 1;
-const FILLER_COL_MIN_WIDTH = 72;
+const FILLER_COL_MIN_WIDTH = 96;
 
 function spreadsheetColumnLabel(index: number): string {
   let label = '';
@@ -46,7 +51,7 @@ function spreadsheetColumnLabel(index: number): string {
 }
 const CORNER_LABELS = new Map<number, string>([
   [0, '起点'],
-  [10, '进牢'],
+  [10, '监狱'],
   [20, '罚款停车'],
   [30, '机场'],
 ]);
@@ -102,13 +107,32 @@ function nextLevelRent(cell: MonopolyBoardCell): number | null {
   return getCityNextLevelRent(template, cell.level ?? 1);
 }
 
-function cellSummary(cell: MonopolyBoardCell, board: MonopolyBoardCell[], owner?: MonopolyPlayerState): string {
-  if (owner) return `Lv.${cell.level ?? 1} ${owner.nickname} 租金${currentRent(cell, board)}`;
-  if (cell.type === 'city') return `价格 ${cell.displayPrice ?? cell.price}`;
-  if (cell.type === 'rail' || cell.type === 'utility') return `价格 ${cell.displayPrice ?? cell.price} 租${cell.rent}`;
+function cellDisplayName(cell: MonopolyBoardCell): string {
+  if (cell.ownerId && cell.type === 'city') {
+    return `Lv.${cell.level ?? 1} ${cell.name}`;
+  }
+  return cell.name;
+}
+
+function cellSummary(cell: MonopolyBoardCell, board: MonopolyBoardCell[]): string {
+  if (cell.ownerId) {
+    const rent = currentRent(cell, board);
+    return `租金${rent}`;
+  }
+  if (cell.type === 'city' || cell.type === 'rail' || cell.type === 'utility') {
+    return `价格 ${cell.displayPrice ?? cell.price}`;
+  }
   if (cell.type === 'tax') return `扣 ${cell.rent}`;
   if (cell.type === 'start') return `奖励 ${cell.displayPrice ?? cell.price ?? 0}`;
   return cellTypeLabel(cell.type);
+}
+
+function projectedPurchaseRent(
+  cell: MonopolyBoardCell,
+  board: MonopolyBoardCell[],
+  buyerId: string,
+): number {
+  return resolveCellRent(cell, { board, ownerId: buyerId });
 }
 
 function cornerSlotIndex(x: number, y: number): number | null {
@@ -179,6 +203,7 @@ export function MonopolyGrid({
   const [chatInput, setChatInput] = useState('');
   const [confirmAction, setConfirmAction] = useState<'buy' | 'upgrade' | null>(null);
   const [assetsView, setAssetsView] = useState<MonopolyPlayerAssetsView | null>(null);
+  const [cellDetailView, setCellDetailView] = useState<MonopolyCellDetailView | null>(null);
   const [fillerCols, setFillerCols] = useState(6);
   const logScrollRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
@@ -227,6 +252,9 @@ export function MonopolyGrid({
   const canRoll = isMyTurn && !state.pendingAction && room.status === 'playing';
   const upgradeCost = currentCell ? nextUpgradeCost(currentCell) : null;
   const upgradedRent = currentCell ? nextLevelRent(currentCell) : null;
+  const purchaseRent = currentCell && playerId
+    ? projectedPurchaseRent(currentCell, state.board, playerId)
+    : null;
 
   const handleChatSubmit = () => {
     const trimmed = chatInput.trim();
@@ -241,6 +269,13 @@ export function MonopolyGrid({
   const openAssets = (player: MonopolyPlayerState) => {
     const roomPlayer = room.players.find((item) => item.id === player.playerId);
     setAssetsView(buildMonopolyPlayerAssetsView(player, state.board, roomPlayer?.connected ?? false));
+  };
+
+  const openCellDetail = (cell: MonopolyBoardCell) => {
+    if (cell.type !== 'city' && cell.type !== 'rail' && cell.type !== 'utility') return;
+    const owner = state.players.find((player) => player.playerId === cell.ownerId);
+    const view = buildMonopolyCellDetailView(cell, owner?.nickname);
+    if (view) setCellDetailView(view);
   };
 
   return (
@@ -325,7 +360,8 @@ export function MonopolyGrid({
                 className={`${styles.cell} ${styles.monopolyCell} ${ref === selectedCell ? styles.selected : ''} ${hasMeHere ? styles.monopolyMyCell : ''} ${otherTags.length > 0 ? styles.turnRowCell : ''}`}
                 style={{ gridColumn: pos.x + 2, gridRow: pos.y + 2 }}
                 onClick={() => onSelectCell(ref)}
-                title={`${cell.name} | ${cellTypeLabel(cell.type)} | ${cellSummary(cell, state.board, owner)}`}
+                onDoubleClick={() => openCellDetail(cell)}
+                title={`${cell.name} | ${cellTypeLabel(cell.type)} | ${cellSummary(cell, state.board)}${owner ? ` | ${owner.nickname}` : ''}`}
               >
                 {showCellColors && boardAccent(cell) ? (
                   <span className={styles.monopolyCellBand} style={{ backgroundColor: boardAccent(cell) }} aria-hidden="true" />
@@ -337,8 +373,8 @@ export function MonopolyGrid({
                     ))}
                   </span>
                 ) : null}
-                <span className={styles.monopolyCellName}>{cell.name}</span>
-                <span className={styles.monopolyCellMeta}>{cellSummary(cell, state.board, owner)}</span>
+                <span className={styles.monopolyCellName}>{cellDisplayName(cell)}</span>
+                <span className={styles.monopolyCellMeta}>{cellSummary(cell, state.board)}</span>
               </button>
             );
           })}
@@ -346,7 +382,7 @@ export function MonopolyGrid({
           <div
             className={styles.monopolyFiller}
             ref={fillerRef}
-            style={{ gridTemplateColumns: `repeat(${fillerCols}, minmax(72px, 1fr))` }}
+            style={{ gridTemplateColumns: `repeat(${fillerCols}, minmax(96px, 1fr))` }}
           >
             {Array.from({ length: fillerCols * FILLER_ROW_COUNT }, (_, index) => {
               const rowIndex = Math.floor(index / fillerCols);
@@ -456,6 +492,9 @@ export function MonopolyGrid({
               <div>地块：{currentCell.name}</div>
               <div>你的余额：{current.cash}</div>
               <div>需要花费：{confirmCost ?? '-'}</div>
+              {confirmAction === 'buy' ? (
+                <div>购买后可收租金：{purchaseRent ?? '-'}</div>
+              ) : null}
               {confirmAction === 'upgrade' ? (
                 <div>升级后过路费：{upgradedRent ?? '-'}</div>
               ) : null}
@@ -477,6 +516,7 @@ export function MonopolyGrid({
         </div>
       ) : null}
       <MonopolyPlayerAssetsModal view={assetsView} board={state.board} onClose={() => setAssetsView(null)} />
+      <MonopolyCellDetailModal view={cellDetailView} onClose={() => setCellDetailView(null)} />
     </div>
   );
 }

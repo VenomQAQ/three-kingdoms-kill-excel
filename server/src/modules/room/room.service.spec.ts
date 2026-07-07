@@ -20,7 +20,7 @@ describe('RoomService formal general selection', () => {
 
     expect(room.gameType).toBe('monopoly');
     expect(room.versionName).toBe('中国版大富翁');
-    expect(room.maxPlayers).toBe(4);
+    expect(room.maxPlayers).toBe(8);
     expect(room.monopoly?.phase).toBe('lobby');
 
     const listed = service.listPublicRooms(undefined, undefined, undefined, 'monopoly')[0];
@@ -44,6 +44,47 @@ describe('RoomService formal general selection', () => {
     expect(room.monopoly?.players.map((player) => player.cash)).toEqual([15000, 15000]);
     expect(room.monopoly?.board.some((cell) => cell.name === '北京')).toBe(true);
     expect(room.monopoly?.log[0]).toContain('游玩免费');
+  });
+
+  it('remaps monopoly player ids when an authenticated player rejoins after disconnect', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主', undefined, 'user-host', 'monopoly');
+    service.joinRoom(room.code, 'p2', '玩家二', 'user-2');
+    service.setReady('host', true);
+    service.setReady('p2', true);
+    service.startGame('host');
+
+    const state = room.monopoly!;
+    state.board[1]!.ownerId = 'host';
+    state.players[0]!.properties = [1];
+
+    service.markPlayerDisconnected('host');
+    expect(room.players[0]?.connected).toBe(false);
+
+    const rebound = service.joinRoom(room.code, 'host-new', '房主', 'user-host');
+    expect(rebound.players[0]?.connected).toBe(true);
+    expect(rebound.players[0]?.id).toBe('host-new');
+    expect(state.players[0]?.playerId).toBe('host-new');
+    expect(state.board[1]?.ownerId).toBe('host-new');
+  });
+
+  it('serves jail turns without moving when rolling during imprisonment', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主', undefined, undefined, 'monopoly');
+    service.joinRoom(room.code, 'p2', '玩家二');
+    service.setReady('host', true);
+    service.setReady('p2', true);
+    service.startGame('host');
+
+    const state = room.monopoly!;
+    state.players[0]!.jailTurnsRemaining = 2;
+    state.players[0]!.position = 39;
+
+    service.monopolyRoll('host');
+    expect(state.players[0]?.position).toBe(39);
+    expect(state.players[0]?.jailTurnsRemaining).toBe(1);
+    expect(state.turnIndex).toBe(1);
+    expect(state.log.some((line) => line.includes('在监狱中服刑'))).toBe(true);
   });
 
   it('runs the monopoly roll and buy turn flow on the server state', () => {

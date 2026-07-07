@@ -178,6 +178,13 @@ export class TokenService {
       .execute();
   }
 
+  /** 根据 refresh token 明文解析 userId（logout 等场景在 revoke 前调用） */
+  async resolveUserIdByToken(rawToken: string): Promise<string | null> {
+    const tokenHash = this.hashToken(rawToken);
+    const row = await this.rtRepo.findOne({ where: { tokenHash } });
+    return row?.userId ?? null;
+  }
+
   /**
    * 清理过期记录（可选，供定时任务或启动时调用）
    */

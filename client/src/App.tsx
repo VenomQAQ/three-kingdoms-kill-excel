@@ -48,6 +48,7 @@ import {
   saveBossKeyShortcut,
   type BossKeyShortcut,
 } from './utils/bossKey';
+import { confirmLogout } from './utils/logout';
 import gridStyles from './components/wps/SpreadsheetGrid.module.css';
 import styles from './App.module.css';
 
@@ -509,6 +510,13 @@ function App() {
     }
   }, [checkIn, isAuthed, showToast]);
 
+  const handleLogout = useCallback(async () => {
+    if (!confirmLogout(room)) return;
+    setActiveSheet(ROOM_LIST_SHEET_ID);
+    setSelectedHand(null);
+    await logout();
+  }, [logout, room]);
+
   const handleLeaveRoom = useCallback(() => {
     if (!room) return;
     if (
@@ -957,7 +965,7 @@ function App() {
         fileName={fileName}
         accountLabel={accountLabel}
         isAuthed={isAuthed}
-        onLogout={() => void logout()}
+        onLogout={() => void handleLogout()}
       />
       <Ribbon
         actions={ribbonActions}
@@ -994,7 +1002,7 @@ function App() {
         }}
         onChangeNickname={handleChangeNickname}
         onChangePassword={() => setShowChangePasswordDialog(true)}
-        onLogout={() => void logout()}
+        onLogout={() => void handleLogout()}
       />
       {isPlaying && room && room.gameType !== 'monopoly' && (
         <PlayControlBar

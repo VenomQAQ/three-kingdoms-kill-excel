@@ -10,7 +10,7 @@
 ## 2. 房间服务
 
 - `createRoom` 接收 `gameType`，默认三国杀。
-- 大富翁房间 `maxPlayers=4`，`versionName='世界版大富翁'`。
+- 大富翁房间 `maxPlayers=4`，`versionName='大富翁中国之旅'`。
 - `startGame` 根据 `room.gameType` 分发：三国杀走原逻辑，大富翁初始化棋盘状态。
 - `listPublicRooms` 支持 `gameType` 过滤，三国杀才套用 `versionId` 过滤。
 
