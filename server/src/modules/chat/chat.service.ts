@@ -50,6 +50,25 @@ export class ChatService {
     return message;
   }
 
+  system(roomId: string, content: string): ChatMessage {
+    const message: ChatMessage = {
+      id: uuidv4(),
+      roomId,
+      playerId: 'system',
+      nickname: '系统',
+      content: content.trim(),
+      timestamp: Date.now(),
+      system: true,
+    };
+    const list = this.messagesByRoom.get(roomId) ?? [];
+    list.push(message);
+    if (list.length > MAX_MESSAGES) {
+      list.splice(0, list.length - MAX_MESSAGES);
+    }
+    this.messagesByRoom.set(roomId, list);
+    return message;
+  }
+
   getHistory(roomId: string): ChatMessage[] {
     return [...(this.messagesByRoom.get(roomId) ?? [])];
   }

@@ -1,0 +1,8 @@
+﻿req_id: REQ-2026-007-monopoly-room-records-polish
+stage: "④验证完成"
+status: qa_passed
+updated_at: 2026-07-06T12:20+08:00
+artifacts:
+  prd: docs/reqs/REQ-2026-007-monopoly-room-records-polish/prd/prd.v1.md
+  review: docs/reqs/REQ-2026-007-monopoly-room-records-polish/review/review-signoff.v1.yaml
+  qa: docs/reqs/REQ-2026-007-monopoly-room-records-polish/qa/qa-result.v1.md

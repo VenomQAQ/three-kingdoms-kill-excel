@@ -1,5 +1,5 @@
 import { Room } from '@tk/shared';
-import type { ChatMessage } from '@tk/shared';
+import type { ChatMessage, GameType } from '@tk/shared';
 import type { HandCardPick } from '../../types/hand';
 import { BattleGrid } from './BattleGrid';
 import { GeneralSelectPanel } from './GeneralSelectPanel';
@@ -14,6 +14,7 @@ interface GameGridProps {
   actingPlayerId: string | null;
   selectedCell: string;
   selectedHand: HandCardPick | null;
+  showMonopolyCellColors?: boolean;
   onSelectCell: (ref: string) => void;
   onSelectHand: (card: string, index: number) => void;
   onPlayCard: (card: string, handIndex?: number) => void;
@@ -24,10 +25,12 @@ interface GameGridProps {
   onSendChat: (content: string) => void;
   onMonopolyRoll?: () => void;
   onMonopolyBuy?: () => void;
+  onMonopolyUpgrade?: () => void;
   onMonopolySkip?: () => void;
   isSandbox?: boolean;
   onToggleReady?: () => void;
   onSelectGeneral?: (generalId: string) => void;
+  onSwitchGame?: (gameType?: GameType) => void;
 }
 
 export function GameGrid({
@@ -37,6 +40,7 @@ export function GameGrid({
   actingPlayerId,
   selectedCell,
   selectedHand,
+  showMonopolyCellColors = false,
   onSelectCell,
   onSelectHand,
   onPlayCard,
@@ -47,23 +51,30 @@ export function GameGrid({
   onSendChat,
   onMonopolyRoll,
   onMonopolyBuy,
+  onMonopolyUpgrade,
   onMonopolySkip,
   isSandbox = false,
   onToggleReady,
   onSelectGeneral,
+  onSwitchGame,
 }: GameGridProps) {
   if (room.gameType === 'monopoly' && room.status === 'playing') {
     return (
       <div className={gridStyles.gridPane}>
         <MonopolyGrid
           room={room}
+          chatMessages={chatMessages}
           playerId={playerId}
           selectedCell={selectedCell}
+          showCellColors={showMonopolyCellColors}
           onSelectCell={onSelectCell}
           onRoll={onMonopolyRoll ?? (() => undefined)}
           onBuy={onMonopolyBuy ?? (() => undefined)}
+          onUpgrade={onMonopolyUpgrade ?? (() => undefined)}
           onSkip={onMonopolySkip ?? (() => undefined)}
           onViewProfile={onViewProfile}
+          onViewChatProfile={onViewChatProfile}
+          onSendChat={onSendChat}
         />
       </div>
     );
@@ -112,6 +123,7 @@ export function GameGrid({
         isSandbox={isSandbox}
         onToggleReady={onToggleReady}
         onViewProfile={onViewProfile}
+        onSwitchGame={onSwitchGame}
       />
     </div>
   );

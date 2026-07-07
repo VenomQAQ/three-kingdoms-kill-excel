@@ -37,6 +37,9 @@ export class User {
   @Column('int', { default: 1 })
   level!: number;
 
+  @Column('text', { nullable: true })
+  statsJson!: string | null;
+
   @Column('datetime', { nullable: true })
   lastCheckInAt!: Date | null;
 

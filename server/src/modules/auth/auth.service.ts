@@ -15,8 +15,8 @@ import { TokenService } from './token.service';
 import { LoginRateLimiter } from './login-rate-limiter';
 import { SocketAuthService } from './socket-auth.service';
 import type { PlayerPublicProfile } from '@tk/shared';
-
-const ZERO_STATS = { total: 0, wins: 0, losses: 0, winRate: 0 };
+import { LianliankanSessionEntity } from '../lianliankan/entities/lianliankan-session.entity';
+import { parseStatsJson } from './game-stats';
 
 const QQ_EMAIL_RE = /^\d{5,11}@qq\.com$/i;
 const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9!@#$%^&*_.-]{8,32}$/;
@@ -78,6 +78,8 @@ export class AuthService {
 
   constructor(
     @InjectRepository(User) private readonly userRepo: Repository<User>,
+    @InjectRepository(LianliankanSessionEntity)
+    private readonly lianliankanSessions: Repository<LianliankanSessionEntity>,
     private readonly pwd: PasswordService,
     private readonly tokens: TokenService,
     private readonly limiter: LoginRateLimiter,
@@ -262,10 +264,26 @@ export class AuthService {
   async getPublicProfile(userId: string): Promise<PlayerPublicProfile | null> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) return null;
-    const statsByGame = {
-      sanguosha: { ...ZERO_STATS },
-      lianliankan: { ...ZERO_STATS },
-      monopoly: { ...ZERO_STATS },
+    const statsByGame = parseStatsJson(user.statsJson);
+    const llkRows = await this.lianliankanSessions
+      .createQueryBuilder('session')
+      .select('session.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.status IN (:...statuses)', { statuses: ['won', 'lost', 'expired'] })
+      .groupBy('session.status')
+      .getRawMany<{ status: string; count: string }>();
+    const llkWins = Number(llkRows.find((row) => row.status === 'won')?.count ?? 0);
+    const llkLosses = llkRows.reduce(
+      (sum, row) => sum + (row.status === 'won' ? 0 : Number(row.count ?? 0)),
+      0,
+    );
+    const llkTotal = llkWins + llkLosses;
+    statsByGame.lianliankan = {
+      total: llkTotal,
+      wins: llkWins,
+      losses: llkLosses,
+      winRate: llkTotal > 0 ? llkWins / llkTotal : 0,
     };
     return {
       userId: user.id,

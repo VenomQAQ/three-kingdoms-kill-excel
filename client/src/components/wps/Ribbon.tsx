@@ -1,5 +1,5 @@
 import { CharacterRegistry, GameTiming } from '@tk/engine';
-import type { RoomPlayer } from '@tk/shared';
+import type { GameType, RoomPlayer } from '@tk/shared';
 import { useMemo, useState } from 'react';
 import type { VersionInfo } from '../../api';
 import { stripGeneralPrefixInText } from '../../utils/display';
@@ -45,6 +45,8 @@ interface RibbonProps {
   onUseSkill?: (skillId: string) => void;
   versions?: VersionInfo[];
   currentVersionId?: string;
+  currentGameType?: GameType;
+  onGameTypeChange?: (type: GameType) => void;
   versionDisabled?: boolean;
   onCheckIn?: () => void;
   checkInDisabled?: boolean;
@@ -60,6 +62,8 @@ export function Ribbon({
   onUseSkill,
   versions = [],
   currentVersionId = 'standard-2014',
+  currentGameType = 'sanguosha',
+  onGameTypeChange,
   versionDisabled,
   onCheckIn,
   checkInDisabled,
@@ -114,6 +118,8 @@ export function Ribbon({
                 <VersionMenu
                   versions={versions}
                   currentVersionId={currentVersionId}
+                  gameType={currentGameType}
+                  onGameTypeChange={onGameTypeChange}
                   disabled={versionDisabled}
                 />
               </div>

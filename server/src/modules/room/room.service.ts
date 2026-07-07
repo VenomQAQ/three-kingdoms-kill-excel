@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+﻿import { Injectable, OnModuleInit } from '@nestjs/common';
 import {
   assignIdentities,
   CharacterRegistry,
@@ -19,7 +19,11 @@ import {
   SandboxGameState,
 } from '@tk/shared';
 import { env } from '../../config/env';
+import { recordGameResult } from '../auth/game-stats';
+import { User } from '../auth/entities/user.entity';
 import { GameService } from '../game/game.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 
 const CODE_MIN = 10_000_000;
 const CODE_MAX = 99_999_999;
@@ -29,30 +33,54 @@ const GENERAL_OPTION_COUNT = 3;
 const MANUAL_LEAVE_PENALTY = 5;
 const DISCONNECT_GRACE_MS = 5 * 60 * 1000;
 const MONOPOLY_MAX_PLAYERS = 4;
-const MONOPOLY_START_CASH = 1500;
+const MONOPOLY_START_CASH = 15000;
 const MONOPOLY_PASS_START_BONUS = 200;
 
 const MONOPOLY_WORLD_BOARD: MonopolyBoardCell[] = [
-  { index: 0, name: '起点', country: '世界', type: 'start', price: 0, rent: 0 },
-  { index: 1, name: '北京', country: '中国', type: 'city', price: 120, rent: 18 },
-  { index: 2, name: '机会', country: '亚洲', type: 'chance', price: 0, rent: 0 },
-  { index: 3, name: '东京', country: '日本', type: 'city', price: 140, rent: 22 },
-  { index: 4, name: '税务', country: '世界', type: 'tax', price: 0, rent: 80 },
-  { index: 5, name: '新加坡', country: '新加坡', type: 'city', price: 160, rent: 26 },
-  { index: 6, name: '休整', country: '世界', type: 'rest', price: 0, rent: 0 },
-  { index: 7, name: '悉尼', country: '澳大利亚', type: 'city', price: 180, rent: 30 },
-  { index: 8, name: '迪拜', country: '阿联酋', type: 'city', price: 200, rent: 34 },
-  { index: 9, name: '机会', country: '欧洲', type: 'chance', price: 0, rent: 0 },
-  { index: 10, name: '巴黎', country: '法国', type: 'city', price: 220, rent: 38 },
-  { index: 11, name: '伦敦', country: '英国', type: 'city', price: 240, rent: 42 },
-  { index: 12, name: '税务', country: '世界', type: 'tax', price: 0, rent: 120 },
-  { index: 13, name: '纽约', country: '美国', type: 'city', price: 260, rent: 48 },
-  { index: 14, name: '里约', country: '巴西', type: 'city', price: 220, rent: 38 },
-  { index: 15, name: '开普敦', country: '南非', type: 'city', price: 180, rent: 30 },
+  { index: 0, name: '起点', country: '世界', type: 'start', price: 2000, displayPrice: 2000, rent: 0 },
+  { index: 1, name: '苏州', country: '华东', type: 'city', price: 3200, displayPrice: 3200, rent: 420, rents: [420, 760, 1160], upgradeCosts: [1800, 2400], colorGroup: 'green', level: 1 },
+  { index: 2, name: '财产税', country: '世界', type: 'tax', price: 0, displayPrice: 1000, rent: 1000 },
+  { index: 3, name: '抚顺', country: '东北', type: 'city', price: 3500, displayPrice: 3500, rent: 460, rents: [460, 820, 1240], upgradeCosts: [1900, 2500], colorGroup: 'green', level: 1 },
+  { index: 4, name: '命运', country: '世界', type: 'fate', price: 0, rent: 0 },
+  { index: 5, name: '广州火车站', country: '交通', type: 'rail', price: 2000, displayPrice: 2000, rent: 320 },
+  { index: 6, name: '陕西', country: '西北', type: 'city', price: 2600, displayPrice: 2600, rent: 340, rents: [340, 620, 940], upgradeCosts: [1500, 2000], colorGroup: 'gray', level: 1 },
+  { index: 7, name: '机会', country: '世界', type: 'chance', price: 0, rent: 0 },
+  { index: 8, name: '甘肃', country: '西北', type: 'city', price: 2600, displayPrice: 2600, rent: 340, rents: [340, 620, 940], upgradeCosts: [1500, 2000], colorGroup: 'gray', level: 1 },
+  { index: 9, name: '澳门', country: '港澳', type: 'city', price: 2600, displayPrice: 2600, rent: 360, rents: [360, 640, 980], upgradeCosts: [1500, 2100], colorGroup: 'gray', level: 1 },
+  { index: 10, name: '进牢', country: '世界', type: 'jail', price: 0, rent: 0 },
+  { index: 11, name: '新疆', country: '西北', type: 'city', price: 4000, displayPrice: 4000, rent: 520, rents: [520, 920, 1400], upgradeCosts: [2200, 3000], colorGroup: 'blue', level: 1 },
+  { index: 12, name: '自来水厂', country: '公用', type: 'utility', price: 500, displayPrice: 500, rent: 120 },
+  { index: 13, name: '川西', country: '西南', type: 'city', price: 3200, displayPrice: 3200, rent: 420, rents: [420, 760, 1160], upgradeCosts: [1800, 2400], colorGroup: 'blue', level: 1 },
+  { index: 14, name: '北湖', country: '西北', type: 'city', price: 3200, displayPrice: 3200, rent: 420, rents: [420, 760, 1160], upgradeCosts: [1800, 2400], colorGroup: 'blue', level: 1 },
+  { index: 15, name: '沈阳火车站', country: '交通', type: 'rail', price: 2000, displayPrice: 2000, rent: 320 },
+  { index: 16, name: '常州', country: '华东', type: 'city', price: 2800, displayPrice: 2800, rent: 360, rents: [360, 660, 1000], upgradeCosts: [1600, 2200], colorGroup: 'red', level: 1 },
+  { index: 17, name: '机会', country: '世界', type: 'chance', price: 0, rent: 0 },
+  { index: 18, name: '苏南', country: '华东', type: 'city', price: 2800, displayPrice: 2800, rent: 360, rents: [360, 660, 1000], upgradeCosts: [1600, 2200], colorGroup: 'red', level: 1 },
+  { index: 19, name: '回牢', country: '世界', type: 'bonus', price: 0, rent: 0 },
+  { index: 20, name: '济南', country: '华东', type: 'city', price: 2600, displayPrice: 2600, rent: 340, rents: [340, 620, 940], upgradeCosts: [1500, 2000], colorGroup: 'yellow', level: 1 },
+  { index: 21, name: '桂林', country: '华南', type: 'city', price: 2600, displayPrice: 2600, rent: 340, rents: [340, 620, 940], upgradeCosts: [1500, 2000], colorGroup: 'yellow', level: 1 },
+  { index: 22, name: '机会', country: '世界', type: 'chance', price: 0, rent: 0 },
+  { index: 23, name: '哈尔滨', country: '东北', type: 'city', price: 2000, displayPrice: 2000, rent: 280, rents: [280, 520, 820], upgradeCosts: [1200, 1800], colorGroup: 'yellow', level: 1 },
+  { index: 24, name: '吉林', country: '东北', type: 'city', price: 2000, displayPrice: 2000, rent: 280, rents: [280, 520, 820], upgradeCosts: [1200, 1800], colorGroup: 'yellow', level: 1 },
+  { index: 25, name: '罚款停车站', country: '交通', type: 'rail', price: 2000, displayPrice: 2000, rent: 260 },
+  { index: 26, name: '长春', country: '东北', type: 'city', price: 1000, displayPrice: 1000, rent: 180, rents: [180, 360, 620], upgradeCosts: [900, 1400], colorGroup: 'purple', level: 1 },
+  { index: 27, name: '命运', country: '世界', type: 'fate', price: 0, rent: 0 },
+  { index: 28, name: '庆阳', country: '西北', type: 'city', price: 2600, displayPrice: 2600, rent: 340, rents: [340, 620, 940], upgradeCosts: [1500, 2000], colorGroup: 'purple', level: 1 },
+  { index: 29, name: '深圳', country: '华南', type: 'city', price: 2600, displayPrice: 2600, rent: 340, rents: [340, 620, 940], upgradeCosts: [1500, 2000], colorGroup: 'purple', level: 1 },
+  { index: 30, name: '机场', country: '世界', type: 'bonus', price: 0, rent: 0 },
+  { index: 31, name: '成都', country: '西南', type: 'city', price: 2600, displayPrice: 2600, rent: 360, rents: [360, 640, 980], upgradeCosts: [1500, 2100], colorGroup: 'red', level: 1 },
+  { index: 32, name: '所得税', country: '世界', type: 'tax', price: 0, displayPrice: 2000, rent: 2000 },
+  { index: 33, name: '郑州火车站', country: '交通', type: 'rail', price: 2000, displayPrice: 2000, rent: 320 },
+  { index: 34, name: '北京', country: '华北', type: 'city', price: 3000, displayPrice: 3000, rent: 400, rents: [400, 720, 1120], upgradeCosts: [1700, 2300], colorGroup: 'pink', level: 1 },
+  { index: 35, name: '机会', country: '世界', type: 'chance', price: 0, rent: 0 },
+  { index: 36, name: '上海', country: '华东', type: 'city', price: 3000, displayPrice: 3000, rent: 400, rents: [400, 720, 1120], upgradeCosts: [1700, 2300], colorGroup: 'pink', level: 1 },
+  { index: 37, name: '命运', country: '世界', type: 'fate', price: 0, rent: 0 },
+  { index: 38, name: '苏州火车站', country: '交通', type: 'rail', price: 2000, displayPrice: 2000, rent: 320 },
+  { index: 39, name: '入牢', country: '世界', type: 'jail', price: 0, rent: 0 },
 ];
 
 function gameName(gameType?: GameType): string {
-  return gameType === 'monopoly' ? '世界版大富翁' : '三国杀';
+  return gameType === 'monopoly' ? '中国版大富翁' : '三国杀';
 }
 
 export interface LeaveRoomResult {
@@ -76,7 +104,10 @@ export class RoomService implements OnModuleInit {
   private readonly generalOptionsByRoom = new Map<string, Map<string, string[]>>();
   private roomChanged: ((room: Room) => void) | null = null;
 
-  constructor(private readonly gameService: GameService) {}
+  constructor(
+    private readonly gameService: GameService,
+    @InjectRepository(User) private readonly userRepo?: Repository<User>,
+  ) {}
 
   onModuleInit() {
     this.ensureSandboxRoom();
@@ -187,6 +218,7 @@ export class RoomService implements OnModuleInit {
     userId?: string | null,
     gameType: GameType = 'sanguosha',
   ): Room {
+    this.assertSingleActiveRoom(hostId, userId);
     if (gameType === 'monopoly') {
       return this.createMonopolyRoom(hostId, nickname, userId);
     }
@@ -311,14 +343,15 @@ export class RoomService implements OnModuleInit {
   }
 
   private createMonopolyRoom(hostId: string, nickname: string, userId?: string | null): Room {
+    this.assertSingleActiveRoom(hostId, userId);
     const code = this.generateUniqueCode();
     const room: Room = {
       id: uuidv4(),
       code,
       hostId,
       maxPlayers: MONOPOLY_MAX_PLAYERS,
-      versionId: 'monopoly-world',
-      versionName: '世界版大富翁',
+      versionId: 'monopoly-china',
+      versionName: '中国版大富翁',
       gameType: 'monopoly',
       players: [
         {
@@ -377,6 +410,7 @@ export class RoomService implements OnModuleInit {
       this.syncLifecycle(room, { disconnectGraceUntil: Date.now() + DISCONNECT_GRACE_MS });
       return { room, removed: false, disbanded: false, previousRoomId: room.id, previousHostId, newHostId };
     }
+    const leavingUserId = room.players[idx].userId;
     const shouldRemove =
       room.status === 'waiting' || reason === 'manual' || reason === 'evict' || reason === 'room-disband';
 
@@ -388,6 +422,9 @@ export class RoomService implements OnModuleInit {
 
     room.players.splice(idx, 1);
     this.playerRoom.delete(playerId);
+    if (leavingUserId && this.userPlayer.get(leavingUserId) === playerId) {
+      this.userPlayer.delete(leavingUserId);
+    }
     this.clearSelectingPlayer(room, playerId);
 
     if (room.players.length === 0) {
@@ -442,6 +479,63 @@ export class RoomService implements OnModuleInit {
     player.ready = ready;
     this.syncLifecycle(room);
     return room;
+  }
+
+  switchRoomGame(playerId: string, gameType: GameType): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.hostId !== playerId) throw new RoomError('NOT_HOST', '仅房主可切换游戏');
+    if (room.isSandbox) throw new RoomError('SANDBOX_LOCKED', '模拟房不可切换游戏');
+    if (room.status !== 'waiting') throw new RoomError('ALREADY_STARTED', '对局开始后不可切换游戏');
+
+    room.gameType = gameType;
+    room.players.forEach((player) => {
+      player.ready = false;
+      player.role = undefined;
+      player.roleRevealed = undefined;
+      player.general = undefined;
+      player.handCards = [];
+      player.handCount = 0;
+      player.equipment = [];
+      player.judgeCards = [];
+      player.hp = undefined;
+      player.maxHp = undefined;
+      player.dead = false;
+    });
+
+    if (gameType === 'monopoly') {
+      room.maxPlayers = MONOPOLY_MAX_PLAYERS;
+      room.settings = { maxPlayers: MONOPOLY_MAX_PLAYERS };
+      room.versionId = 'monopoly-china';
+      room.versionName = '中国版大富翁';
+      room.monopoly = { phase: 'lobby', turnIndex: 0, round: 1, board: [], players: [], log: [] };
+      if (room.players.length > MONOPOLY_MAX_PLAYERS) {
+        for (const player of room.players.splice(MONOPOLY_MAX_PLAYERS)) {
+          this.playerRoom.delete(player.id);
+          if (player.userId && this.userPlayer.get(player.userId) === player.id) {
+            this.userPlayer.delete(player.userId);
+          }
+        }
+      }
+    } else {
+      const version = findVersion(DEFAULT_VERSION_ID)!;
+      room.maxPlayers = version.maxPlayers;
+      room.settings = { maxPlayers: version.maxPlayers };
+      room.versionId = version.id;
+      room.versionName = version.name;
+      room.monopoly = undefined;
+    }
+    this.syncLifecycle(room);
+    return room;
+  }
+
+  disbandRoom(playerId: string): LeaveRoomResult {
+    const room = this.getRoomByPlayerId(playerId);
+    if (room.hostId !== playerId) throw new RoomError('NOT_HOST', '仅房主可解散房间');
+    if (room.isSandbox) throw new RoomError('SANDBOX_LOCKED', '模拟房不可解散');
+    const previousRoomId = room.id;
+    const previousHostId = room.hostId;
+    this.deleteRoom(room);
+    return { room: null, removed: true, disbanded: true, previousRoomId, previousHostId };
   }
 
   startGame(playerId: string): Room {
@@ -1311,6 +1405,27 @@ export class RoomService implements OnModuleInit {
     return room;
   }
 
+  monopolyUpgrade(playerId: string): Room {
+    const room = this.getRoomByPlayerId(playerId);
+    const state = this.requireMonopolyState(room);
+    const current = state.players[state.turnIndex];
+    if (!current || current.playerId !== playerId) throw new RoomError('NOT_YOUR_TURN', '当前不是你的回合');
+    const cell = state.board[current.position];
+    if (!cell || state.pendingAction !== 'upgrade_or_skip' || cell.type !== 'city' || cell.ownerId !== playerId) {
+      throw new RoomError('CANNOT_UPGRADE', '当前位置不可升级');
+    }
+    const cost = this.nextMonopolyUpgradeCost(cell);
+    if (cost == null) throw new RoomError('MAX_LEVEL', '地块已满级');
+    if (current.cash < cost) throw new RoomError('NO_MONEY', '金币不足');
+    current.cash -= cost;
+    cell.level = (cell.level ?? 1) + 1;
+    cell.rent = this.currentMonopolyRent(cell);
+    state.log.unshift(`${current.nickname} 升级 ${cell.name} 到 Lv.${cell.level}，花费 ${cost} 金币`);
+    state.pendingAction = null;
+    this.advanceMonopolyTurn(state);
+    return room;
+  }
+
   monopolySkip(playerId: string): Room {
     const room = this.getRoomByPlayerId(playerId);
     const state = this.requireMonopolyState(room);
@@ -1338,7 +1453,7 @@ export class RoomService implements OnModuleInit {
         cash: MONOPOLY_START_CASH,
         properties: [],
       })),
-      log: ['世界版大富翁开始，游玩免费。'],
+      log: ['中国版大富翁开始，游玩免费。'],
       pendingAction: null,
     };
   }
@@ -1363,9 +1478,18 @@ export class RoomService implements OnModuleInit {
       state.log.unshift(`${cell.name} 尚未归属，可用 ${cell.price} 金币购买`);
       return;
     }
+    if (cell.type === 'city' && cell.ownerId === playerId) {
+      const cost = this.nextMonopolyUpgradeCost(cell);
+      if (cost != null) {
+        state.pendingAction = 'upgrade_or_skip';
+        state.log.unshift(`${cell.name} 可升级，费用 ${cost} 金币`);
+        return;
+      }
+      state.log.unshift(`${cell.name} 已满级，跳过升级`);
+    }
     if (cell.type === 'city' && cell.ownerId && cell.ownerId !== playerId) {
       const owner = state.players.find((item) => item.playerId === cell.ownerId);
-      const paid = Math.min(player.cash, cell.rent);
+      const paid = Math.min(player.cash, this.currentMonopolyRent(cell));
       player.cash -= paid;
       if (owner) owner.cash += paid;
       state.log.unshift(`${player.nickname} 向 ${owner?.nickname ?? '地主'} 支付 ${paid} 金币过路费`);
@@ -1378,6 +1502,16 @@ export class RoomService implements OnModuleInit {
       state.log.unshift(`${player.nickname} 获得机会奖励 60 金币`);
     }
     this.advanceMonopolyTurn(state);
+  }
+
+  private currentMonopolyRent(cell: MonopolyBoardCell): number {
+    const level = Math.max(1, cell.level ?? 1);
+    return cell.rents?.[level - 1] ?? cell.rent;
+  }
+
+  private nextMonopolyUpgradeCost(cell: MonopolyBoardCell): number | null {
+    const level = Math.max(1, cell.level ?? 1);
+    return cell.upgradeCosts?.[level - 1] ?? null;
   }
 
   private advanceMonopolyTurn(state: MonopolyGameState): void {
@@ -1692,6 +1826,15 @@ export class RoomService implements OnModuleInit {
 
   private bindUserIdToPlayer(playerId: string, userId?: string | null): void {
     if (userId) this.userPlayer.set(userId, playerId);
+  }
+
+  private assertSingleActiveRoom(playerId: string, userId?: string | null): void {
+    const activePlayerId = userId ? this.userPlayer.get(userId) : playerId;
+    const activeRoomId = activePlayerId ? this.playerRoom.get(activePlayerId) : undefined;
+    const activeRoom = activeRoomId ? this.roomsById.get(activeRoomId) : undefined;
+    if (activeRoom && !activeRoom.isSandbox) {
+      throw new RoomError('E_ALREADY_IN_ROOM', '你已在一个房间中，请先退出或解散当前房间');
+    }
   }
 
   private generateUniqueCode(): string {

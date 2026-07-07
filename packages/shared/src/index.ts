@@ -9,6 +9,8 @@ export interface GameStats {
   winRate: number;
 }
 
+export type GameStatsKey = 'sanguosha' | 'lianliankan' | 'monopoly';
+
 export interface GeneralOption {
   id: string;
   name: string;
@@ -142,7 +144,7 @@ export interface RoomSettings {
   maxPlayers: number;
 }
 
-export type MonopolyCellType = 'start' | 'city' | 'tax' | 'chance' | 'rest';
+export type MonopolyCellType = 'start' | 'city' | 'tax' | 'chance' | 'fate' | 'rail' | 'utility' | 'bonus' | 'jail' | 'rest';
 
 export interface MonopolyBoardCell {
   index: number;
@@ -151,6 +153,11 @@ export interface MonopolyBoardCell {
   type: MonopolyCellType;
   price: number;
   rent: number;
+  rents?: number[];
+  upgradeCosts?: number[];
+  level?: number;
+  colorGroup?: string;
+  displayPrice?: number;
   ownerId?: string;
 }
 
@@ -171,7 +178,7 @@ export interface MonopolyGameState {
   players: MonopolyPlayerState[];
   log: string[];
   lastDice?: [number, number];
-  pendingAction?: 'buy_or_skip' | null;
+  pendingAction?: 'buy_or_skip' | 'upgrade_or_skip' | null;
 }
 
 export interface RoomLifecycleState {
@@ -254,6 +261,7 @@ export interface ChatMessage {
   nickname: string;
   content: string;
   timestamp: number;
+  system?: boolean;
 }
 
 /** Client → Server */
@@ -264,6 +272,8 @@ export interface ClientToServerEvents {
     ack?: (res: RoomJoinAck) => void,
   ) => void;
   'room:leave': (payload?: { code?: string; reason?: RoomLeaveReason; _v?: 1 }) => void;
+  'room:disband': (payload?: { code?: string; _v?: 1 }) => void;
+  'room:switchGame': (payload: { gameType: GameType; _v?: 1 }) => void;
   'room:ready': (payload: { ready: boolean }) => void;
   'room:start': () => void;
   'general:select': (payload: { roomCode: string; generalId: string; _v?: 1 }) => void;
@@ -325,6 +335,7 @@ export interface ClientToServerEvents {
   'game:sync': (ack?: (room: Room | null) => void) => void;
   'monopoly:roll': () => void;
   'monopoly:buy': () => void;
+  'monopoly:upgrade': () => void;
   'monopoly:skip': () => void;
   'chat:send': (payload: { content: string }) => void;
   'chat:history': (ack?: (messages: ChatMessage[]) => void) => void;
@@ -337,6 +348,7 @@ export interface ServerToClientEvents {
   'room:state': (room: Room) => void;
   'room:error': (error: { code: string; message: string }) => void;
   'room:playerLeft': (payload: { playerId: string }) => void;
+  'room:disbanded': (payload: { roomId: string; code: string; _v: 1 }) => void;
   'room.lifecycle.state_changed': (payload: {
     roomId: string;
     lifecycle: RoomLifecycleState;
@@ -364,7 +376,7 @@ export interface PlayerPublicProfile {
   level: number;
   coins: number;
   stats: GameStats;
-  statsByGame?: Record<'sanguosha' | 'lianliankan' | 'monopoly', GameStats>;
+  statsByGame?: Record<GameStatsKey, GameStats>;
   updatedAt: number;
   _v: 1;
 }

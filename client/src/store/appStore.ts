@@ -61,6 +61,8 @@ interface AppState {
   joinRoom: (code: string) => Promise<void>;
   joinSandbox: () => Promise<void>;
   leaveRoom: (reason?: RoomLeaveReason) => void;
+  disbandRoom: () => void;
+  switchRoomGame: (gameType: GameType) => void;
   toggleReady: () => void;
   startGame: () => void;
   selectGeneral: (generalId: string) => void;
@@ -89,6 +91,7 @@ interface AppState {
   sandboxEndTurn: () => void;
   monopolyRoll: () => void;
   monopolyBuy: () => void;
+  monopolyUpgrade: () => void;
   monopolySkip: () => void;
   sendChat: (content: string) => void;
   clearError: () => void;
@@ -114,6 +117,12 @@ interface AppState {
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? '';
 
 let socketInstance: GameSocket | null = null;
+
+function reconnectSocketWithAuth(): void {
+  if (!socketInstance) return;
+  socketInstance.disconnect();
+  socketInstance.connect();
+}
 
 /** 重连后服务端会迁移 playerId，用昵称回对齐本地 id */
 function applyRoomState(
@@ -216,6 +225,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     socket.on('room:created', (room) => set((s) => applyRoomState(room, s)));
     socket.on('room:joined', (room) => set((s) => applyRoomState(room, s)));
     socket.on('room:state', (room) => set((s) => applyRoomState(room, s)));
+    socket.on('room:disbanded', () => {
+      set({ room: null, chatMessages: [], playerId: null, actingPlayerId: null, chatChannel: null });
+      useToastStore.getState().show('房间已解散');
+      void get().fetchRoomList();
+    });
     socket.on('room:error', ({ code, message }) =>
       set({ lastError: translateError(code, message) }),
     );
@@ -238,9 +252,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((s) => ({ lobbyMessages: appendLobbyMessage(s.lobbyMessages, msg) }));
     });
     (socket as any).on('chat:error', (payload: { code?: string; message?: string; scope?: string }) => {
-      if (payload?.scope === 'lobby') {
-        set({ lastError: translateError(payload.code, payload.message) });
-      }
+      set({ lastError: translateError(payload?.code, payload?.message) });
     });
 
     // REQ-2026-001 · FE-9 · 全局 socket 事件
@@ -307,8 +319,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   createRoom: async (gameType = 'sanguosha') => {
-    const { socket, nickname, currentVersion } = get();
+    const { socket, nickname, currentVersion, room } = get();
     if (!socket) return;
+    if (room) {
+      set({ lastError: '你已在房间中，请先离开当前房间' });
+      return;
+    }
     return new Promise((resolve, reject) => {
       socket.emit(
         'room:create',
@@ -338,8 +354,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   joinRoom: async (code) => {
-    const { socket, nickname } = get();
+    const { socket, nickname, room } = get();
     if (!socket) return;
+    if (room) {
+      set({ lastError: '你已在房间中，请先离开当前房间' });
+      return;
+    }
     const raw = code.trim();
     const trimmed = raw === SANDBOX_ROOM_CODE ? raw : raw.replace(/\D/g, '').slice(0, 8);
     if (trimmed.length !== 8) {
@@ -378,6 +398,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     socket?.emit('room:leave', { code: room?.code, reason, _v: 1 } as Parameters<ClientToServerEvents['room:leave']>[0]);
     set({ room: null, chatMessages: [], playerId: null, actingPlayerId: null, chatChannel: null });
     void get().fetchRoomList();
+  },
+
+  disbandRoom: () => {
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    socket.emit('room:disband', { code: room.code, _v: 1 });
+  },
+
+  switchRoomGame: (gameType) => {
+    const { socket, room } = get();
+    if (!socket || !room) return;
+    socket.emit('room:switchGame', { gameType, _v: 1 });
   },
 
   toggleReady: () => {
@@ -556,6 +588,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     get().socket?.emit('monopoly:buy');
   },
 
+  monopolyUpgrade: () => {
+    get().socket?.emit('monopoly:upgrade');
+  },
+
   monopolySkip: () => {
     get().socket?.emit('monopoly:skip');
   },
@@ -642,6 +678,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentVersion: u.preferredVersion,
       nickname: u.nickname,
     });
+    reconnectSocketWithAuth();
   },
 
   register: async (email, password, nickname, confirmPassword) => {
@@ -652,6 +689,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentVersion: u.preferredVersion,
       nickname: u.nickname,
     });
+    reconnectSocketWithAuth();
   },
 
   logout: async () => {
@@ -662,12 +700,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!(err instanceof HttpError)) throw err;
     }
     set({ authStatus: 'guest', user: null, room: null, chatChannel: null });
+    reconnectSocketWithAuth();
   },
 
   changePassword: async (oldPassword, newPassword) => {
     await AuthApi.changePassword(oldPassword, newPassword);
     // 服务端已使所有 session 失效并广播 auth:invalidated
     set({ authStatus: 'guest', user: null, room: null, chatChannel: null });
+    reconnectSocketWithAuth();
   },
 
   checkIn: async () => {
@@ -751,5 +791,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       chatChannel: null,
       lastError: reason ?? translateError('E_UNAUTHORIZED'),
     });
+    reconnectSocketWithAuth();
   },
 }));

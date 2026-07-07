@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { GameType } from '@tk/shared';
 import { CapabilitiesApi, type VersionDetail, type VersionInfo } from '../../api';
 import styles from './VersionMenu.module.css';
 
@@ -6,12 +7,16 @@ interface VersionMenuProps {
   versions: VersionInfo[];
   currentVersionId: string;
   disabled?: boolean;
+  gameType?: GameType;
+  onGameTypeChange?: (type: GameType) => void;
 }
 
 export function VersionMenu({
   versions,
   currentVersionId,
   disabled,
+  gameType = 'sanguosha',
+  onGameTypeChange,
 }: VersionMenuProps) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<VersionDetail | null>(null);
@@ -19,6 +24,7 @@ export function VersionMenu({
   const [detailError, setDetailError] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const current = versions.find((v) => v.id === currentVersionId) ?? versions[0];
+  const currentLabel = gameType === 'monopoly' ? '世界版大富翁' : current?.name ?? '版本';
 
   useEffect(() => {
     if (!open) return;
@@ -48,10 +54,16 @@ export function VersionMenu({
         className={`${styles.versionBtn} ${open ? styles.versionBtnOpen : ''}`}
         disabled={disabled}
         title="查看版本信息"
-        onClick={() => openDetail(current?.id ?? currentVersionId)}
+        onClick={() => {
+          if (gameType === 'monopoly') {
+            setOpen((v) => !v);
+            return;
+          }
+          openDetail(current?.id ?? currentVersionId);
+        }}
       >
         <span className={styles.versionIcon}>📦</span>
-        <span className={styles.versionLabel}>{current?.name ?? '版本'}</span>
+        <span className={styles.versionLabel}>{currentLabel}</span>
       </button>
       <button
         type="button"
@@ -69,12 +81,26 @@ export function VersionMenu({
               type="button"
               key={v.id}
               role="menuitem"
-              className={`${styles.menuItem} ${v.id === currentVersionId ? styles.menuItemActive : ''}`}
-              onClick={() => openDetail(v.id)}
+              className={`${styles.menuItem} ${gameType === 'sanguosha' && v.id === currentVersionId ? styles.menuItemActive : ''}`}
+              onClick={() => {
+                onGameTypeChange?.('sanguosha');
+                openDetail(v.id);
+              }}
             >
               {v.name}
             </button>
           ))}
+          <button
+            type="button"
+            role="menuitem"
+            className={`${styles.menuItem} ${gameType === 'monopoly' ? styles.menuItemActive : ''}`}
+            onClick={() => {
+              setOpen(false);
+              onGameTypeChange?.('monopoly');
+            }}
+          >
+            世界版大富翁
+          </button>
         </div>
       )}
       {(detail || loadingDetail || detailError) && (

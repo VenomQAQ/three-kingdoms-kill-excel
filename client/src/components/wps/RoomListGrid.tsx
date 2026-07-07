@@ -1,18 +1,15 @@
 import { useRef } from 'react';
 import type { CSSProperties } from 'react';
-import type { GameType, RoomListItem } from '@tk/shared';
+import type { RoomListItem } from '@tk/shared';
 import styles from './SpreadsheetGrid.module.css';
 import { COL_LABELS } from '../../data/decoy';
 import { useCellFiller } from '../../utils/useCellFiller';
 
-const HEADERS = ['房间号', '类型', '状态', '玩家人数', '房主', '版本', '操作'];
-const COL_WIDTHS = [100, 84, 88, 88, 100, 132, 120];
+const HEADERS = ['房间号', '游戏', '状态', '玩家人数', '房主', '版本', '操作'];
+const COL_WIDTHS = [100, 156, 88, 88, 100, 132, 120];
 
 interface RoomListGridProps {
   rooms: RoomListItem[];
-  defaultGameType?: GameType;
-  onDefaultGameTypeChange?: (type: GameType) => void;
-  onCreateRoom?: (type: GameType) => void;
   selectedCell: string;
   onSelectCell: (ref: string) => void;
   onJoinRoom: (code: string) => void;
@@ -31,9 +28,6 @@ function statusLabel(status: RoomListItem['status']) {
 
 export function RoomListGrid({
   rooms,
-  defaultGameType = 'sanguosha',
-  onDefaultGameTypeChange,
-  onCreateRoom,
   selectedCell,
   onSelectCell,
   onJoinRoom,
@@ -46,7 +40,7 @@ export function RoomListGrid({
   const dataRows = rooms;
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  const fixedRows = 3;
+  const fixedRows = 1;
   const filler = useCellFiller(wrapRef, fixedRows + dataRows.length);
   const totalRows = fixedRows + dataRows.length + filler.rows;
 
@@ -75,7 +69,6 @@ export function RoomListGrid({
           const rowNum = ri + 1;
           const room = ri >= fixedRows && ri < fixedRows + dataRows.length ? dataRows[ri - fixedRows] : null;
           const isHeader = ri === 0;
-          const isToolbar = ri === 1 || ri === 2;
           const isFiller = ri >= fixedRows + dataRows.length;
           const isLastRow = ri === totalRows - 1;
 
@@ -95,34 +88,6 @@ export function RoomListGrid({
 
                 if (isHeader) {
                   value = HEADERS[ci];
-                } else if (isToolbar) {
-                  if (ri === 1 && ci === 0) {
-                    value = '创建类型';
-                    extraClass = styles.headerCell;
-                  } else if (ri === 1 && ci === 1) {
-                    value = defaultGameType === 'monopoly' ? '大富翁' : '三国杀';
-                    extraClass += ` ${styles.linkCell}`;
-                    onClick = () => {
-                      onSelectCell(ref);
-                      onDefaultGameTypeChange?.(defaultGameType === 'monopoly' ? 'sanguosha' : 'monopoly');
-                    };
-                  } else if (ri === 1 && ci === 6) {
-                    value = '创建房间';
-                    extraClass += ` ${styles.linkCell}`;
-                    onClick = () => {
-                      onSelectCell(ref);
-                      if (isGuest) {
-                        onGuestAction?.();
-                        return;
-                      }
-                      onCreateRoom?.(defaultGameType);
-                    };
-                  } else if (ri === 2 && ci === 0) {
-                    value = '筛选';
-                    extraClass = styles.headerCell;
-                  } else if (ri === 2 && ci === 1) {
-                    value = '全部游戏';
-                  }
                 } else if (room) {
                   switch (ci) {
                     case 0:

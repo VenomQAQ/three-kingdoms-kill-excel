@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+﻿import { describe, expect, it, vi } from 'vitest';
 import { RoomService } from './room.service';
 import { GameService } from '../game/game.service';
 
@@ -13,13 +13,13 @@ function optionIds(service: RoomService, roomId: string, playerId: string): stri
 }
 
 describe('RoomService formal general selection', () => {
-  it('creates and starts a free world monopoly room with a typed room-list entry', () => {
+  it('creates and starts a free china monopoly room with a typed room-list entry', () => {
     const service = createService();
     const room = service.createRoom('host', '房主', undefined, 'user-host', 'monopoly');
     service.joinRoom(room.code, 'p2', '玩家二', 'user-2');
 
     expect(room.gameType).toBe('monopoly');
-    expect(room.versionName).toBe('世界版大富翁');
+    expect(room.versionName).toBe('中国版大富翁');
     expect(room.maxPlayers).toBe(4);
     expect(room.monopoly?.phase).toBe('lobby');
 
@@ -27,7 +27,7 @@ describe('RoomService formal general selection', () => {
     expect(listed).toEqual(expect.objectContaining({
       code: room.code,
       gameType: 'monopoly',
-      gameName: '世界版大富翁',
+      gameName: '中国版大富翁',
       playerCount: 2,
     }));
 
@@ -41,8 +41,8 @@ describe('RoomService formal general selection', () => {
       round: 1,
       pendingAction: null,
     }));
-    expect(room.monopoly?.players.map((player) => player.cash)).toEqual([1500, 1500]);
-    expect(room.monopoly?.board.some((cell) => cell.name === '伦敦')).toBe(true);
+    expect(room.monopoly?.players.map((player) => player.cash)).toEqual([15000, 15000]);
+    expect(room.monopoly?.board.some((cell) => cell.name === '北京')).toBe(true);
     expect(room.monopoly?.log[0]).toContain('游玩免费');
   });
 
@@ -60,12 +60,12 @@ describe('RoomService formal general selection', () => {
 
     try {
       service.monopolyRoll('host');
-      expect(state.players[0]).toEqual(expect.objectContaining({ position: 1, cash: 1700 }));
+      expect(state.players[0]).toEqual(expect.objectContaining({ position: 1, cash: 15200 }));
       expect(state.pendingAction).toBe('buy_or_skip');
 
       service.monopolyBuy('host');
       expect(state.board[1]?.ownerId).toBe('host');
-      expect(state.players[0]?.cash).toBe(1580);
+      expect(state.players[0]?.cash).toBe(15080);
       expect(state.turnIndex).toBe(1);
     } finally {
       vi.restoreAllMocks();

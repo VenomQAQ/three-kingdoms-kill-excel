@@ -45,6 +45,11 @@ import { formatGeneralName } from './utils/display';
 import gridStyles from './components/wps/SpreadsheetGrid.module.css';
 import styles from './App.module.css';
 
+function formatTurnName(roomGameType: GameType | undefined, player?: RoomPlayer | null): string {
+  if (!player) return '';
+  return roomGameType === 'monopoly' ? (player.nickname || player.id) : formatGeneralName(player);
+}
+
 function asEnginePlayer(player: RoomPlayer): EnginePlayerState {
   return {
     id: player.id,
@@ -68,6 +73,14 @@ function asEnginePlayer(player: RoomPlayer): EnginePlayerState {
 }
 
 function App() {
+  const [bgColorToken, setBgColorToken] = useState(() => {
+    if (typeof window === 'undefined') return '#ffffff';
+    return window.localStorage.getItem('tk_bg_color_token')?.trim() || '#ffffff';
+  });
+  const [showMonopolyCellColors, setShowMonopolyCellColors] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('tk_monopoly_cell_colors') === '1';
+  });
   const [activeSheet, setActiveSheet] = useState<SheetId>(ROOM_LIST_SHEET_ID);
   const [bossMode, setBossMode] = useState(false);
   const [selectedCell, setSelectedCell] = useState('A1');
@@ -115,6 +128,8 @@ function App() {
     joinRoom,
     joinSandbox,
     leaveRoom,
+    disbandRoom,
+    switchRoomGame,
     toggleReady,
     startGame,
     selectGeneral,
@@ -138,6 +153,7 @@ function App() {
     sandboxEndTurn,
     monopolyRoll,
     monopolyBuy,
+    monopolyUpgrade,
     monopolySkip,
     sendChat,
     chatMessages,
@@ -182,11 +198,20 @@ function App() {
   const isGuest = authStatus === 'guest';
   const sandboxEnabled = capabilities?.sandboxEnabled ?? true;
   const versions = capabilities?.versions ?? [];
-  const bgColorToken = capabilities?.bgColorToken ?? '#ffffff';
   const onLobbySheet = activeSheet === ROOM_LIST_SHEET_ID;
   const onCurrentRoomSheet = activeSheet === CURRENT_ROOM_SHEET_ID;
   const onLianliankanSheet = activeSheet === LIANLIANKAN_SHEET_ID;
   const onSalesSheet = activeSheet === SALES_SHEET_ID;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('tk_bg_color_token', bgColorToken);
+  }, [bgColorToken]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('tk_monopoly_cell_colors', showMonopolyCellColors ? '1' : '0');
+  }, [showMonopolyCellColors]);
 
   useEffect(() => {
     if (onLianliankanSheet && !lianliankanConfig) {
@@ -257,13 +282,23 @@ function App() {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'H') {
         e.preventDefault();
-        setBossMode((b) => !b);
-        if (!bossMode) setActiveSheet(SALES_SHEET_ID);
+        setBossMode((prev) => {
+          const next = !prev;
+          if (next) {
+            document.title = '第 1 季度区域销售汇总.xlsx';
+            window.localStorage.setItem('tk_browser_title', '第 1 季度区域销售汇总.xlsx');
+            setActiveSheet(SALES_SHEET_ID);
+          } else {
+            const fallbackTitle = window.localStorage.getItem('tk_browser_title')?.trim() || '三国杀表格.xlsx';
+            document.title = fallbackTitle.slice(0, 40);
+          }
+          return next;
+        });
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [bossMode]);
+  }, []);
 
   useEffect(() => {
     if (room && !bossMode) {
@@ -279,7 +314,15 @@ function App() {
   const actingId = controlId;
   const turnPlayer =
     room?.gameType === 'monopoly' && room.monopoly != null && isPlaying
-      ? room.players.find((player) => player.id === room.monopoly?.players[room.monopoly.turnIndex]?.playerId) ?? null
+      ? room.players.find((player) => player.id === room.monopoly?.players[room.monopoly.turnIndex]?.playerId)
+        ?? (room.monopoly.players[room.monopoly.turnIndex]
+          ? {
+              id: room.monopoly.players[room.monopoly.turnIndex]!.playerId,
+              nickname: room.monopoly.players[room.monopoly.turnIndex]!.nickname,
+              ready: false,
+              connected: true,
+            }
+          : null)
       : room?.sandbox != null && isPlaying
       ? room.players[room.sandbox.turnIndex]
       : null;
@@ -288,7 +331,7 @@ function App() {
   const canOperateTurn =
     isPlaying && turnPlayer != null && actingId === turnPlayer.id;
   const canPlayCards =
-    canOperateTurn && (turnPhase === 'play' || !turnPhase) && !gamePrompt;
+    room?.gameType !== 'monopoly' && canOperateTurn && (turnPhase === 'play' || !turnPhase) && !gamePrompt;
 
   const PHASE_LABEL: Record<string, string> = {
     prepare: '准备阶段',
@@ -479,6 +522,23 @@ function App() {
     setSelectedHand(null);
   }, [leaveRoom, room]);
 
+  const handleDisbandRoom = useCallback(() => {
+    if (!room || !isHost) return;
+    if (typeof window !== 'undefined') {
+      const ok = window.confirm('确认解散当前房间？所有玩家都会返回房间列表。');
+      if (!ok) return;
+    }
+    disbandRoom();
+    if (typeof window !== 'undefined') window.sessionStorage.removeItem('roomContext');
+    setActiveSheet(ROOM_LIST_SHEET_ID);
+    setSelectedHand(null);
+  }, [disbandRoom, isHost, room]);
+
+  const handleSwitchRoomGame = useCallback((gameType?: GameType) => {
+    if (!room || !isHost || room.status !== 'waiting') return;
+    switchRoomGame(gameType ?? (room.gameType === 'monopoly' ? 'sanguosha' : 'monopoly'));
+  }, [isHost, room, switchRoomGame]);
+
   const handleRibbonAction = useCallback(
     async (id: string) => {
       clearError();
@@ -500,6 +560,12 @@ function App() {
           break;
         case 'leave':
           handleLeaveRoom();
+          break;
+        case 'disband':
+          handleDisbandRoom();
+          break;
+        case 'switchGame':
+          handleSwitchRoomGame();
           break;
         case 'ready':
           toggleReady();
@@ -553,6 +619,8 @@ function App() {
       createRoom,
       joinSandbox,
       handleLeaveRoom,
+      handleDisbandRoom,
+      handleSwitchRoomGame,
       toggleReady,
       startGame,
       sandboxStart,
@@ -607,6 +675,7 @@ function App() {
     }
 
     if (playing) {
+      const isSanguoshaGame = room?.gameType !== 'monopoly';
       const selectedCardName = selectedHand?.name.match(/【(.+?)】$/)?.[1] ?? selectedHand?.name;
       const engineActor = actingPlayer ? asEnginePlayer(actingPlayer) : null;
       const canVirtualSha =
@@ -624,21 +693,23 @@ function App() {
         !!engineActor &&
         selectedCardName !== '乐不思蜀' &&
         canUseAsLebu(engineActor, selectedHand.name);
-      const actions: RibbonAction[] = [
-        {
-          id: 'playCard',
-          label: '打出',
-          icon: '🃏',
-          disabled: !canPlayCards || !selectedHand,
-        },
-        {
-          id: 'endTurn',
-          label: '结束回合',
-          icon: '⏭',
-          disabled: !canOperateTurn || !!gamePrompt,
-        },
-      ];
-      if (canVirtualSha) {
+      const actions: RibbonAction[] = isSanguoshaGame
+        ? [
+            {
+              id: 'playCard',
+              label: '打出',
+              icon: '🃏',
+              disabled: !canPlayCards || !selectedHand,
+            },
+            {
+              id: 'endTurn',
+              label: '结束回合',
+              icon: '⏭',
+              disabled: !canOperateTurn || !!gamePrompt,
+            },
+          ]
+        : [];
+      if (isSanguoshaGame && canVirtualSha) {
         actions.push({
           id: 'playAsSha',
           label: '当杀',
@@ -646,7 +717,7 @@ function App() {
           disabled: !canPlayCards || !selectedHand,
         });
       }
-      if (canVirtualGuohe) {
+      if (isSanguoshaGame && canVirtualGuohe) {
         actions.push({
           id: 'playAsGuohe',
           label: '当拆',
@@ -654,7 +725,7 @@ function App() {
           disabled: !canPlayCards || !selectedHand,
         });
       }
-      if (canVirtualLebu) {
+      if (isSanguoshaGame && canVirtualLebu) {
         actions.push({
           id: 'playAsLebu',
           label: '当乐',
@@ -674,7 +745,19 @@ function App() {
     }
 
     const base: RibbonAction[] = [
+      {
+        id: 'disband',
+        label: '解散房间',
+        icon: '×',
+        disabled: !inRoom || !isHost || !!isSandbox || playing,
+      },
       { id: 'leave', label: '离开', icon: '🚪', disabled: !inRoom },
+      {
+        id: 'switchGame',
+        label: '切换游戏',
+        icon: '↔',
+        disabled: !inRoom || !isHost || !!isSandbox || playing || room?.status !== 'waiting',
+      },
       {
         id: 'ready',
         label: '准备',
@@ -877,6 +960,8 @@ function App() {
         onUseSkill={(id) => sandboxUseSkill(id)}
         versions={versions}
         currentVersionId={currentVersion}
+        currentGameType={defaultGameType}
+        onGameTypeChange={handleDefaultGameTypeChange}
         versionDisabled={!isAuthed}
         onCheckIn={() => void handleCheckIn()}
         checkInDisabled={authStatus === 'loading'}
@@ -889,7 +974,7 @@ function App() {
         roomCode={bossMode ? undefined : room?.code}
         roomStatus={room ? roomStatusLabel : undefined}
         actingName={formatGeneralName(actingPlayer)}
-        turnName={formatGeneralName(turnPlayer)}
+        turnName={formatTurnName(room?.gameType, turnPlayer)}
         isAuthed={isAuthed}
         onLoginClick={() => setShowLoginDialog(true)}
         onProfileClick={() => {
@@ -902,7 +987,7 @@ function App() {
         onChangePassword={() => setShowChangePasswordDialog(true)}
         onLogout={() => void logout()}
       />
-      {isPlaying && room && (
+      {isPlaying && room && room.gameType !== 'monopoly' && (
         <PlayControlBar
           actingPlayer={actingPlayer}
           turnPlayer={turnPlayer ?? undefined}
@@ -954,10 +1039,10 @@ function App() {
               : gamePrompt
                 ? '请按弹窗完成操作（响应/选目标/确认）'
                 : isSandbox
-                  ? `请切换操控到「${turnPlayer?.nickname}」再出牌`
+                  ? `请切换操控到「${turnPlayer?.nickname ?? '当前角色'}」再出牌`
                   : turnPlayer?.id === playerId
                     ? '等待你的回合'
-                    : `当前回合：${turnPlayer?.nickname}`
+                    : `当前回合：${turnPlayer?.nickname ?? '—'}`
             : onLobbySheet
               ? isAuthed
                 ? '大厅聊天或 /create · /join 房间号'
@@ -1003,6 +1088,7 @@ function App() {
             actingPlayerId={actingId}
             selectedCell={selectedCell}
             selectedHand={selectedHand}
+            showMonopolyCellColors={showMonopolyCellColors}
             onSelectCell={setSelectedCell}
             onSelectHand={handleSelectHand}
             onPlayCard={handlePlayCard}
@@ -1013,10 +1099,12 @@ function App() {
             onSendChat={sendChat}
             onMonopolyRoll={monopolyRoll}
             onMonopolyBuy={monopolyBuy}
+            onMonopolyUpgrade={monopolyUpgrade}
             onMonopolySkip={monopolySkip}
             isSandbox={isSandbox}
             onToggleReady={toggleReady}
             onSelectGeneral={selectGeneral}
+            onSwitchGame={handleSwitchRoomGame}
           />
           ) : (
             <DecoyGrid selectedCell={selectedCell} onSelectCell={setSelectedCell} />
@@ -1026,9 +1114,6 @@ function App() {
             <div className={gridStyles.gridPane}>
               <RoomListGrid
                 rooms={roomList}
-                defaultGameType={defaultGameType}
-                onDefaultGameTypeChange={handleDefaultGameTypeChange}
-                onCreateRoom={(type) => requireAuth(() => createRoom(type))}
                 selectedCell={selectedCell}
                 onSelectCell={setSelectedCell}
                 onJoinRoom={(code) => requireAuth(() => joinRoom(code))}
@@ -1046,8 +1131,15 @@ function App() {
               <LobbyChatPanel
                 messages={lobbyMessages}
                 visible
-                canSend={isAuthed}
-                onSend={sendLobbyChat}
+                canSend
+                onSend={(content) => {
+                  if (!isAuthed) {
+                    showToast('请先登录');
+                    setShowLoginDialog(true);
+                    return;
+                  }
+                  sendLobbyChat(content);
+                }}
                 onViewProfile={(userId) => {
                   setProfileUserId(userId);
                   setVirtualProfileName(null);
@@ -1104,6 +1196,12 @@ function App() {
         open={showSettingsDialog}
         defaultGameType={defaultGameType}
         onDefaultGameTypeChange={handleDefaultGameTypeChange}
+        bossMode={bossMode}
+        onBossModeChange={setBossMode}
+        bgColorToken={bgColorToken}
+        onBgColorTokenChange={setBgColorToken}
+        showMonopolyCellColors={showMonopolyCellColors}
+        onShowMonopolyCellColorsChange={setShowMonopolyCellColors}
         onChangeNickname={handleChangeNickname}
         onChangePassword={() => setShowChangePasswordDialog(true)}
         onClose={() => setShowSettingsDialog(false)}

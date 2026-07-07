@@ -1,11 +1,13 @@
 import { Module, OnModuleInit } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { User } from '../auth/entities/user.entity';
 import { GameModule } from '../game/game.module';
 import { RoomService } from './room.service';
 import { RoomController } from './room.controller';
 import { ReconnectService } from './reconnect.service';
 
 @Module({
-  imports: [GameModule],
+  imports: [GameModule, TypeOrmModule.forFeature([User])],
   providers: [RoomService, ReconnectService],
   controllers: [RoomController],
   exports: [RoomService, ReconnectService],

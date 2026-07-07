@@ -268,6 +268,46 @@ export class GameGateway
     }
   }
 
+  @SubscribeMessage('room:switchGame')
+  async handleSwitchGame(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: { gameType: GameType },
+  ) {
+    const playerId = this.getPlayerId(client);
+    try {
+      const room = this.roomService.switchRoomGame(playerId, payload?.gameType ?? 'sanguosha');
+      const gameName = room.gameType === 'monopoly' ? '世界版大富翁' : '三国杀';
+      const message = this.chatService.system(room.id, `房主已将当前游戏切换为 ${gameName}`);
+      await this.broadcastGameState(room);
+      this.server.to(room.id).emit('chat:message', { ...message, _v: 1 } as any);
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
+  @SubscribeMessage('room:disband')
+  handleDisband(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload?: { code?: string },
+  ) {
+    const playerId = this.getPlayerId(client);
+    try {
+      const before = this.roomService.getRoomOfPlayer(playerId);
+      if (payload?.code && before && before.code !== payload.code) {
+        throw new RoomError('E_ROOM_NOT_FOUND', '房间不匹配');
+      }
+      const roomId = before?.id;
+      const code = before?.code;
+      this.roomService.disbandRoom(playerId);
+      if (roomId && code) {
+        this.server.to(roomId).emit('room:disbanded', { roomId, code, _v: 1 });
+        this.server.in(roomId).socketsLeave(roomId);
+      }
+    } catch (err) {
+      this.emitError(client, err);
+    }
+  }
+
   @SubscribeMessage('room:ready')
   handleReady(
     @ConnectedSocket() client: GameSocket,
@@ -895,6 +935,13 @@ export class GameGateway
   async handleMonopolyBuy(@ConnectedSocket() client: GameSocket) {
     await this.dispatchFormalGame(client, (playerId) =>
       this.roomService.monopolyBuy(playerId),
+    );
+  }
+
+  @SubscribeMessage('monopoly:upgrade')
+  async handleMonopolyUpgrade(@ConnectedSocket() client: GameSocket) {
+    await this.dispatchFormalGame(client, (playerId) =>
+      this.roomService.monopolyUpgrade(playerId),
     );
   }
 

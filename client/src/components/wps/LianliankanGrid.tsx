@@ -18,6 +18,10 @@ interface LianliankanGridProps {
   onRequireLogin: () => void;
 }
 
+export function mismatchNotice(isSameItem: boolean): string {
+  return isSameItem ? '这对还连不上' : '请选择相同图案';
+}
+
 function formatTime(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
   const minutes = Math.floor(total / 60);
@@ -106,7 +110,7 @@ export function LianliankanGrid({
     }
     const board = new Map(tiles.map((entry) => [entry.tileId, entry]));
     if (!canConnect(board, first, tile)) {
-      setNotice(first.itemId === tile.itemId ? '这对还连不上' : '请选择相同图案');
+      setNotice(mismatchNotice(first.itemId === tile.itemId));
       setSelectedTileId(tile.tileId);
       return;
     }

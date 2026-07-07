@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+﻿import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Room, RoomListItem } from '@tk/shared';
 import { LIANLIANKAN_CONFIG } from '../../../../server/src/modules/lianliankan/lianliankan.config';
@@ -19,7 +19,7 @@ const monopolyRoom: Room = {
   code: '87654321',
   hostId: 'p1',
   maxPlayers: 4,
-  versionName: '世界版大富翁',
+  versionName: '中国版大富翁',
   players: [
     { id: 'p1', userId: 'u1', nickname: '房主', ready: true, connected: true },
     { id: 'p2', userId: 'u2', nickname: '玩家二', ready: true, connected: true },
@@ -34,17 +34,23 @@ const monopolyRoom: Room = {
     round: 1,
     lastDice: [1, 2],
     pendingAction: 'buy_or_skip',
-    board: [
-      { index: 0, name: '起点', country: '世界', type: 'start', price: 0, rent: 0 },
-      { index: 1, name: '北京', country: '中国', type: 'city', price: 120, rent: 18 },
-      { index: 2, name: '机会', country: '亚洲', type: 'chance', price: 0, rent: 0 },
-      { index: 3, name: '东京', country: '日本', type: 'city', price: 140, rent: 22, ownerId: 'p2' },
-    ],
+    board: Array.from({ length: 40 }, (_, index) => {
+      const fallback = { index, name: `格子${index}`, country: '世界', type: 'rest' as const, price: 0, rent: 0 };
+      if (index === 0) return { index, name: '起点', country: '世界', type: 'start' as const, price: 2000, displayPrice: 2000, rent: 0 };
+      if (index === 1) return { index, name: '苏州', country: '华东', type: 'city' as const, price: 3200, displayPrice: 3200, rent: 420, level: 1, colorGroup: 'green' };
+      if (index === 4) return { index, name: '命运', country: '世界', type: 'fate' as const, price: 0, rent: 0 };
+      if (index === 5) return { index, name: '广州火车站', country: '交通', type: 'rail' as const, price: 2000, displayPrice: 2000, rent: 320 };
+      if (index === 10) return { index, name: '进牢', country: '世界', type: 'jail' as const, price: 0, rent: 0 };
+      if (index === 34) return { index, name: '北京', country: '华北', type: 'city' as const, price: 3000, displayPrice: 3000, rent: 400, level: 1, colorGroup: 'pink' };
+      if (index === 38) return { index, name: '苏州火车站', country: '交通', type: 'rail' as const, price: 2000, displayPrice: 2000, rent: 320 };
+      if (index === 39) return { index, name: '入牢', country: '世界', type: 'jail' as const, price: 0, rent: 0 };
+      return fallback;
+    }),
     players: [
-      { playerId: 'p1', nickname: '房主', position: 1, cash: 1500, properties: [] },
-      { playerId: 'p2', nickname: '玩家二', position: 3, cash: 1500, properties: [3] },
+      { playerId: 'p1', nickname: '房主', position: 34, cash: 15000, properties: [] },
+      { playerId: 'p2', nickname: '玩家二', position: 38, cash: 15000, properties: [38] },
     ],
-    log: ['世界版大富翁开始，游玩免费。'],
+    log: ['中国版大富翁开始，游玩免费。'],
   },
 };
 
@@ -93,6 +99,12 @@ describe('REQ-2026-006 UI acceptance', () => {
         open
         defaultGameType="monopoly"
         onDefaultGameTypeChange={vi.fn()}
+        bossMode={false}
+        onBossModeChange={vi.fn()}
+        bgColorToken="#ffffff"
+        onBgColorTokenChange={vi.fn()}
+        showMonopolyCellColors={false}
+        onShowMonopolyCellColorsChange={vi.fn()}
         onChangeNickname={vi.fn()}
         onChangePassword={vi.fn()}
         onClose={vi.fn()}
@@ -102,6 +114,8 @@ describe('REQ-2026-006 UI acceptance', () => {
     expect(html).toContain('修改昵称');
     expect(html).toContain('修改密码');
     expect(html).toContain('浏览器标签页标题');
+    expect(html).toContain('老板键');
+    expect(html).toContain('背景色');
     expect(html).toContain('大富翁');
   });
 
@@ -124,26 +138,25 @@ describe('REQ-2026-006 UI acceptance', () => {
         playerCount: 2,
         maxPlayers: 4,
         ownerNickname: '房主',
-        versionName: '世界版大富翁',
+        versionName: '中国版大富翁',
         gameType: 'monopoly',
-        gameName: '世界版大富翁',
+        gameName: '中国版大富翁',
         joinLabel: '加入',
         _v: 1,
       },
     ];
     const html = htmlOf(
-      <RoomListGrid
-        rooms={rooms}
-        defaultGameType="monopoly"
-        selectedCell="A1"
-        onSelectCell={vi.fn()}
-        onJoinRoom={vi.fn()}
-      />,
+        <RoomListGrid
+          rooms={rooms}
+          selectedCell="A1"
+          onSelectCell={vi.fn()}
+          onJoinRoom={vi.fn()}
+        />,
     );
 
-    expect(html).toContain('创建类型');
+    expect(html).not.toContain('创建类型');
     expect(html).toContain('大富翁');
-    expect(html).toContain('世界版大富翁');
+    expect(html).toContain('中国版大富翁');
     expect(html).toContain('2/4');
   });
 
@@ -156,14 +169,19 @@ describe('REQ-2026-006 UI acceptance', () => {
         onSelectCell={vi.fn()}
         onRoll={vi.fn()}
         onBuy={vi.fn()}
+        onUpgrade={vi.fn()}
         onSkip={vi.fn()}
+        chatMessages={[]}
+        onSendChat={vi.fn()}
       />,
     );
 
-    expect(html).toContain('北京');
-    expect(html).toContain('东京');
+    expect(html).toContain('苏州');
+    expect(html).toContain('广州火车站');
     expect(html).toContain('玩家资产');
     expect(html).toContain('购买');
     expect(html).toContain('游玩免费');
+    expect(html).not.toContain('房主</span>');
+    expect(html).toContain('玩家二');
   });
 });
