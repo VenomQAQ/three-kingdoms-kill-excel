@@ -901,6 +901,31 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
           return Promise.resolve({ ok: true });
         }
       }
+      if (prompt.skillAction === 'virtual_card_pick') {
+        if (choiceId === 'cancel') {
+          this.setPrompt(null);
+          if (this.state.turn.phase === 'play') {
+            const cur = this.state.players[this.state.turn.index];
+            this.log(
+              `—— ${cur?.generalName ?? '角色'} 出牌阶段：可选择出牌、发动技能或结束回合`,
+            );
+          }
+          return Promise.resolve({ ok: true });
+        }
+        const match = choiceId.match(/^[^:]+:hand:(\d+)$/);
+        if (!match) {
+          return Promise.resolve({ ok: false, error: '无效选择' });
+        }
+        const handIndex = Number(match[1]);
+        const cardName = prompt.cardName;
+        if (!cardName) {
+          return Promise.resolve({ ok: false, error: '技能配置错误' });
+        }
+        this.setPrompt(null);
+        const res = this.cardPlay.initiatePlayCard(this, playerId, cardName, handIndex);
+        if (res.ok) this.syncStackToState();
+        return Promise.resolve(res);
+      }
       if (prompt.skillId === 'zhaxiang') {
         const [choice, handIndexText] = choiceId.split(':hand:');
         const handIndex = handIndexText == null ? undefined : Number(handIndexText);

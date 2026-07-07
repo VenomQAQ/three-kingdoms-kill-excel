@@ -6,7 +6,13 @@ import type { DeckPile } from '../engine/deck-pile';
 import { applyLockedModifiers, characterSkillsForPrompt } from '../engine/timing-runner';
 import { handEntriesMatch } from '../engine/card-label';
 import { discardZoneCard, listZoneCards, parseZoneCardId, takeZoneCard } from '../engine/zone-card-pick';
-import { validResponseCardsForPlayer } from '../engine/virtual-card';
+import {
+  canUseAsGuohe,
+  canUseAsLebu,
+  canUseAsSha,
+  canUseAsShan,
+  validResponseCardsForPlayer,
+} from '../engine/virtual-card';
 import { setCardPlayContext } from './card-play-context';
 import type { EnginePlayerState, GamePrompt } from '../types/game';
 import type { SkillDefinition } from '../types/skill';
@@ -69,6 +75,21 @@ function firstOtherAliveTarget(state: GameState, sourceId: string): EnginePlayer
 
 function randomHandIndex(player: EnginePlayerState): number {
   return Math.max(0, player.handCards.length - 1);
+}
+
+function canUseHandAsVirtualCard(
+  source: EnginePlayerState,
+  asCardName: string,
+  entry: string,
+): boolean {
+  if (asCardName === '杀') return canUseAsSha(source, entry);
+  if (asCardName === '过河拆桥') return canUseAsGuohe(source, entry);
+  if (asCardName === '乐不思蜀') return canUseAsLebu(source, entry);
+  if (asCardName === '闪') return canUseAsShan(source, entry);
+  if (asCardName === '桃') {
+    return validResponseCardsForPlayer(source, 'tao', [entry]).length > 0;
+  }
+  return false;
 }
 
 export class SkillPlayService {
@@ -394,6 +415,39 @@ export class SkillPlayService {
       return { ok: true };
     }
 
+    const virtualEffect = skill.effects?.find((effect) => effect.action === 'useVirtualCard');
+    if (
+      virtualEffect &&
+      skill.timings.includes(GameTiming.PHASE_PLAY) &&
+      !virtualEffect.params?.viaLijian &&
+      !virtualEffect.params?.swap
+    ) {
+      const asCardName = String(virtualEffect.params?.as ?? '');
+      if (!asCardName) {
+        return { ok: false, error: '技能配置不完整' };
+      }
+      const validIndices = source.handCards
+        .map((entry, index) => (canUseHandAsVirtualCard(source, asCardName, entry) ? index : -1))
+        .filter((index) => index >= 0);
+      if (validIndices.length === 0) {
+        return { ok: false, error: `没有可当作【${asCardName}】使用的手牌` };
+      }
+      host.setPrompt({
+        id: nextPromptId(),
+        type: 'use_skill',
+        playerId: sourceId,
+        skillId,
+        skillName: skill.name,
+        skillAction: 'virtual_card_pick',
+        cardName: asCardName,
+        characterSkills: characterSkillsForPrompt(source),
+        message: `【${skill.name}】：请选择一张手牌当【${asCardName}】使用。`,
+        discardHandIndices: validIndices,
+        options: [{ id: 'cancel', label: '取消' }],
+      });
+      return { ok: true };
+    }
+
     return this.executeGenericActiveSkill(host, source, skill);
   }
 
@@ -409,11 +463,7 @@ export class SkillPlayService {
     const firstParams = effectParams(firstEffect);
 
     if (firstEffect?.action === 'useVirtualCard') {
-      const as = String(firstParams.as ?? '虚拟牌');
-      source.skillUseCount[skill.id] = (source.skillUseCount[skill.id] ?? 0) + 1;
-      host.log(`${source.generalName} 发动【${skill.name}】，视为使用【${as}】`);
-      host.setPrompt(null);
-      return { ok: true };
+      return { ok: false, error: '此转化技需从出牌阶段技能入口或手牌打出' };
     }
 
     if (firstEffect?.action === 'showCard') {

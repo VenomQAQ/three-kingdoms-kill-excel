@@ -62,7 +62,8 @@ export interface GamePrompt {
     | 'discard_red_then_choose'
     | 'pindian'
     | 'recover_choice'
-    | 'virtual_basic';
+    | 'virtual_basic'
+    | 'virtual_card_pick';
   /** 判定结果展示 */
   judgeCardName?: string;
   judgeResult?: string;

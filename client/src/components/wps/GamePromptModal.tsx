@@ -182,6 +182,8 @@ export function GamePromptModal({
   const isDiscardDrawSkill = prompt.type === 'use_skill' && prompt.skillAction === 'discard_draw';
   const isDiscardRedThenChoose =
     prompt.type === 'use_skill' && prompt.skillAction === 'discard_red_then_choose';
+  const isVirtualCardPick =
+    prompt.type === 'use_skill' && prompt.skillAction === 'virtual_card_pick';
   const isLijian = prompt.type === 'use_skill' && prompt.skillId === 'lijian';
   const isJianyan = prompt.type === 'use_skill' && prompt.skillId === 'jianyan';
   const isLiuli = prompt.type === 'use_skill' && prompt.skillId === 'liuli';
@@ -265,6 +267,11 @@ export function GamePromptModal({
     if (isDiscardRedThenChoose) {
       return `发动【${stripGeneralPrefixInText(prompt.skillName ?? '技能')}】`;
     }
+    if (isVirtualCardPick) {
+      return prompt.cardName
+        ? `发动【${stripGeneralPrefixInText(prompt.skillName ?? '技能')}】·当【${stripGeneralPrefixInText(prompt.cardName)}】`
+        : `发动【${stripGeneralPrefixInText(prompt.skillName ?? '技能')}】`;
+    }
     if (isYijuePindian || isYijueRecover) {
       return '发动【义绝】';
     }
@@ -281,6 +288,7 @@ export function GamePromptModal({
     isDiscardRecoverSkill,
     isDiscardDrawSkill,
     isDiscardRedThenChoose,
+    isVirtualCardPick,
     isFanjian,
     isLiyu,
     isLiuli,
@@ -302,6 +310,7 @@ export function GamePromptModal({
   const discardRecoverHand = actingPlayer?.handCards ?? [];
   const discardDrawHand = actingPlayer?.handCards ?? [];
   const discardRedHand = actingPlayer?.handCards ?? [];
+  const virtualCardPickHand = actingPlayer?.handCards ?? [];
   const yijueSourceHand = actingPlayer?.handCards ?? [];
   const yijueTarget = validTargets.find((target) => target.id === rendeTarget);
   const yijueTargetHand = yijueTarget?.handCards ?? [];
@@ -1024,6 +1033,39 @@ export function GamePromptModal({
                   onClick={() => onConfirmPlay(prompt.id, 'skip')}
                 >
                   不发动
+                </button>
+              </div>
+            </section>
+          )}
+
+          {isVirtualCardPick && (
+            <section className={styles.section}>
+              <h3>
+                选择一张手牌当【{stripGeneralPrefixInText(prompt.cardName ?? '牌')}】使用
+              </h3>
+              <CardPickChips
+                cards={virtualCardPickHand}
+                selectedIndices={discardIndices}
+                allowedIndices={prompt.discardHandIndices}
+                onToggle={(index) => setDiscardIndices([index])}
+              />
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={discardIndices.length !== 1 || !prompt.skillId}
+                  onClick={() =>
+                    onConfirmPlay(prompt.id, `${prompt.skillId}:hand:${discardIndices[0]}`)
+                  }
+                >
+                  确认使用
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => onConfirmPlay(prompt.id, 'cancel')}
+                >
+                  取消
                 </button>
               </div>
             </section>

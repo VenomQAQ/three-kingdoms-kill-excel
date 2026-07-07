@@ -52,6 +52,14 @@ export function GeneralSelectPanel({ room, playerId, onSelectGeneral }: GeneralS
     [options, selectedId],
   );
 
+  const selectedByPlayerId = useMemo(() => {
+    const map = new Map<string, { generalId: string; generalName: string }>();
+    for (const item of selection?.selected ?? []) {
+      map.set(item.playerId, item);
+    }
+    return map;
+  }, [selection?.selected]);
+
   if (!selection) return null;
 
   return (
@@ -96,15 +104,22 @@ export function GeneralSelectPanel({ room, playerId, onSelectGeneral }: GeneralS
 
         <aside className={styles.summary}>
           <div className={styles.summaryTitle}>已选武将</div>
-          {selection.selected.length === 0 ? (
-            <div className={styles.empty}>暂无选择</div>
+          {room.players.length === 0 ? (
+            <div className={styles.empty}>暂无玩家</div>
           ) : (
-            selection.selected.map((item) => {
-              const player = room.players.find((p) => p.id === item.playerId);
+            room.players.map((player) => {
+              const picked = selectedByPlayerId.get(player.id);
               return (
-                <div key={item.playerId} className={styles.selectedLine}>
-                  <span>{player?.nickname ?? '玩家'}</span>
-                  <strong>{item.generalName}</strong>
+                <div key={player.id} className={styles.selectedLine}>
+                  <span className={styles.playerName}>
+                    {player.nickname ?? '玩家'}
+                    {player.role === '主公' ? <span className={styles.lordBadge}>主公</span> : null}
+                  </span>
+                  {picked ? (
+                    <strong>{picked.generalName}</strong>
+                  ) : (
+                    <span className={styles.selecting}>正在选择</span>
+                  )}
                 </div>
               );
             })

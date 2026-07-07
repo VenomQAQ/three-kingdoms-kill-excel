@@ -235,6 +235,10 @@ describe('RoomService formal general selection', () => {
 
     const lordView = service.getFilteredRoomForPlayer(room.id, lord.id)!;
     const rebelView = service.getFilteredRoomForPlayer(room.id, rebel.id)!;
+    expect(lordView.players.find((p) => p.id === lord.id)?.role).toBe('主公');
+    expect(rebelView.players.find((p) => p.id === rebel.id)?.role).toBe(rebel.role);
+    expect(lordView.players.find((p) => p.id === rebel.id)?.role).toBe('？');
+    expect(rebelView.players.find((p) => p.id === lord.id)?.role).toBe('主公');
     expect(lordView.generalSelection?.myOptions).toHaveLength(5);
     expect(rebelView.generalSelection?.myOptions).toHaveLength(3);
     expect(lordView.generalSelection?.myOptions?.[0]).toEqual(

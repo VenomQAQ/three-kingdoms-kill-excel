@@ -39,8 +39,9 @@ export function formatKingdomName(kingdom?: string | null): string {
 
 export function formatRoleName(player?: Pick<RoomPlayer, 'role' | 'roleRevealed'> | null): string {
   if (!player?.role) return '?';
-  if (player.role === '主公' || player.roleRevealed) return player.role;
-  return '?';
+  // 服务端 filterRoomForPlayer 已按视角过滤：本人可见真实身份，他人未公开则为「？」
+  if (player.role === '？') return '?';
+  return player.role;
 }
 
 export function formatCharacterLine(player?: Partial<RoomPlayer> | null): string {
@@ -95,6 +96,19 @@ export function sanitizeRoom(room: Room): Room {
       judgeCards: player.judgeCards?.map((card) => stripGeneralPrefixInText(card)),
       handCards: player.handCards?.map((card) => stripGeneralPrefixInText(card)),
     })),
+    generalSelection: room.generalSelection
+      ? {
+          ...room.generalSelection,
+          myOptions: room.generalSelection.myOptions?.map((option) => ({
+            ...option,
+            name: stripGeneralPrefix(option.name),
+          })),
+          selected: room.generalSelection.selected.map((item) => ({
+            ...item,
+            generalName: stripGeneralPrefix(item.generalName),
+          })),
+        }
+      : room.generalSelection,
     sandbox: room.sandbox
       ? {
           ...room.sandbox,

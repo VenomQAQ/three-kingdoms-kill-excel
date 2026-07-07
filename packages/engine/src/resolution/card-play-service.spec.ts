@@ -166,6 +166,32 @@ describe('CardPlayService trick resolution', () => {
     expect(engine.getState().log).toContain('界甘宁 将 ♣7【闪】 当【过河拆桥】使用');
   });
 
+  it('界甘宁发动奇袭后先选黑色手牌再选择过河拆桥目标', async () => {
+    const engine = engineForVirtualCard('界甘宁', ['♣7【闪】', '♥3【桃】']);
+    engine.getState().players[1]!.equipment = ['八卦阵'];
+
+    expect(engine.initiateSkill('a', 'qixi')).toMatchObject({ ok: true });
+    expect(engine.getState().prompt).toMatchObject({
+      type: 'use_skill',
+      skillId: 'qixi',
+      skillAction: 'virtual_card_pick',
+      cardName: '过河拆桥',
+      discardHandIndices: [0],
+    });
+
+    await expect(engine.submitPromptChoice('a', engine.getState().prompt!.id, 'qixi:hand:0')).resolves.toMatchObject({
+      ok: true,
+    });
+
+    expect(engine.getState().prompt).toMatchObject({
+      type: 'select_targets',
+      playerId: 'a',
+      cardName: '过河拆桥',
+      validTargetIds: ['b'],
+    });
+    expect(engine.getState().log).toContain('界甘宁 将 ♣7【闪】 当【过河拆桥】使用');
+  });
+
   it('界大乔可显式将方块牌当乐不思蜀使用', () => {
     const engine = engineForVirtualCard('界大乔', ['♦7【闪】']);
 

@@ -75,7 +75,6 @@ export function GameGrid({
           onBuy={onMonopolyBuy ?? (() => undefined)}
           onUpgrade={onMonopolyUpgrade ?? (() => undefined)}
           onSkip={onMonopolySkip ?? (() => undefined)}
-          onViewProfile={onViewProfile}
           onViewChatProfile={onViewChatProfile}
           onSendChat={onSendChat}
         />
