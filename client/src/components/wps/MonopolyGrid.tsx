@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, MonopolyBoardCell, MonopolyPlayerState, Room } from '@tk/shared';
+import {
+  getCityNextLevelRent,
+  getCellTemplate,
+  resolveCellRent,
+  resolveCellUpgradeCost,
+} from '@tk/shared';
+import { DECOY_HEADERS, DECOY_ROWS } from '../../data/decoy';
 import { formatChatTime } from '../../utils/chatTime';
 import styles from './SpreadsheetGrid.module.css';
 
@@ -75,9 +82,27 @@ function ringPosition(index: number): { x: number; y: number } {
   return { x: 0, y: normalized - edge * 3 };
 }
 
-function currentRent(cell: MonopolyBoardCell): number {
-  const level = Math.max(1, cell.level ?? 1);
-  return cell.rents?.[level - 1] ?? cell.rent;
+function currentRent(cell: MonopolyBoardCell, board: MonopolyBoardCell[]): number {
+  return resolveCellRent(cell, { board, ownerId: cell.ownerId });
+}
+
+function nextUpgradeCost(cell: MonopolyBoardCell): number | null {
+  return resolveCellUpgradeCost(cell);
+}
+
+function nextLevelRent(cell: MonopolyBoardCell): number | null {
+  const template = getCellTemplate(cell);
+  if (!template || template.kind !== 'city') return null;
+  return getCityNextLevelRent(template, cell.level ?? 1);
+}
+
+function cellSummary(cell: MonopolyBoardCell, board: MonopolyBoardCell[], owner?: MonopolyPlayerState): string {
+  if (owner) return `Lv.${cell.level ?? 1} ${owner.nickname} 租金${currentRent(cell, board)}`;
+  if (cell.type === 'city') return `价格 ${cell.displayPrice ?? cell.price}`;
+  if (cell.type === 'rail' || cell.type === 'utility') return `价格 ${cell.displayPrice ?? cell.price} 租${cell.rent}`;
+  if (cell.type === 'tax') return `扣 ${cell.rent}`;
+  if (cell.type === 'start') return `奖励 ${cell.displayPrice ?? cell.price ?? 0}`;
+  return cellTypeLabel(cell.type);
 }
 
 function cornerSlotIndex(x: number, y: number): number | null {
@@ -89,20 +114,6 @@ function cornerSlotIndex(x: number, y: number): number | null {
   return null;
 }
 
-function nextUpgradeCost(cell: MonopolyBoardCell): number | null {
-  const level = Math.max(1, cell.level ?? 1);
-  return cell.upgradeCosts?.[level - 1] ?? null;
-}
-
-function cellSummary(cell: MonopolyBoardCell, owner?: MonopolyPlayerState): string {
-  if (owner) return `Lv.${cell.level ?? 1} ${owner.nickname} 费${currentRent(cell)}`;
-  if (cell.type === 'city') return `价格 ${cell.displayPrice ?? cell.price}`;
-  if (cell.type === 'rail' || cell.type === 'utility') return `价格 ${cell.displayPrice ?? cell.price} 租${cell.rent}`;
-  if (cell.type === 'tax') return `扣 ${cell.rent}`;
-  if (cell.type === 'start') return `奖励 ${cell.displayPrice ?? cell.price ?? 0}`;
-  return cellTypeLabel(cell.type);
-}
-
 function shortName(name: string) {
   return Array.from(name).slice(0, 5).join('');
 }
@@ -111,6 +122,14 @@ function playerTags(players: MonopolyPlayerState[], selfId: string | null): stri
   return players
     .filter((player) => player.playerId !== selfId)
     .map((player) => shortName(player.nickname));
+}
+
+function centerCellValue(cx: number, cy: number): string {
+  if (cy === 0) {
+    if (cx === 0) return '区域销售作战图';
+    return DECOY_HEADERS[cx - 1] ?? '';
+  }
+  return DECOY_ROWS[cy - 1]?.[cx] ?? '';
 }
 
 function boardAccent(cell: MonopolyBoardCell): string | undefined {
@@ -180,11 +199,13 @@ export function MonopolyGrid({
   const current = state.players[state.turnIndex];
   const isMyTurn = current?.playerId === playerId;
   const currentCell = current ? state.board[current.position] : null;
-  const canBuy = isMyTurn && state.pendingAction === 'buy_or_skip' && currentCell?.type === 'city' && !currentCell.ownerId;
+  const canBuy = isMyTurn && state.pendingAction === 'buy_or_skip' && currentCell && !currentCell.ownerId
+    && (currentCell.type === 'city' || currentCell.type === 'rail' || currentCell.type === 'utility');
   const canUpgrade = isMyTurn && state.pendingAction === 'upgrade_or_skip' && currentCell?.type === 'city' && currentCell.ownerId === playerId;
   const canRoll = isMyTurn && !state.pendingAction && room.status === 'playing';
   const diceText = state.lastDice ? `${state.lastDice[0]}+${state.lastDice[1]}` : '-';
   const upgradeCost = currentCell ? nextUpgradeCost(currentCell) : null;
+  const upgradedRent = currentCell ? nextLevelRent(currentCell) : null;
 
   const handleChatSubmit = () => {
     const trimmed = chatInput.trim();
@@ -202,6 +223,11 @@ export function MonopolyGrid({
         <span>回合 {state.round}</span>
         <span>当前：{current?.nickname ?? '-'}</span>
         <span>骰子：{diceText}</span>
+        {state.lastDrawnCard ? (
+          <span className={styles.monopolyDrawnCard}>
+            {state.lastDrawnCard.pool === 'chance' ? '机会' : '命运'}：{state.lastDrawnCard.text}
+          </span>
+        ) : null}
         <button type="button" onClick={onRoll} disabled={!canRoll}>掷骰</button>
         <button type="button" onClick={() => setConfirmAction('buy')} disabled={!canBuy}>购买</button>
         <button type="button" onClick={() => setConfirmAction('upgrade')} disabled={!canUpgrade}>升级</button>
@@ -237,6 +263,9 @@ export function MonopolyGrid({
                 </button>
               );
             }
+            const cx = x - 1;
+            const cy = y - 1;
+            const value = centerCellValue(cx, cy);
             return (
               <button
                 key={ref}
@@ -245,13 +274,9 @@ export function MonopolyGrid({
                 style={{ gridColumn: x + 2, gridRow: y + 2 }}
                 onClick={() => onSelectCell(ref)}
                 aria-label={ref}
+                title={value || ref}
               >
-                {x === 5 && y === 5 ? (
-                  <div className={styles.monopolyCenterContent}>
-                    <div className={styles.monopolyCenterTitle}>区域销售作战图</div>
-                    <div className={styles.monopolyCenterHint}>年度目标 910.9 万，优先推进华东、华南和重点渠道回款。</div>
-                  </div>
-                ) : null}
+                {value}
               </button>
             );
           })}
@@ -269,13 +294,13 @@ export function MonopolyGrid({
                 className={`${styles.cell} ${styles.monopolyCell} ${ref === selectedCell ? styles.selected : ''} ${hasMeHere ? styles.monopolyMyCell : ''} ${otherTags.length > 0 ? styles.turnRowCell : ''}`}
                 style={{ gridColumn: pos.x + 2, gridRow: pos.y + 2 }}
                 onClick={() => onSelectCell(ref)}
-                title={`${cell.name} | ${cellTypeLabel(cell.type)} | ${cellSummary(cell, owner)}`}
+                title={`${cell.name} | ${cellTypeLabel(cell.type)} | ${cellSummary(cell, state.board, owner)}`}
               >
                 {showCellColors && boardAccent(cell) ? (
                   <span className={styles.monopolyCellBand} style={{ backgroundColor: boardAccent(cell) }} aria-hidden="true" />
                 ) : null}
                 <span className={styles.monopolyCellName}>{cell.name}</span>
-                <span className={styles.monopolyCellMeta}>{cellSummary(cell, owner)}</span>
+                <span className={styles.monopolyCellMeta}>{cellSummary(cell, state.board, owner)}</span>
                 {otherTags.length > 0 ? (
                   <span className={styles.monopolyTokenGroup}>
                   {otherTags.map((tag, tagIndex) => (
@@ -367,7 +392,7 @@ export function MonopolyGrid({
               <div>你的余额：{current.cash}</div>
               <div>需要花费：{confirmCost ?? '-'}</div>
               {confirmAction === 'upgrade' ? (
-                <div>升级后过路费：{currentCell.rents?.[currentCell.level ?? 1] ?? currentCell.rent}</div>
+                <div>升级后过路费：{upgradedRent ?? '-'}</div>
               ) : null}
             </div>
             <div className={styles.monopolyDialogActions}>

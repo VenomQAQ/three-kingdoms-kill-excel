@@ -5,16 +5,22 @@ import {
   SangokushiEngine,
 } from '@tk/engine';
 import { v4 as uuidv4 } from 'uuid';
+import type { RoomPlayer } from '@tk/shared';
 import {
   DEFAULT_VERSION_ID,
   findVersion,
   GameType,
-  MonopolyBoardCell,
+  MONOPOLY_BOARD,
+  MONOPOLY_CHANCE_CARDS,
+  MONOPOLY_FATE_CARDS,
+  MONOPOLY_RULES,
   MonopolyGameState,
+  canUpgradeCell,
+  resolveCellUpgradeCost,
+  syncCellRent,
   Room,
   RoomListItem,
   RoomLeaveReason,
-  RoomPlayer,
   SANDBOX_ROOM_CODE,
   SandboxGameState,
 } from '@tk/shared';
@@ -22,6 +28,11 @@ import { env } from '../../config/env';
 import { recordGameResult } from '../auth/game-stats';
 import { User } from '../auth/entities/user.entity';
 import { GameService } from '../game/game.service';
+import {
+  applyMonopolyCard,
+  drawRandomMonopolyCard,
+  resolveMonopolyLandingCell,
+} from './monopoly/card-resolver';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -32,52 +43,9 @@ const LORD_GENERAL_OPTION_COUNT = 5;
 const GENERAL_OPTION_COUNT = 3;
 const MANUAL_LEAVE_PENALTY = 5;
 const DISCONNECT_GRACE_MS = 5 * 60 * 1000;
-const MONOPOLY_MAX_PLAYERS = 4;
-const MONOPOLY_START_CASH = 15000;
-const MONOPOLY_PASS_START_BONUS = 200;
-
-const MONOPOLY_WORLD_BOARD: MonopolyBoardCell[] = [
-  { index: 0, name: '起点', country: '世界', type: 'start', price: 2000, displayPrice: 2000, rent: 0 },
-  { index: 1, name: '苏州', country: '华东', type: 'city', price: 3200, displayPrice: 3200, rent: 420, rents: [420, 760, 1160], upgradeCosts: [1800, 2400], colorGroup: 'green', level: 1 },
-  { index: 2, name: '财产税', country: '世界', type: 'tax', price: 0, displayPrice: 1000, rent: 1000 },
-  { index: 3, name: '抚顺', country: '东北', type: 'city', price: 3500, displayPrice: 3500, rent: 460, rents: [460, 820, 1240], upgradeCosts: [1900, 2500], colorGroup: 'green', level: 1 },
-  { index: 4, name: '命运', country: '世界', type: 'fate', price: 0, rent: 0 },
-  { index: 5, name: '广州火车站', country: '交通', type: 'rail', price: 2000, displayPrice: 2000, rent: 320 },
-  { index: 6, name: '陕西', country: '西北', type: 'city', price: 2600, displayPrice: 2600, rent: 340, rents: [340, 620, 940], upgradeCosts: [1500, 2000], colorGroup: 'gray', level: 1 },
-  { index: 7, name: '机会', country: '世界', type: 'chance', price: 0, rent: 0 },
-  { index: 8, name: '甘肃', country: '西北', type: 'city', price: 2600, displayPrice: 2600, rent: 340, rents: [340, 620, 940], upgradeCosts: [1500, 2000], colorGroup: 'gray', level: 1 },
-  { index: 9, name: '澳门', country: '港澳', type: 'city', price: 2600, displayPrice: 2600, rent: 360, rents: [360, 640, 980], upgradeCosts: [1500, 2100], colorGroup: 'gray', level: 1 },
-  { index: 10, name: '进牢', country: '世界', type: 'jail', price: 0, rent: 0 },
-  { index: 11, name: '新疆', country: '西北', type: 'city', price: 4000, displayPrice: 4000, rent: 520, rents: [520, 920, 1400], upgradeCosts: [2200, 3000], colorGroup: 'blue', level: 1 },
-  { index: 12, name: '自来水厂', country: '公用', type: 'utility', price: 500, displayPrice: 500, rent: 120 },
-  { index: 13, name: '川西', country: '西南', type: 'city', price: 3200, displayPrice: 3200, rent: 420, rents: [420, 760, 1160], upgradeCosts: [1800, 2400], colorGroup: 'blue', level: 1 },
-  { index: 14, name: '北湖', country: '西北', type: 'city', price: 3200, displayPrice: 3200, rent: 420, rents: [420, 760, 1160], upgradeCosts: [1800, 2400], colorGroup: 'blue', level: 1 },
-  { index: 15, name: '沈阳火车站', country: '交通', type: 'rail', price: 2000, displayPrice: 2000, rent: 320 },
-  { index: 16, name: '常州', country: '华东', type: 'city', price: 2800, displayPrice: 2800, rent: 360, rents: [360, 660, 1000], upgradeCosts: [1600, 2200], colorGroup: 'red', level: 1 },
-  { index: 17, name: '机会', country: '世界', type: 'chance', price: 0, rent: 0 },
-  { index: 18, name: '苏南', country: '华东', type: 'city', price: 2800, displayPrice: 2800, rent: 360, rents: [360, 660, 1000], upgradeCosts: [1600, 2200], colorGroup: 'red', level: 1 },
-  { index: 19, name: '回牢', country: '世界', type: 'bonus', price: 0, rent: 0 },
-  { index: 20, name: '济南', country: '华东', type: 'city', price: 2600, displayPrice: 2600, rent: 340, rents: [340, 620, 940], upgradeCosts: [1500, 2000], colorGroup: 'yellow', level: 1 },
-  { index: 21, name: '桂林', country: '华南', type: 'city', price: 2600, displayPrice: 2600, rent: 340, rents: [340, 620, 940], upgradeCosts: [1500, 2000], colorGroup: 'yellow', level: 1 },
-  { index: 22, name: '机会', country: '世界', type: 'chance', price: 0, rent: 0 },
-  { index: 23, name: '哈尔滨', country: '东北', type: 'city', price: 2000, displayPrice: 2000, rent: 280, rents: [280, 520, 820], upgradeCosts: [1200, 1800], colorGroup: 'yellow', level: 1 },
-  { index: 24, name: '吉林', country: '东北', type: 'city', price: 2000, displayPrice: 2000, rent: 280, rents: [280, 520, 820], upgradeCosts: [1200, 1800], colorGroup: 'yellow', level: 1 },
-  { index: 25, name: '罚款停车站', country: '交通', type: 'rail', price: 2000, displayPrice: 2000, rent: 260 },
-  { index: 26, name: '长春', country: '东北', type: 'city', price: 1000, displayPrice: 1000, rent: 180, rents: [180, 360, 620], upgradeCosts: [900, 1400], colorGroup: 'purple', level: 1 },
-  { index: 27, name: '命运', country: '世界', type: 'fate', price: 0, rent: 0 },
-  { index: 28, name: '庆阳', country: '西北', type: 'city', price: 2600, displayPrice: 2600, rent: 340, rents: [340, 620, 940], upgradeCosts: [1500, 2000], colorGroup: 'purple', level: 1 },
-  { index: 29, name: '深圳', country: '华南', type: 'city', price: 2600, displayPrice: 2600, rent: 340, rents: [340, 620, 940], upgradeCosts: [1500, 2000], colorGroup: 'purple', level: 1 },
-  { index: 30, name: '机场', country: '世界', type: 'bonus', price: 0, rent: 0 },
-  { index: 31, name: '成都', country: '西南', type: 'city', price: 2600, displayPrice: 2600, rent: 360, rents: [360, 640, 980], upgradeCosts: [1500, 2100], colorGroup: 'red', level: 1 },
-  { index: 32, name: '所得税', country: '世界', type: 'tax', price: 0, displayPrice: 2000, rent: 2000 },
-  { index: 33, name: '郑州火车站', country: '交通', type: 'rail', price: 2000, displayPrice: 2000, rent: 320 },
-  { index: 34, name: '北京', country: '华北', type: 'city', price: 3000, displayPrice: 3000, rent: 400, rents: [400, 720, 1120], upgradeCosts: [1700, 2300], colorGroup: 'pink', level: 1 },
-  { index: 35, name: '机会', country: '世界', type: 'chance', price: 0, rent: 0 },
-  { index: 36, name: '上海', country: '华东', type: 'city', price: 3000, displayPrice: 3000, rent: 400, rents: [400, 720, 1120], upgradeCosts: [1700, 2300], colorGroup: 'pink', level: 1 },
-  { index: 37, name: '命运', country: '世界', type: 'fate', price: 0, rent: 0 },
-  { index: 38, name: '苏州火车站', country: '交通', type: 'rail', price: 2000, displayPrice: 2000, rent: 320 },
-  { index: 39, name: '入牢', country: '世界', type: 'jail', price: 0, rent: 0 },
-];
+const MONOPOLY_MAX_PLAYERS = MONOPOLY_RULES.maxPlayers;
+const MONOPOLY_START_CASH = MONOPOLY_RULES.startCash;
+const MONOPOLY_PASS_START_BONUS = MONOPOLY_RULES.passStartBonus;
 
 function gameName(gameType?: GameType): string {
   return gameType === 'monopoly' ? '中国版大富翁' : '三国杀';
@@ -1375,14 +1343,14 @@ export class RoomService implements OnModuleInit {
     const nextPosition = (current.position + steps) % state.board.length;
     if (current.position + steps >= state.board.length) {
       current.cash += MONOPOLY_PASS_START_BONUS;
-      state.log.unshift(`${current.nickname} 经过起点，获得 ${MONOPOLY_PASS_START_BONUS} 金币`);
+      state.log.push(`${current.nickname} 经过起点，获得 ${MONOPOLY_PASS_START_BONUS} 金币`);
     }
     current.position = nextPosition;
     state.lastDice = dice;
     const cell = state.board[nextPosition]!;
-    state.log.unshift(`${current.nickname} 掷出 ${dice[0]}+${dice[1]}，到达 ${cell.name}`);
+    state.log.push(`${current.nickname} 掷出 ${dice[0]}+${dice[1]}，到达 ${cell.name}`);
     this.resolveMonopolyCell(state, current.playerId, cell.index);
-    state.log = state.log.slice(0, 12);
+    state.log = state.log.slice(-12);
     return room;
   }
 
@@ -1392,14 +1360,15 @@ export class RoomService implements OnModuleInit {
     const current = state.players[state.turnIndex];
     if (!current || current.playerId !== playerId) throw new RoomError('NOT_YOUR_TURN', '当前不是你的回合');
     const cell = state.board[current.position];
-    if (!cell || state.pendingAction !== 'buy_or_skip' || cell.type !== 'city' || cell.ownerId) {
+    if (!cell || state.pendingAction !== 'buy_or_skip' || !this.isMonopolyPurchasable(cell) || cell.ownerId) {
       throw new RoomError('CANNOT_BUY', '当前位置不可购买');
     }
     if (current.cash < cell.price) throw new RoomError('NO_MONEY', '金币不足');
     current.cash -= cell.price;
     current.properties.push(cell.index);
     cell.ownerId = playerId;
-    state.log.unshift(`${current.nickname} 购买 ${cell.name}，花费 ${cell.price} 金币`);
+    syncCellRent(cell, state.board);
+    state.log.push(`${current.nickname} 购买 ${cell.name}，花费 ${cell.price} 金币`);
     state.pendingAction = null;
     this.advanceMonopolyTurn(state);
     return room;
@@ -1411,16 +1380,16 @@ export class RoomService implements OnModuleInit {
     const current = state.players[state.turnIndex];
     if (!current || current.playerId !== playerId) throw new RoomError('NOT_YOUR_TURN', '当前不是你的回合');
     const cell = state.board[current.position];
-    if (!cell || state.pendingAction !== 'upgrade_or_skip' || cell.type !== 'city' || cell.ownerId !== playerId) {
+    if (!cell || state.pendingAction !== 'upgrade_or_skip' || cell.type !== 'city' || cell.ownerId !== playerId || !canUpgradeCell(cell)) {
       throw new RoomError('CANNOT_UPGRADE', '当前位置不可升级');
     }
-    const cost = this.nextMonopolyUpgradeCost(cell);
+    const cost = resolveCellUpgradeCost(cell);
     if (cost == null) throw new RoomError('MAX_LEVEL', '地块已满级');
     if (current.cash < cost) throw new RoomError('NO_MONEY', '金币不足');
     current.cash -= cost;
     cell.level = (cell.level ?? 1) + 1;
-    cell.rent = this.currentMonopolyRent(cell);
-    state.log.unshift(`${current.nickname} 升级 ${cell.name} 到 Lv.${cell.level}，花费 ${cost} 金币`);
+    syncCellRent(cell, state.board);
+    state.log.push(`${current.nickname} 升级 ${cell.name} 到 Lv.${cell.level}，花费 ${cost} 金币`);
     state.pendingAction = null;
     this.advanceMonopolyTurn(state);
     return room;
@@ -1433,7 +1402,7 @@ export class RoomService implements OnModuleInit {
     if (!current || current.playerId !== playerId) throw new RoomError('NOT_YOUR_TURN', '当前不是你的回合');
     const cell = state.board[current.position];
     if (state.pendingAction === 'buy_or_skip' && cell) {
-      state.log.unshift(`${current.nickname} 放弃购买 ${cell.name}`);
+      state.log.push(`${current.nickname} 放弃购买 ${cell.name}`);
     }
     state.pendingAction = null;
     this.advanceMonopolyTurn(state);
@@ -1445,7 +1414,7 @@ export class RoomService implements OnModuleInit {
       phase: 'playing',
       turnIndex: 0,
       round: 1,
-      board: MONOPOLY_WORLD_BOARD.map((cell) => ({ ...cell })),
+      board: MONOPOLY_BOARD.map((cell) => ({ ...cell })),
       players: room.players.map((player) => ({
         playerId: player.id,
         nickname: player.nickname,
@@ -1470,55 +1439,35 @@ export class RoomService implements OnModuleInit {
   }
 
   private resolveMonopolyCell(state: MonopolyGameState, playerId: string, cellIndex: number): void {
-    const player = state.players.find((item) => item.playerId === playerId);
     const cell = state.board[cellIndex];
-    if (!player || !cell) return;
-    if (cell.type === 'city' && !cell.ownerId) {
-      state.pendingAction = 'buy_or_skip';
-      state.log.unshift(`${cell.name} 尚未归属，可用 ${cell.price} 金币购买`);
+    if (!cell) return;
+
+    if (cell.type === 'chance' || cell.type === 'fate') {
+      const pool = cell.type;
+      const cards = pool === 'chance' ? MONOPOLY_CHANCE_CARDS : MONOPOLY_FATE_CARDS;
+      const card = drawRandomMonopolyCard(pool, cards);
+      const { pendingAction } = applyMonopolyCard(state, playerId, card, pool);
+      if (!pendingAction) {
+        this.advanceMonopolyTurn(state);
+      }
       return;
     }
-    if (cell.type === 'city' && cell.ownerId === playerId) {
-      const cost = this.nextMonopolyUpgradeCost(cell);
-      if (cost != null) {
-        state.pendingAction = 'upgrade_or_skip';
-        state.log.unshift(`${cell.name} 可升级，费用 ${cost} 金币`);
-        return;
-      }
-      state.log.unshift(`${cell.name} 已满级，跳过升级`);
+
+    const { pendingAction } = resolveMonopolyLandingCell(state, playerId, cellIndex);
+    if (!pendingAction) {
+      this.advanceMonopolyTurn(state);
     }
-    if (cell.type === 'city' && cell.ownerId && cell.ownerId !== playerId) {
-      const owner = state.players.find((item) => item.playerId === cell.ownerId);
-      const paid = Math.min(player.cash, this.currentMonopolyRent(cell));
-      player.cash -= paid;
-      if (owner) owner.cash += paid;
-      state.log.unshift(`${player.nickname} 向 ${owner?.nickname ?? '地主'} 支付 ${paid} 金币过路费`);
-    } else if (cell.type === 'tax') {
-      const paid = Math.min(player.cash, cell.rent);
-      player.cash -= paid;
-      state.log.unshift(`${player.nickname} 缴纳税费 ${paid} 金币`);
-    } else if (cell.type === 'chance') {
-      player.cash += 60;
-      state.log.unshift(`${player.nickname} 获得机会奖励 60 金币`);
-    }
-    this.advanceMonopolyTurn(state);
   }
 
-  private currentMonopolyRent(cell: MonopolyBoardCell): number {
-    const level = Math.max(1, cell.level ?? 1);
-    return cell.rents?.[level - 1] ?? cell.rent;
-  }
-
-  private nextMonopolyUpgradeCost(cell: MonopolyBoardCell): number | null {
-    const level = Math.max(1, cell.level ?? 1);
-    return cell.upgradeCosts?.[level - 1] ?? null;
+  private isMonopolyPurchasable(cell: { type: string; ownerId?: string }): boolean {
+    return (cell.type === 'city' || cell.type === 'rail' || cell.type === 'utility') && !cell.ownerId;
   }
 
   private advanceMonopolyTurn(state: MonopolyGameState): void {
     state.turnIndex = (state.turnIndex + 1) % state.players.length;
     if (state.turnIndex === 0) state.round += 1;
     state.pendingAction = null;
-    state.log = state.log.slice(0, 12);
+    state.log = state.log.slice(-12);
   }
 
   listPublicRooms(versionFilter?: string, viewerPlayerId?: string, viewerUserId?: string, gameTypeFilter?: GameType | 'all'): RoomListItem[] {

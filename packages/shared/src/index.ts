@@ -151,10 +151,11 @@ export interface MonopolyBoardCell {
   name: string;
   country: string;
   type: MonopolyCellType;
+  /** 引用 packages/shared/src/monopoly/property-templates.ts 中的经济模板 */
+  propertyTemplateId?: string;
   price: number;
+  /** 当前展示/结算租金（由 pricing 模块按模板与等级计算） */
   rent: number;
-  rents?: number[];
-  upgradeCosts?: number[];
   level?: number;
   colorGroup?: string;
   displayPrice?: number;
@@ -170,6 +171,12 @@ export interface MonopolyPlayerState {
   bankrupt?: boolean;
 }
 
+export interface MonopolyDrawnCard {
+  pool: 'chance' | 'fate';
+  id: string;
+  text: string;
+}
+
 export interface MonopolyGameState {
   phase: 'lobby' | 'playing' | 'finished';
   turnIndex: number;
@@ -178,6 +185,7 @@ export interface MonopolyGameState {
   players: MonopolyPlayerState[];
   log: string[];
   lastDice?: [number, number];
+  lastDrawnCard?: MonopolyDrawnCard | null;
   pendingAction?: 'buy_or_skip' | 'upgrade_or_skip' | null;
 }
 
@@ -469,3 +477,16 @@ export const MAX_ROOM_PLAYERS = 10;
 export const ROOM_CODE_LENGTH = 8;
 
 export * from './versions';
+export * from './monopoly';
+export {
+  resolveCellRent,
+  resolveCellUpgradeCost,
+  getCityNextLevelRent,
+  getCellTemplate,
+  canUpgradeCell,
+  syncCellRent,
+  countPropertyBuildings,
+} from './monopoly/pricing';
+export { getMonopolyPropertyTemplate, MONOPOLY_PROPERTY_TEMPLATES } from './monopoly/property-templates';
+export { buildMonopolyBoard } from './monopoly/build-board';
+export { MONOPOLY_BOARD_SLOTS } from './monopoly/board-slots';

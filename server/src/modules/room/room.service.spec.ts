@@ -55,18 +55,43 @@ describe('RoomService formal general selection', () => {
     service.startGame('host');
 
     const state = room.monopoly!;
-    state.players[0]!.position = 15;
+    state.players[0]!.position = 39;
     vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(0);
 
     try {
       service.monopolyRoll('host');
-      expect(state.players[0]).toEqual(expect.objectContaining({ position: 1, cash: 15200 }));
+      expect(state.players[0]).toEqual(expect.objectContaining({ position: 1, cash: 17000 }));
       expect(state.pendingAction).toBe('buy_or_skip');
 
       service.monopolyBuy('host');
       expect(state.board[1]?.ownerId).toBe('host');
-      expect(state.players[0]?.cash).toBe(15080);
+      expect(state.players[0]?.cash).toBe(13800);
       expect(state.turnIndex).toBe(1);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('draws and applies a configured chance card when landing on a chance tile', () => {
+    const service = createService();
+    const room = service.createRoom('host', '房主', undefined, undefined, 'monopoly');
+    service.joinRoom(room.code, 'p2', '玩家二');
+    service.setReady('host', true);
+    service.setReady('p2', true);
+    service.startGame('host');
+
+    const state = room.monopoly!;
+    state.players[0]!.position = 5;
+    vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0);
+
+    try {
+      service.monopolyRoll('host');
+      expect(state.players[0]?.position).toBe(0);
+      expect(state.lastDrawnCard).toEqual(expect.objectContaining({ pool: 'chance', id: 'chance-01' }));
+      expect(state.players[0]?.cash).toBe(17000);
     } finally {
       vi.restoreAllMocks();
     }

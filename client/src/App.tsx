@@ -950,7 +950,12 @@ function App() {
 
   return (
     <div className={styles.app}>
-      <TitleBar fileName={fileName} accountLabel={accountLabel} />
+      <TitleBar
+        fileName={fileName}
+        accountLabel={accountLabel}
+        isAuthed={isAuthed}
+        onLogout={() => void logout()}
+      />
       <Ribbon
         actions={ribbonActions}
         onAction={handleRibbonAction}

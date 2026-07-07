@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@tk/engine': path.resolve(__dirname, '../packages/engine/src/index.ts'),
+      '@tk/shared': path.resolve(__dirname, '../packages/shared/src/index.ts'),
     },
   },
   server: {

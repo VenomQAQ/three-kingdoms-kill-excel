@@ -3,9 +3,11 @@ import styles from './TitleBar.module.css';
 interface TitleBarProps {
   fileName: string;
   accountLabel: string;
+  isAuthed?: boolean;
+  onLogout?: () => void;
 }
 
-export function TitleBar({ fileName, accountLabel }: TitleBarProps) {
+export function TitleBar({ fileName, accountLabel, isAuthed, onLogout }: TitleBarProps) {
   return (
     <div className={styles.bar}>
       <div className={styles.left}>
@@ -25,6 +27,11 @@ export function TitleBar({ fileName, accountLabel }: TitleBarProps) {
         <input type="text" placeholder="搜索功能、模板、帮助…" readOnly />
       </div>
       <span className={styles.account}>{accountLabel}</span>
+      {isAuthed && (
+        <button type="button" className={styles.logout} onClick={onLogout}>
+          退出登录
+        </button>
+      )}
       <button type="button" className={styles.share}>
         共享
       </button>

@@ -50,7 +50,7 @@ const monopolyRoom: Room = {
       { playerId: 'p1', nickname: '房主', position: 34, cash: 15000, properties: [] },
       { playerId: 'p2', nickname: '玩家二', position: 38, cash: 15000, properties: [38] },
     ],
-    log: ['中国版大富翁开始，游玩免费。'],
+    log: ['中国版大富翁开始。'],
   },
 };
 

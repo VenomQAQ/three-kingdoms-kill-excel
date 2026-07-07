@@ -58,10 +58,18 @@ describe('REQ-2026-005 UI acceptance', () => {
   });
 
   it('shows account level, nickname and coins in the title bar', () => {
-    const html = htmlOf(<TitleBar fileName="连连看挑战.xlsx" accountLabel="Lv.3 阿斗 · 88金币" />);
+    const html = htmlOf(
+      <TitleBar
+        fileName="连连看挑战.xlsx"
+        accountLabel="Lv.3 阿斗 · 88金币"
+        isAuthed
+        onLogout={vi.fn()}
+      />,
+    );
 
     expect(html).toContain('连连看挑战.xlsx');
     expect(html).toContain('Lv.3 阿斗 · 88金币');
+    expect(html).toContain('退出登录');
   });
 
   it('formats chat time by same-day and cross-day rules', () => {
