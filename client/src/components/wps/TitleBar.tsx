@@ -28,13 +28,13 @@ export function TitleBar({ fileName, accountLabel, isAuthed, onLogout }: TitleBa
       </div>
       <span className={styles.account}>{accountLabel}</span>
       {isAuthed && (
-        <button type="button" className={styles.logout} onClick={onLogout}>
+        <button type="button" className={styles.share} onClick={onLogout}>
           退出登录
         </button>
       )}
-      <button type="button" className={styles.share}>
+      {/* <button type="button" className={styles.share}>
         共享
-      </button>
+      </button> */}
     </div>
   );
 }

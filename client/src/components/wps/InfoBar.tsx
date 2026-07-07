@@ -55,13 +55,13 @@ export function InfoBar({
           >
             {accountLabel ?? nickname}
           </button>
-          <button
+          {/* <button
             type="button"
             className={styles.authBtn}
             onClick={() => setMenuOpen((v) => !v)}
           >
             账户
-          </button>
+          </button> */}
           {menuOpen && (
             <div className={styles.dropdown} role="menu">
               <button
