@@ -2,6 +2,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Room, RoomListItem } from '@tk/shared';
 import { DEFAULT_BOSS_KEY } from '../../utils/bossKey';
+import { DEFAULT_BOSS_KEY_ACTION } from '../../utils/bossKeyConfig';
 import { LIANLIANKAN_CONFIG } from '../../../../server/src/modules/lianliankan/lianliankan.config';
 import { InfoBar } from './InfoBar';
 import { MonopolyGrid } from './MonopolyGrid';
@@ -102,6 +103,8 @@ describe('REQ-2026-006 UI acceptance', () => {
         onDefaultGameTypeChange={vi.fn()}
         bossKeyShortcut={DEFAULT_BOSS_KEY}
         onBossKeyShortcutChange={vi.fn()}
+        bossKeyAction={DEFAULT_BOSS_KEY_ACTION}
+        onBossKeyActionChange={vi.fn()}
         bgColorToken="#ffffff"
         onBgColorTokenChange={vi.fn()}
         onChangeNickname={vi.fn()}
@@ -113,9 +116,10 @@ describe('REQ-2026-006 UI acceptance', () => {
     expect(html).toContain('修改昵称');
     expect(html).toContain('修改密码');
     expect(html).toContain('浏览器标签页标题');
+    expect(html).toContain('保存标题');
     expect(html).toContain('老板键');
-    expect(html).toContain('背景色');
     expect(html).toContain('大富翁');
+    expect(html).not.toContain('背景色');
     expect(html).not.toContain('隐藏地块颜色');
   });
 

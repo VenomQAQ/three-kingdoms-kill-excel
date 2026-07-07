@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Room } from '@tk/shared';
 import { DEFAULT_BOSS_KEY, formatBossKeyShortcut } from '../../utils/bossKey';
+import { DEFAULT_BOSS_KEY_ACTION } from '../../utils/bossKeyConfig';
 import { MonopolyGrid } from './MonopolyGrid';
 import { SettingsDialog } from './SettingsDialog';
 
@@ -109,6 +110,8 @@ describe('REQ-2026-008 UI acceptance', () => {
         onDefaultGameTypeChange={vi.fn()}
         bossKeyShortcut={DEFAULT_BOSS_KEY}
         onBossKeyShortcutChange={vi.fn()}
+        bossKeyAction={DEFAULT_BOSS_KEY_ACTION}
+        onBossKeyActionChange={vi.fn()}
         bgColorToken="#ffffff"
         onBgColorTokenChange={vi.fn()}
         onClose={vi.fn()}
@@ -116,6 +119,9 @@ describe('REQ-2026-008 UI acceptance', () => {
     );
 
     expect(html).toContain('老板键');
+    expect(html).toContain('区域销售');
+    expect(html).toContain('自定义图片');
+    expect(html).toContain('上传规格');
     expect(html).toContain(formatBossKeyShortcut(DEFAULT_BOSS_KEY));
     expect(html).not.toContain('隐藏地块颜色');
     expect(html).not.toContain('常规模式');

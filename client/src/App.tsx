@@ -28,6 +28,7 @@ import { LoginDialog } from './components/wps/LoginDialog';
 import { ChangePasswordDialog } from './components/wps/ChangePasswordDialog';
 import { PlayerProfileModal } from './components/wps/PlayerProfileModal';
 import { SettingsDialog } from './components/wps/SettingsDialog';
+import { BossKeyOverlay } from './components/wps/BossKeyOverlay';
 import { Toast } from './components/wps/Toast';
 import {
   CURRENT_ROOM_SHEET_ID,
@@ -48,6 +49,12 @@ import {
   saveBossKeyShortcut,
   type BossKeyShortcut,
 } from './utils/bossKey';
+import {
+  loadBossKeyAction,
+  saveBossKeyAction,
+  type BossKeyAction,
+} from './utils/bossKeyConfig';
+import { loadBossKeyImageObjectUrl } from './utils/bossKeyImageStore';
 import { confirmLogout } from './utils/logout';
 import gridStyles from './components/wps/SpreadsheetGrid.module.css';
 import styles from './App.module.css';
@@ -90,7 +97,9 @@ function App() {
   });
   const [activeSheet, setActiveSheet] = useState<SheetId>(ROOM_LIST_SHEET_ID);
   const [bossKeyShortcut, setBossKeyShortcut] = useState<BossKeyShortcut>(() => loadBossKeyShortcut());
+  const [bossKeyAction, setBossKeyAction] = useState<BossKeyAction>(() => loadBossKeyAction());
   const [bossMode, setBossMode] = useState(false);
+  const [bossImageUrl, setBossImageUrl] = useState<string | null>(null);
   const [selectedCell, setSelectedCell] = useState('A1');
   const [selectedHand, setSelectedHand] = useState<HandCardPick | null>(null);
   const [formulaInput, setFormulaInput] = useState('');
@@ -291,17 +300,48 @@ function App() {
   }, [bossKeyShortcut]);
 
   useEffect(() => {
+    saveBossKeyAction(bossKeyAction);
+  }, [bossKeyAction]);
+
+  const closeBossImage = useCallback(() => {
+    setBossImageUrl(null);
+  }, []);
+
+  useEffect(() => {
+    const url = bossImageUrl;
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [bossImageUrl]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!matchesBossKeyShortcut(e, bossKeyShortcut)) return;
       e.preventDefault();
-      setBossMode(true);
-      document.title = '第 1 季度区域销售汇总.xlsx';
-      window.localStorage.setItem('tk_browser_title', '第 1 季度区域销售汇总.xlsx');
-      setActiveSheet(SALES_SHEET_ID);
+
+      if (bossImageUrl) {
+        closeBossImage();
+        return;
+      }
+
+      void (async () => {
+        if (bossKeyAction === 'custom-image') {
+          const url = await loadBossKeyImageObjectUrl();
+          if (url) {
+            setBossImageUrl(url);
+            return;
+          }
+        }
+
+        setBossMode(true);
+        document.title = '第 1 季度区域销售汇总.xlsx';
+        window.localStorage.setItem('tk_browser_title', '第 1 季度区域销售汇总.xlsx');
+        setActiveSheet(SALES_SHEET_ID);
+      })();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [bossKeyShortcut]);
+  }, [bossKeyShortcut, bossKeyAction, bossImageUrl, closeBossImage]);
 
   useEffect(() => {
     if (room && !bossMode) {
@@ -1219,6 +1259,8 @@ function App() {
         onDefaultGameTypeChange={handleDefaultGameTypeChange}
         bossKeyShortcut={bossKeyShortcut}
         onBossKeyShortcutChange={setBossKeyShortcut}
+        bossKeyAction={bossKeyAction}
+        onBossKeyActionChange={setBossKeyAction}
         bgColorToken={bgColorToken}
         onBgColorTokenChange={setBgColorToken}
         onChangeNickname={handleChangeNickname}
@@ -1228,6 +1270,7 @@ function App() {
         }}
         onClose={() => setShowSettingsDialog(false)}
       />
+      {bossImageUrl && <BossKeyOverlay imageUrl={bossImageUrl} />}
       {skillModalPlayer && (
         <CharacterSkillModal
           player={skillModalPlayer}
