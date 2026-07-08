@@ -90,6 +90,14 @@ if command -v pm2 >/dev/null 2>&1; then
   fi
 fi
 
+echo ">>> cleanup legacy root node processes under ${APP_ROOT}"
+mapfile -t LEGACY_PIDS < <(ps aux | grep -E "[n]ode .*${APP_ROOT}" | awk '{print $2}')
+for pid in "${LEGACY_PIDS[@]:-}"; do
+  echo "    kill pid=${pid}"
+  kill "${pid}" 2>/dev/null || true
+done
+fuser -k 3000/tcp 2>/dev/null || true
+
 if ! sudo -u "${DEPLOY_USER}" bash -lc 'command -v pm2' >/dev/null 2>&1; then
   echo ">>> installing pm2 for ${DEPLOY_USER}"
   sudo -u "${DEPLOY_USER}" bash -lc "npm install -g pm2"

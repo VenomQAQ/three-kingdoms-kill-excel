@@ -29,5 +29,10 @@ export const LianliankanApi = {
   finishSession: (
     sessionId: string,
     input: { result: 'won' | 'lost'; clientFinishedAt: number; remainingTiles: number },
-  ) => httpPost<FinishLianliankanSessionResult>(`/api/lianliankan/sessions/${encodeURIComponent(sessionId)}/finish`, input),
+  ) =>
+    httpPost<FinishLianliankanSessionResult>(
+      `/api/lianliankan/sessions/${encodeURIComponent(sessionId)}/finish`,
+      input,
+      { retries: 5, retryDelayMs: 800 },
+    ),
 };

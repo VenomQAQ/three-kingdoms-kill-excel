@@ -52,22 +52,33 @@ interface FetchOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   headers?: Record<string, string>;
+  /** 网络错误时的额外重试次数（默认 0） */
+  retries?: number;
+  /** 首次重试等待毫秒数，后续指数退避，上限 8s */
+  retryDelayMs?: number;
   /** 内部使用：是否已尝试过 refresh。避免死循环 */
   _retriedAfterRefresh?: boolean;
+}
+
+function isNetworkError(err: unknown): boolean {
+  if (err instanceof TypeError) return true;
+  return err instanceof Error && /failed to fetch|networkerror|load failed/i.test(err.message);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 /**
  * 通用 JSON 请求。
  * 成功抛出 data；失败（含 401 refresh 失败）抛 HttpError。
  */
-export async function apiFetch<T = unknown>(
-  path: string,
-  opts: FetchOptions = {},
-): Promise<T> {
+async function apiFetchOnce<T = unknown>(path: string, opts: FetchOptions): Promise<T> {
   const url = path.startsWith('/') ? path : '/' + path;
   const res = await fetch(url, {
     method: opts.method ?? 'GET',
     credentials: 'include',
+    cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
       ...(opts.headers ?? {}),
@@ -79,7 +90,7 @@ export async function apiFetch<T = unknown>(
   if (res.status === 401 && !opts._retriedAfterRefresh && path !== REFRESH_URL) {
     const refreshed = await refreshOnce();
     if (refreshed) {
-      return apiFetch<T>(path, { ...opts, _retriedAfterRefresh: true });
+      return apiFetchOnce<T>(path, { ...opts, _retriedAfterRefresh: true });
     }
     // refresh 失败，继续走下面失败路径
   }
@@ -100,9 +111,34 @@ export async function apiFetch<T = unknown>(
   return (payload.data ?? undefined) as T;
 }
 
+export async function apiFetch<T = unknown>(
+  path: string,
+  opts: FetchOptions = {},
+): Promise<T> {
+  const maxAttempts = 1 + (opts.retries ?? 0);
+  const baseDelay = opts.retryDelayMs ?? 500;
+  let lastErr: unknown;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await apiFetchOnce<T>(path, opts);
+    } catch (err) {
+      lastErr = err;
+      if (!isNetworkError(err) || attempt === maxAttempts - 1) throw err;
+      const delay = Math.min(baseDelay * 2 ** attempt, 8000);
+      await sleep(delay);
+    }
+  }
+
+  throw lastErr ?? new Error('请求失败');
+}
+
 /** 便捷别名 */
 export const httpGet = <T = unknown>(p: string) => apiFetch<T>(p, { method: 'GET' });
-export const httpPost = <T = unknown>(p: string, body?: unknown) =>
-  apiFetch<T>(p, { method: 'POST', body });
+export const httpPost = <T = unknown>(
+  p: string,
+  body?: unknown,
+  opts: Omit<FetchOptions, 'method' | 'body'> = {},
+) => apiFetch<T>(p, { method: 'POST', body, ...opts });
 export const httpPatch = <T = unknown>(p: string, body?: unknown) =>
   apiFetch<T>(p, { method: 'PATCH', body });

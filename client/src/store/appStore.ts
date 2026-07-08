@@ -53,6 +53,7 @@ interface AppState {
   lianliankanConfig: LianliankanConfig | null;
   lianliankanSession: LianliankanSession | null;
   lianliankanLoading: boolean;
+  lianliankanSettling: boolean;
 
   setNickname: (nickname: string) => Promise<void>;
   connect: () => void;
@@ -184,6 +185,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   lianliankanConfig: null,
   lianliankanSession: null,
   lianliankanLoading: false,
+  lianliankanSettling: false,
 
   setNickname: async (nickname) => {
     const trimmed = nickname.trim();
@@ -770,15 +772,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   finishLianliankan: async (result, remainingTiles) => {
     const session = get().lianliankanSession;
-    if (!session) return;
+    if (!session || session.status !== 'playing' || get().lianliankanSettling) return;
+
+    const sessionId = session.sessionId;
+    const payload = {
+      result,
+      clientFinishedAt: Date.now(),
+      remainingTiles,
+    } as const;
+    set({ lianliankanSettling: true });
     try {
-      const settled = await LianliankanApi.finishSession(session.sessionId, {
-        result,
-        clientFinishedAt: Date.now(),
-        remainingTiles,
-      });
+      const settled = await LianliankanApi.finishSession(sessionId, payload);
+
       set((s) => ({
-        lianliankanSession: s.lianliankanSession
+        lianliankanSession: s.lianliankanSession?.sessionId === sessionId
           ? { ...s.lianliankanSession, status: settled.status, finishedAt: Date.now() }
           : s.lianliankanSession,
         user: s.user ? { ...s.user, ...settled.wallet } : s.user,
@@ -788,7 +795,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     } catch (err) {
       const code = err instanceof HttpError ? err.code : undefined;
-      get().showError(code, err instanceof Error ? err.message : '结算失败');
+      const fallback =
+        err instanceof TypeError || (err instanceof Error && /failed to fetch/i.test(err.message))
+          ? '网络连接失败，请稍后重试'
+          : '结算失败';
+      get().showError(code, err instanceof Error ? err.message : fallback);
+    } finally {
+      set({ lianliankanSettling: false });
     }
   },
 

@@ -58,12 +58,26 @@ if [[ ! -f "${APP_ROOT}/server/dist/main.js" ]]; then
 fi
 
 echo ">>> pm2 restart ${PM2_NAME}..."
-if pm2 describe "${PM2_NAME}" >/dev/null 2>&1; then
-  NODE_ENV=production pm2 restart "${PM2_NAME}" --update-env
-else
-  cd "${APP_ROOT}/server"
-  NODE_ENV=production pm2 start dist/main.js --name "${PM2_NAME}"
+cd "${APP_ROOT}/server"
+if [[ ! -f ".env" ]]; then
+  echo "ERROR: server/.env not found (JWT_ACCESS_SECRET etc. required in production)"
+  exit 1
 fi
+
+# 停掉旧 PM2 实例，并释放 3000 端口（避免遗留 node 进程导致 EADDRINUSE）
+pm2 stop "${PM2_NAME}" 2>/dev/null || true
+pm2 delete "${PM2_NAME}" 2>/dev/null || true
+fuser -k 3000/tcp 2>/dev/null || true
+sleep 1
+
+if ss -tln 2>/dev/null | grep -q ':3000 '; then
+  echo "ERROR: 端口 3000 仍被占用（常见原因：root 下遗留的 dist-dev node 进程）"
+  echo "       请以 root 在服务器执行: bash ${APP_ROOT}/scripts/fix-production-server.sh"
+  ps aux | grep -E "[n]ode .*${APP_ROOT}" || true
+  exit 1
+fi
+
+NODE_ENV=production pm2 start ecosystem.config.cjs
 
 pm2 save
 pm2 status

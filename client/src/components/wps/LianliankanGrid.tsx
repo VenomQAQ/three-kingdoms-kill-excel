@@ -49,6 +49,7 @@ export function LianliankanGrid({
   const [notice, setNotice] = useState('');
   const [now, setNow] = useState(Date.now());
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const timeoutHandledRef = useRef(false);
 
   useEffect(() => {
     if (!config) return;
@@ -60,6 +61,7 @@ export function LianliankanGrid({
     setTiles(session?.board ?? []);
     setSelectedTileId(null);
     setNotice('');
+    timeoutHandledRef.current = false;
   }, [session?.sessionId]);
 
   useEffect(() => {
@@ -70,6 +72,8 @@ export function LianliankanGrid({
   useEffect(() => {
     if (!session || session.status !== 'playing' || tiles.length === 0) return;
     if (now <= session.deadlineAt) return;
+    if (timeoutHandledRef.current) return;
+    timeoutHandledRef.current = true;
     setNotice('时间到，挑战失败');
     void onFinish('lost', tiles.length);
   }, [now, onFinish, session, tiles.length]);
@@ -119,6 +123,7 @@ export function LianliankanGrid({
     setSelectedTileId(null);
     setNotice(nextTiles.length === 0 ? '挑战成功' : '');
     if (nextTiles.length === 0) {
+      timeoutHandledRef.current = true;
       void onFinish('won', 0);
     }
   };

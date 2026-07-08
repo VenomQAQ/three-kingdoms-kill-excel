@@ -1,3 +1,5 @@
+import './load-env';
+
 /**
  * 集中管理环境变量（backend-tech-design.v1 §1.3）
  * 只读、启动时快照；启动后不允许再变。
