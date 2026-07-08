@@ -54,8 +54,8 @@ export const env = Object.freeze({
   // Cookie
   cookieSecure: bool(process.env.COOKIE_SECURE, false),
 
-  // 环境开关
-  sandboxEnabled: bool(process.env.SANDBOX_ENABLED, false),
+  // 环境开关：dev 默认开测试房，production 默认关；显式 SANDBOX_ENABLED 可覆盖
+  sandboxEnabled: bool(process.env.SANDBOX_ENABLED, nodeEnv !== 'production'),
   debugClockEnabled: bool(process.env.ENABLE_DEBUG_CLOCK, false),
 });
 

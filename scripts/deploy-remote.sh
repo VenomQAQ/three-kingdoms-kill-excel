@@ -59,10 +59,10 @@ fi
 
 echo ">>> pm2 restart ${PM2_NAME}..."
 if pm2 describe "${PM2_NAME}" >/dev/null 2>&1; then
-  pm2 restart "${PM2_NAME}"
+  NODE_ENV=production pm2 restart "${PM2_NAME}" --update-env
 else
   cd "${APP_ROOT}/server"
-  pm2 start dist/main.js --name "${PM2_NAME}"
+  NODE_ENV=production pm2 start dist/main.js --name "${PM2_NAME}"
 fi
 
 pm2 save
