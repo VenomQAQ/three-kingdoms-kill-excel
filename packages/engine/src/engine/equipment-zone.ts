@@ -7,7 +7,8 @@ import type { DeckPile } from './deck-pile';
 export type ZonePick = 'hand' | EquipmentSlot;
 
 /** 从卡牌配置解析装备槽位 */
-export function getEquipSlot(card: CardDefinition): EquipmentSlot | null {
+export function getEquipSlot(card: CardDefinition | undefined): EquipmentSlot | null {
+  if (!card?.effects) return null;
   const slot = card.effects.find((e) => e.action === 'equip')?.params?.slot as
     | EquipmentSlot
     | undefined;
@@ -153,7 +154,8 @@ function slotLabel(slot: EquipmentSlot): string {
 export function playerHasWeapon(player: EnginePlayerState): boolean {
   return player.equipment.some((name) => {
     const def = CardRegistry.getByName(name);
-    return def?.subType === 'weapon' || getEquipSlot(def!) === 'weapon';
+    if (!def) return false;
+    return def.subType === 'weapon' || getEquipSlot(def) === 'weapon';
   });
 }
 

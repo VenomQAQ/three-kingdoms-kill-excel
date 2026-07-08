@@ -84,7 +84,12 @@ export class RuleManager {
         : ctx.state.players;
 
     for (const player of players) {
-      if (player.hp <= 0 && timing === GameTiming.AFTER_DAMAGE) continue;
+      if (player.hp <= 0 && timing === GameTiming.AFTER_DAMAGE) {
+        if (ctx.ownerPlayerId === player.id) {
+          ctx.state.resolution.context.deferredAfterDamagePlayerId = player.id;
+        }
+        continue;
+      }
 
       const ch = CharacterRegistry.resolve(player.generalName);
       if (!ch) continue;
@@ -143,25 +148,27 @@ export class RuleManager {
     ctx: RuleEmitContext,
     playerId: string,
     skillId: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const pending = ctx.state.resolution.context.pendingReactive as
       | { eventId: string; playerId: string; skillId: string }
       | undefined;
     if (!pending || pending.playerId !== playerId || pending.skillId !== skillId) {
-      return;
+      return false;
     }
 
     const player = ctx.state.players.find((p) => p.id === playerId);
-    if (!player) return;
+    if (!player) return false;
 
     const rule = this.rules.find(
       (r) => r.source.type === 'skill' && r.source.id === skillId,
     );
+    let paused = false;
     if (rule) {
       player.skillUseCount[skillId] = (player.skillUseCount[skillId] ?? 0) + 1;
-      await this.executeRule(rule, ctx, playerId);
+      paused = await this.executeRule(rule, ctx, playerId);
     }
     delete ctx.state.resolution.context.pendingReactive;
+    return paused;
   }
 
   skipReactiveSkill(ctx: RuleEmitContext): void {
@@ -214,9 +221,9 @@ export class RuleManager {
       targets,
       log: ctx.log,
       deck: ctx.deck,
+      setPrompt: ctx.setPrompt,
     };
-    this.effects.runAll(rule.effects, effectCtx);
-    return false;
+    return this.effects.runAll(rule.effects, effectCtx);
   }
 }
 

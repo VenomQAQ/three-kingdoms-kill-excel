@@ -71,7 +71,7 @@ export const WEI_CHARACTERS = [
         description:
           '当你受到 1 点伤害后，你可以进行判定：若结果为红色，你对伤害来源造成 1 点伤害；若结果为黑色，你弃置其一张牌。',
         timings: [GameTiming.AFTER_DAMAGE],
-        effects: [{ action: 'judge', params: { onRed: 'damage', onBlack: 'discard' } }],
+        effects: [{ action: 'judge', params: { onRed: 'damage', onBlack: 'pickDiscard' } }],
       },
       {
         id: 'qingjian',

@@ -20,7 +20,8 @@ export interface ZoneCardTarget {
 }
 
 /** 配置化：卡牌效果是否需要玩家选择目标区域内的一张牌 */
-export function getZonePickAction(card: CardDefinition): 'discard' | 'take' | null {
+export function getZonePickAction(card: CardDefinition | undefined): 'discard' | 'take' | null {
+  if (!card?.effects) return null;
   for (const effect of card.effects) {
     if (effect.action === 'discard' && effect.params?.zone === 'any') return 'discard';
     if (effect.action === 'moveCard' && !effect.params?.from) return 'take';

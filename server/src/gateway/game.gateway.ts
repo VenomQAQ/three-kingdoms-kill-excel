@@ -598,7 +598,7 @@ export class GameGateway
   @SubscribeMessage('sandbox:modifyJudge')
   handleSandboxModifyJudge(
     @ConnectedSocket() client: GameSocket,
-    @MessageBody() payload: { promptId: string; handIndex: number },
+    @MessageBody() payload: { promptId: string; handIndex: number; handCardEntry?: string },
   ) {
     const socketId = this.getPlayerId(client);
     const actingId = this.getActingPlayerId(client);
@@ -608,6 +608,7 @@ export class GameGateway
         actingId,
         payload?.promptId ?? '',
         payload?.handIndex ?? -1,
+        payload?.handCardEntry,
       );
       this.server.to(room.id).emit('room:state', room);
     } catch (err) {
@@ -838,13 +839,14 @@ export class GameGateway
   @SubscribeMessage('game:modifyJudge')
   async handleGameModifyJudge(
     @ConnectedSocket() client: GameSocket,
-    @MessageBody() payload: { promptId: string; handIndex: number },
+    @MessageBody() payload: { promptId: string; handIndex: number; handCardEntry?: string },
   ) {
     await this.dispatchFormalGame(client, (playerId) =>
       this.roomService.gameModifyJudge(
         playerId,
         payload?.promptId ?? '',
         payload?.handIndex ?? -1,
+        payload?.handCardEntry,
       ),
     );
   }

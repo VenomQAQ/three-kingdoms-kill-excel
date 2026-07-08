@@ -11,10 +11,11 @@ import {
   removeCardFromHand,
   runCardEffects,
   shaBlockedByArmor,
+  formatRenwangBlockedLog,
   validResponseCards,
 } from '../engine/effect-runner';
 import { canUseAsGuohe, canUseAsLebu, canUseAsSha, validResponseCardsForPlayer } from '../engine/virtual-card';
-import { cardNameFromHandEntry } from '../engine/card-label';
+import { cardNameFromHandEntry, formatHandEntryForLog } from '../engine/card-label';
 import {
   applyLockedModifiers,
   playerHasSkill,
@@ -490,10 +491,7 @@ export class CardPlayService {
     context.targetPlayerIds = targets.map((target) => target.id);
     setCardPlayContext(host.getState().resolution.context, context);
 
-    const zonePickAction = getZonePickAction(card);
-    if (!zonePickAction) {
-      this.commitPlayedCard(host, source, card, context, targets);
-    }
+    this.commitPlayedCard(host, source, card, context, targets);
 
     if (this.shouldPromptWuxie(card, context.targetPlayerIds)) {
       context.wuxieQueue = this.collectWuxieQueue(host, source.id);
@@ -726,7 +724,7 @@ export class CardPlayService {
 
       context.responseCount += 1;
       host.log(
-        `${responder.generalName} 打出【${cardName}】（${context.responseCount}/${required}）`,
+        `${responder.generalName} 打出 ${formatHandEntryForLog(cardName)}（${context.responseCount}/${required}）`,
       );
       setCardPlayContext(host.getState().resolution.context, context);
 
@@ -734,12 +732,20 @@ export class CardPlayService {
         const victim = host
           .getState()
           .players.find((player) => player.id === context.jiedaoVictimId);
+        if (!victim) {
+          this.clearCardPlay(host);
+          host.setPrompt(null);
+          return { ok: false, error: '借刀目标不存在' };
+        }
         host.setPrompt(null);
-        host.log(
-          `${responder.generalName} 对 ${victim?.generalName ?? '目标'} 使用【杀】（借刀杀人）`,
+        return this.beginShaResponseAgainstTarget(
+          host,
+          responder,
+          victim,
+          cardName,
+          context,
+          '借刀杀人',
         );
-        this.clearCardPlay(host);
-        return { ok: true };
       }
 
       if (context.responseCount < required) {
@@ -1051,7 +1057,11 @@ export class CardPlayService {
     const targetLabel =
       targets.map((target) => target.generalName).join('、') || '全场';
     const prefix = context.virtualFromSkill === 'rende' ? '发动【仁德】，视为' : '';
-    host.log(`${source.generalName} ${prefix}对 ${targetLabel} 使用【${card.name}】`);
+    const cardLabel =
+      card.id === 'sha'
+        ? formatHandEntryForLog(context.committedCardEntry ?? card.name)
+        : `【${card.name}】`;
+    host.log(`${source.generalName} ${prefix}对 ${targetLabel} 使用${cardLabel}`);
     host.onCardCommitted?.({ source, card, targets });
 
     context.cardCommitted = true;
@@ -1151,7 +1161,7 @@ export class CardPlayService {
   ): { ok: boolean; error?: string; paused?: boolean; scheduleAoe?: boolean } {
     if (context.wuxieCancelledAll) {
       this.commitPlayedCard(host, source, card, context, targets);
-      host.log(`【${card.name}】被【无懈可击】抵消`);
+      host.log(`【${card.name}】被抵消`);
       this.clearCardPlay(host);
       host.setPrompt(null);
       return { ok: true };
@@ -1167,7 +1177,7 @@ export class CardPlayService {
 
     if (finalTargets.length === 0 && targets.length > 0) {
       this.commitPlayedCard(host, source, card, context, targets);
-      host.log(`【${card.name}】的目标全部被抵消`);
+      host.log(`【${card.name}】被抵消`);
       this.clearCardPlay(host);
       host.setPrompt(null);
       return { ok: true };
@@ -1322,8 +1332,8 @@ export class CardPlayService {
 
     if (responseType && finalTargets.length > 0) {
       const target = finalTargets[0]!;
-      if (card.id === 'sha' && shaBlockedByArmor(source, target)) {
-        host.log(`【仁王盾】生效，【杀】对 ${target.generalName} 无效`);
+      if (card.id === 'sha' && shaBlockedByArmor(source, target, context.committedCardEntry)) {
+        host.log(formatRenwangBlockedLog(target.generalName, context.committedCardEntry));
         this.clearCardPlay(host);
         host.setPrompt(null);
         return { ok: true };
@@ -1718,6 +1728,55 @@ export class CardPlayService {
     return this.continueResolution(host, card, source, targets, context);
   }
 
+  private beginShaResponseAgainstTarget(
+    host: CardPlayHost,
+    source: EnginePlayerState,
+    target: EnginePlayerState,
+    shaCardEntry: string,
+    context: CardPlayContext,
+    logSuffix?: string,
+  ): { ok: boolean; error?: string; paused?: boolean } {
+    const shaCard = CardRegistry.getByName('杀');
+    if (!shaCard) {
+      this.clearCardPlay(host);
+      host.setPrompt(null);
+      return { ok: false, error: '状态错误' };
+    }
+
+    const suffix = logSuffix ? `（${logSuffix}）` : '';
+    host.log(
+      `${source.generalName} 对 ${target.generalName} 使用${formatHandEntryForLog(shaCardEntry)}${suffix}`,
+    );
+
+    if (shaBlockedByArmor(source, target, shaCardEntry)) {
+      host.log(formatRenwangBlockedLog(target.generalName, shaCardEntry));
+      this.clearCardPlay(host);
+      host.setPrompt(null);
+      return { ok: true };
+    }
+
+    context.jiedaoActive = false;
+    context.jiedaoHolderId = undefined;
+    context.jiedaoVictimId = undefined;
+    context.cardId = shaCard.id;
+    context.sourcePlayerId = source.id;
+    context.targetPlayerIds = [target.id];
+    context.responseType = 'shan';
+    context.responsesRequired = 1;
+    context.responseCount = 0;
+    context.awaitingResponseFrom = target.id;
+    context.committedCardEntry = shaCardEntry;
+    context.cardCommitted = true;
+    setCardPlayContext(host.getState().resolution.context, context);
+
+    const tieqiTarget = this.findTieqiTarget(shaCard, source, [target], context);
+    if (tieqiTarget) {
+      return this.promptTieqiOffer(host, shaCard, source, tieqiTarget, context);
+    }
+
+    return this.promptResponse(host, shaCard, source, target, context);
+  }
+
   private findTieqiTarget(
     card: CardDefinition,
     source: EnginePlayerState,
@@ -2010,7 +2069,9 @@ export class CardPlayService {
 
     if (targetKey === 'all') {
       context.wuxieCancelledAll = true;
-      host.log(`${responder.generalName} 打出【无懈可击】，抵消【${card.name}】对所有人的效果`);
+      host.log(
+        `${responder.generalName} 使用【无懈可击】抵消【${card.name}】对所有人的效果`,
+      );
     } else {
       const target = host
         .getState()
@@ -2020,7 +2081,7 @@ export class CardPlayService {
         targetKey,
       ];
       host.log(
-        `${responder.generalName} 打出【无懈可击】，抵消【${card.name}】对 ${target?.generalName ?? '目标'} 的效果`,
+        `${responder.generalName} 使用【无懈可击】抵消【${card.name}】对${target?.generalName ?? '目标'}的效果`,
       );
     }
 

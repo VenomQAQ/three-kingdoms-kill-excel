@@ -64,6 +64,7 @@ function sanitizePrompt(prompt: GamePrompt | null | undefined): GamePrompt | nul
     skillName: stripGeneralPrefixInText(prompt.skillName),
     judgeCardName: stripGeneralPrefixInText(prompt.judgeCardName),
     judgeResult: stripGeneralPrefixInText(prompt.judgeResult),
+    modifyHandCards: prompt.modifyHandCards?.map((card) => stripGeneralPrefixInText(card)),
     message: stripGeneralPrefixInText(prompt.message),
     zoneCardOptions: prompt.zoneCardOptions?.map((option) => ({
       ...option,
@@ -117,4 +118,87 @@ export function sanitizeRoom(room: Room): Room {
         }
       : room.sandbox,
   };
+}
+
+export function formatCardTypeLabel(
+  type?: string | null,
+  subType?: string | null,
+): string {
+  switch (type) {
+    case 'basic':
+      return '基本牌';
+    case 'trick':
+      switch (subType) {
+        case 'delay':
+          return '延时锦囊';
+        case 'aoe':
+          return '群体锦囊';
+        default:
+          return '锦囊牌';
+      }
+    case 'equipment':
+      switch (subType) {
+        case 'weapon':
+          return '武器';
+        case 'armor':
+          return '防具';
+        case 'horse_plus':
+          return '+1马';
+        case 'horse_minus':
+          return '-1马';
+        case 'treasure':
+          return '宝物';
+        default:
+          return '装备牌';
+      }
+    default:
+      return type ?? '—';
+  }
+}
+
+const HAND_CARD_DISPLAY_RE = /^[♠♥♣♦]\d{1,2}【.+】$/;
+
+/** 手牌展示：♣13【闪】保持原样，纯牌名包一层【】 */
+export function formatHandCardLabel(cardEntry: string): string {
+  const card = stripGeneralPrefixInText(cardEntry.trim());
+  if (HAND_CARD_DISPLAY_RE.test(card)) {
+    return card;
+  }
+  if (card.startsWith('【') && card.endsWith('】')) {
+    return card;
+  }
+  return `【${card}】`;
+}
+
+/** 响应/打出按钮文案：避免「打出【♣13【闪】】」双重括号 */
+export function formatPlayCardButtonLabel(cardEntry: string): string {
+  const label = formatHandCardLabel(cardEntry);
+  if (/^[♠♥♣♦]/.test(label)) {
+    return `打出 ${label}`;
+  }
+  return `打出${label}`;
+}
+
+export interface LogLineSegment {
+  text: string;
+  redSuit?: boolean;
+}
+
+/** 将日志行拆分为普通文本与红色花色片段（♥♦） */
+export function splitLogLineForSuitColors(line: string): LogLineSegment[] {
+  const segments: LogLineSegment[] = [];
+  const re = /[♥♦]\d{0,2}/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(line)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ text: line.slice(lastIndex, match.index) });
+    }
+    segments.push({ text: match[0], redSuit: true });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < line.length) {
+    segments.push({ text: line.slice(lastIndex) });
+  }
+  return segments.length > 0 ? segments : [{ text: line }];
 }

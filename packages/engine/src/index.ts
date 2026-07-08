@@ -8,7 +8,14 @@ export { GameEngine } from './engine/game-engine';
 export type { RoomPlayerInput } from './engine/game-engine';
 export { EventManager } from './engine/event-manager';
 export type { EventManagerHost, TimingEmitResult, TimingListener } from './engine/event-manager';
-export { getValidTargets, needsTargetSelection, getAttackRange, sortAoeTargets } from './engine/targeting';
+export {
+  getValidTargets,
+  needsTargetSelection,
+  getAttackRange,
+  isInAttackRange,
+  sortAoeTargets,
+} from './engine/targeting';
+export { playerHasWeapon } from './engine/equipment-zone';
 export { BASIC_CARDS } from './config/cards/basic';
 export { TRICK_CARDS } from './config/cards/trick';
 export { EQUIPMENT_CARDS } from './config/cards/equipment';
@@ -57,6 +64,7 @@ export {
 } from './engine/virtual-card';
 export { InteractionRegistry } from './rules/interaction-registry';
 export type { InteractionContext, InteractionHandler } from './rules/interaction-registry';
+export { normalizeHandEntry, resolveHandPickIndex } from './engine/card-label';
 export { GameEventType, MAX_RESOLUTION_STACK_DEPTH } from './types/event';
 export type { GameEvent, GameEventPayload, EventPhase } from './types/event';
 export type { RuleDefinition, RuleSource, ConditionSpec } from './types/rule';

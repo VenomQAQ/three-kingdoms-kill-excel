@@ -1316,7 +1316,7 @@ function App() {
           }
           onQingnangRecover={(tid, indices) => sandboxQingnangRecover(tid, indices)}
           onZhihengConfirm={(indices) => sandboxZhihengConfirm(indices)}
-          onModifyJudge={(pid, idx) => sandboxModifyJudge(pid, idx)}
+          onModifyJudge={(pid, idx, card) => sandboxModifyJudge(pid, idx, card)}
           onSkipModifyJudge={(pid) => sandboxSkipModifyJudge(pid)}
           onDiscardCards={(pid, indices) => sandboxDiscardCards(pid, indices)}
           onSelectZoneCard={(pid, choiceId) => sandboxSelectZoneCard(pid, choiceId)}

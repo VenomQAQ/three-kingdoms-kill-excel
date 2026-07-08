@@ -417,6 +417,14 @@
   font-weight: 600;
 }
 
+.redSuit {
+  color: #c00000;
+}
+
+.judgeLogLine .redSuit {
+  color: inherit;
+}
+
 .chatLine {
   min-height: 28px;
   padding: 6px 12px;

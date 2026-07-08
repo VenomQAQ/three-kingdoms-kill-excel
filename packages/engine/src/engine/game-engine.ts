@@ -11,6 +11,7 @@ import {
   removeCardFromHand,
   runCardEffects,
   shaBlockedByArmor,
+  formatRenwangBlockedLog,
   validResponseCards,
 } from './effect-runner';
 import { hasBaguaFormation } from './equipment-zone';
@@ -25,7 +26,7 @@ import {
 } from './timing-runner';
 import { EventManager } from './event-manager';
 import { createCardInstance, formatCardInstance, judgeDelayEffect } from './card-instance';
-import { cardNameFromHandEntry } from './card-label';
+import { cardNameFromHandEntry, formatHandEntryForLog, resolveHandPickIndex } from './card-label';
 import {
   applyJudgeEffect,
   collectModifyJudgePlayers,
@@ -218,6 +219,7 @@ export class GameEngine {
         skillId: modSkill?.id,
         skillName: skillLabel,
         characterSkills: characterSkillsForPrompt(modifier),
+        modifyHandCards: [...modifier.handCards],
         message: `${target?.generalName ?? '角色'} 的判定【${pending.judgeCardName}】为 ${formatCardInstance(pending.result)}，是否发动【${skillLabel}】？`,
         options: [{ id: 'skip', label: '不改判' }],
       };
@@ -232,6 +234,7 @@ export class GameEngine {
     modifierId: string,
     promptId: string,
     handIndex: number,
+    handCardEntry?: string,
   ): { ok: boolean; error?: string } {
     if (!this.prompt || this.prompt.id !== promptId) {
       return { ok: false, error: '提示已失效' };
@@ -247,23 +250,29 @@ export class GameEngine {
 
     const modifier = this.players.find((p) => p.id === modifierId);
     if (!modifier) return { ok: false, error: '角色不存在' };
-    if (handIndex < 0 || handIndex >= modifier.handCards.length) {
-      return { ok: false, error: '选手牌无效' };
+
+    const resolvedIndex = resolveHandPickIndex(
+      modifier.handCards,
+      handIndex,
+      handCardEntry,
+    );
+    if (resolvedIndex < 0) {
+      return { ok: false, error: handCardEntry?.trim() ? '所选改判牌无效' : '选手牌无效' };
     }
 
-    const cardName = modifier.handCards[handIndex]!;
-    modifier.handCards.splice(handIndex, 1);
-    const replacement = createCardInstance(cardNameFromHandEntry(cardName));
+    const cardEntry = modifier.handCards[resolvedIndex]!;
+    modifier.handCards.splice(resolvedIndex, 1);
+    const replacement = createCardInstance(cardEntry);
     this.deck.discardCard(pending.resultCardEntry);
 
     pending.result = replacement;
-    pending.resultCardEntry = cardName;
+    pending.resultCardEntry = cardEntry;
     pending.modified = true;
     const modSkill = CharacterRegistry.resolve(modifier.generalName)?.skills.find((s) =>
       s.effects?.some((e) => e.action === 'modifyJudge'),
     );
     this.log.unshift(
-      `${modifier.generalName} 发动【${modSkill?.name ?? '改判'}】，以 ${formatCardInstance(replacement)} 代替判定结果`,
+      `${modifier.generalName} 发动【${modSkill?.name ?? '改判'}】，以 ${formatHandEntryForLog(cardEntry)} 代替判定结果`,
     );
     this.prompt = null;
     this.finishJudgeResolution();
@@ -598,7 +607,7 @@ export class GameEngine {
     if (responseType && targets.length > 0) {
       const target = targets[0]!;
       if (card.id === 'sha' && shaBlockedByArmor(source, target)) {
-        this.log.unshift(`【仁王盾】生效，【杀】对 ${target.generalName} 无效`);
+        this.log.unshift(formatRenwangBlockedLog(target.generalName));
         this.clearPending();
         this.prompt = null;
         return { ok: true };
@@ -673,7 +682,7 @@ export class GameEngine {
     }
 
     if (card.id === 'sha' && shaBlockedByArmor(source, target)) {
-      this.log.unshift(`【仁王盾】生效，【杀】对 ${target.generalName} 无效`);
+      this.log.unshift(formatRenwangBlockedLog(target.generalName));
       if (pending.aoeQueue?.length) {
         pending.aoeQueue.shift();
         pending.responseCount = 0;

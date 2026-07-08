@@ -1,7 +1,8 @@
 import type { CardDefinition, EffectDefinition } from '../types/card';
 import type { EnginePlayerState } from '../types/game';
 import { CardRegistry } from '../registry/card-registry';
-import { cardNameFromHandEntry, handEntriesMatch } from './card-label';
+import { cardNameFromHandEntry, formatHandEntryForLog, handEntriesMatch } from './card-label';
+import { createCardInstance, isBlack } from './card-instance';
 import type { DeckPile } from './deck-pile';
 import {
   discardOneFromZone,
@@ -146,30 +147,42 @@ export function hasRenwangShield(target: EnginePlayerState): boolean {
   return target.equipment.some((e) => e.includes('仁王盾'));
 }
 
-/** 仁王盾：黑色杀无效（简化：无花色时视为可被仁王盾挡） */
+const HAND_LABEL_RE = /^[♠♥♣♦]\d{1,2}【.+】$/;
+
+/** 仁王盾：黑色杀无效（无花色时视为可被仁王盾挡） */
 export function shaBlockedByArmor(
   source: EnginePlayerState,
   target: EnginePlayerState,
+  shaCardEntry?: string,
 ): boolean {
   if (sourceIgnoresArmor(source)) return false;
-  return hasRenwangShield(target);
+  if (!hasRenwangShield(target)) return false;
+  if (!shaCardEntry) return true;
+  const trimmed = shaCardEntry.trim();
+  if (!HAND_LABEL_RE.test(trimmed)) return true;
+  return isBlack(createCardInstance(trimmed));
 }
 
-export function getPromptResponseEffect(card: CardDefinition) {
-  return card.effects.find((e) => e.action === 'promptResponse');
+export function formatRenwangBlockedLog(targetName: string, shaCardEntry?: string): string {
+  const cardLabel = formatHandEntryForLog(shaCardEntry ?? '杀');
+  return `【仁王盾】生效，${cardLabel} 对 ${targetName} 无效`;
+}
+
+export function getPromptResponseEffect(card: CardDefinition | undefined) {
+  return card?.effects?.find((e) => e.action === 'promptResponse');
 }
 
 export function getResponseTypeFromEffect(
-  card: CardDefinition,
+  card: CardDefinition | undefined,
 ): string | undefined {
   return getPromptResponseEffect(card)?.params?.responseType as string | undefined;
 }
 
-export function isAoeCard(card: CardDefinition): boolean {
+export function isAoeCard(card: CardDefinition | undefined): boolean {
   return !!getPromptResponseEffect(card)?.params?.aoe;
 }
 
-export function getOnFailEffects(card: CardDefinition): EffectDefinition[] {
+export function getOnFailEffects(card: CardDefinition | undefined): EffectDefinition[] {
   return (getPromptResponseEffect(card)?.params?.onFail as EffectDefinition[]) ?? [];
 }
 

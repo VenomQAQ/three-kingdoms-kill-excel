@@ -80,6 +80,76 @@ describe('TurnRunner phase rules', () => {
     expect(engine.getState().log).toContain('界曹操 获得伤害牌【杀】');
   });
 
+  it('界曹操濒死被救回后可发动奸雄', async () => {
+    const engine = new SangokushiEngine({
+      players: [
+        player('a', 1, '界曹操', { hp: 4, handCards: [], kingdom: 'wei' }),
+        player('b', 2, '界司马懿', { handCards: [], kingdom: 'wei' }),
+        player('c', 3, '刘备', { handCards: ['桃'], kingdom: 'shu' }),
+      ],
+    });
+    engine.getDeck().stackTop(['闪']);
+
+    await engine.applyDamage({
+      sourceId: 'b',
+      targetId: 'a',
+      amount: 4,
+      damageCardName: '杀',
+    });
+
+    let prompt = engine.getState().prompt!;
+    expect(prompt).toMatchObject({ type: 'dying_rescue', playerId: 'a' });
+    await engine.submitPromptChoice('a', prompt.id, 'pass');
+
+    prompt = engine.getState().prompt!;
+    expect(prompt).toMatchObject({ type: 'dying_rescue', playerId: 'b' });
+    await engine.submitPromptChoice('b', prompt.id, 'pass');
+
+    prompt = engine.getState().prompt!;
+    expect(prompt).toMatchObject({ type: 'dying_rescue', playerId: 'c' });
+    await engine.submitPromptChoice('c', prompt.id, 'card:桃');
+
+    prompt = engine.getState().prompt!;
+    expect(prompt).toMatchObject({ type: 'use_skill', playerId: 'a' });
+    expect(prompt.options?.map((option) => option.id)).toContain('skill:jianxiong');
+
+    await engine.submitPromptChoice('a', prompt.id, 'skill:jianxiong');
+
+    const caoCao = engine.getState().players[0]!;
+    expect(caoCao.hp).toBe(1);
+    expect(caoCao.handCards).toContain('杀');
+    expect(caoCao.handCards.some((card) => card.includes('【闪】'))).toBe(true);
+    expect(caoCao.skillUseCount.jianxiong).toBe(1);
+    expect(engine.getState().log).toContain('界曹操 获得伤害牌【杀】');
+  });
+
+  it('界曹操濒死未被救回时不发动奸雄', async () => {
+    const engine = new SangokushiEngine({
+      players: [
+        player('a', 1, '界曹操', { hp: 4, handCards: [] }),
+        player('b', 2, '关羽', { handCards: [] }),
+      ],
+    });
+
+    await engine.applyDamage({
+      sourceId: 'b',
+      targetId: 'a',
+      amount: 4,
+      damageCardName: '杀',
+    });
+
+    while (engine.getState().prompt?.type === 'dying_rescue') {
+      const dyingPrompt = engine.getState().prompt!;
+      await engine.submitPromptChoice(dyingPrompt.playerId, dyingPrompt.id, 'pass');
+    }
+
+    const caoCao = engine.getState().players[0]!;
+    expect(caoCao.dead).toBe(true);
+    expect(engine.getState().prompt).toBeNull();
+    expect(caoCao.skillUseCount.jianxiong ?? 0).toBe(0);
+    expect(engine.getState().log).not.toContain('奸雄');
+  });
+
   it('界司马懿受到伤害后可发动反馈，获得伤害来源一张牌', async () => {
     const engine = new SangokushiEngine({
       players: [
@@ -226,12 +296,22 @@ describe('TurnRunner phase rules', () => {
 
     await engine.submitPromptChoice('a', prompt.id, 'skill:ganglie');
 
+    const pickPrompt = engine.getState().prompt!;
+    expect(pickPrompt).toMatchObject({
+      type: 'select_zone_card',
+      playerId: 'a',
+      skillId: 'ganglie',
+    });
+    await expect(engine.submitZoneCard('a', pickPrompt.id, 'hand:0')).resolves.toMatchObject({ ok: true });
+
     expect(engine.getState().players[0]!.hp).toBe(3);
     expect(engine.getState().players[1]!.hp).toBe(4);
     expect(engine.getState().players[1]!.handCards).toEqual([]);
     expect(engine.snapshot().discardPile).toEqual(expect.arrayContaining(['闪', '杀']));
     expect(engine.getState().log).toContain('界夏侯惇 判定：♠9【闪】');
-    expect(engine.getState().log).toContain('关羽 弃置手牌【♣5【杀】】');
+    expect(engine.getState().log).toContain('界夏侯惇 弃置 关羽 的♣5【杀】');
+    expect(engine.getState().log).not.toContain('关羽 弃置手牌');
+    expect(engine.getState().log).not.toContain('获得 关羽');
   });
 
   it('闪电判定未生效后移入下一名存活角色判定区', () => {
@@ -291,6 +371,35 @@ describe('TurnRunner phase rules', () => {
     expect(engine.getState().log).toContain('界郭嘉 发动【天妒】，获得判定牌 ♠5【杀】');
   });
 
+  it('鬼才改判按手牌条目匹配，日志与判定结果一致', () => {
+    const engine = new SangokushiEngine({
+      players: [
+        player('a', 1, '界司马懿', { maxHp: 3, hp: 3, judgeCards: ['乐不思蜀'] }),
+        player('b', 2, '界司马懿', {
+          maxHp: 3,
+          hp: 3,
+          handCards: ['♠6【闪】', '♦8【闪】', '♠1【桃】'],
+        }),
+      ],
+    });
+    engine.getDeck().stackTop(['♠9【决斗】']);
+    engine.getState().turn.index = 0;
+
+    engine.startJudgePhase();
+    const prompt = engine.getState().prompt!;
+    expect(prompt.modifyHandCards).toEqual(['♠6【闪】', '♦8【闪】', '♠1【桃】']);
+
+    expect(engine.submitModifyJudge('b', prompt.id, 0, '♦8【闪】')).toMatchObject({ ok: true });
+
+    expect(engine.getState().log).toContain(
+      '界司马懿 发动【鬼才】，以 ♦8【闪】 代替判定结果',
+    );
+    const siMaYiHand = engine.getState().players[1]!.handCards;
+    expect(siMaYiHand).toContain('♠6【闪】');
+    expect(siMaYiHand).not.toContain('♦8【闪】');
+    expect(engine.getState().turn.phase).toBe('play');
+  });
+
   it('界郭嘉被鬼才改判后，天妒获得替换后的判定牌', () => {
     const engine = new SangokushiEngine({
       players: [
@@ -313,6 +422,7 @@ describe('TurnRunner phase rules', () => {
     expect(engine.snapshot().discardPile).toContain('杀');
     expect(engine.snapshot().discardPile).not.toContain('闪');
     expect(engine.getState().log).toContain('界郭嘉 发动【天妒】，获得判定牌 ♥2【闪】');
+    expect(engine.getState().log).toContain('界司马懿 发动【鬼才】，以 ♥2【闪】 代替判定结果');
   });
 
   it('多名角色可按座次依次选择是否发动鬼才改判', () => {

@@ -83,7 +83,7 @@ interface AppState {
   sandboxRendeFinish: () => void;
   sandboxQingnangRecover: (targetId: string, handIndices: number | number[]) => void;
   sandboxZhihengConfirm: (handIndices: number[]) => void;
-  sandboxModifyJudge: (promptId: string, handIndex: number) => void;
+  sandboxModifyJudge: (promptId: string, handIndex: number, handCardEntry?: string) => void;
   sandboxSkipModifyJudge: (promptId: string) => void;
   sandboxDiscardCards: (promptId: string, handIndices: number[]) => void;
   sandboxCancelDiscard: (promptId: string) => void;
@@ -537,12 +537,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  sandboxModifyJudge: (promptId, handIndex) => {
+  sandboxModifyJudge: (promptId, handIndex, handCardEntry) => {
     const { socket, room } = get();
     if (!socket || !room) return;
     routeGameEmit(socket, room, 'sandbox:modifyJudge', 'game:modifyJudge', {
       promptId,
       handIndex,
+      handCardEntry,
     });
   },
 

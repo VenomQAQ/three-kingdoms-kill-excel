@@ -2,6 +2,7 @@
 import {
   assignIdentities,
   CharacterRegistry,
+  normalizeHandEntry,
   SangokushiEngine,
 } from '@tk/engine';
 import { v4 as uuidv4 } from 'uuid';
@@ -1008,14 +1009,14 @@ export class RoomService implements OnModuleInit {
     return room;
   }
 
-  gameModifyJudge(playerId: string, promptId: string, handIndex: number): Room {
+  gameModifyJudge(playerId: string, promptId: string, handIndex: number, handCardEntry?: string): Room {
     const room = this.getRoomByPlayerId(playerId);
     if (room.isSandbox) {
-      return this.sandboxModifyJudge(playerId, playerId, promptId, handIndex);
+      return this.sandboxModifyJudge(playerId, playerId, promptId, handIndex, handCardEntry);
     }
     this.assertPlaying(room);
     const engine = this.requireRoomEngine(room);
-    const res = engine.submitModifyJudge(playerId, promptId, handIndex);
+    const res = engine.submitModifyJudge(playerId, promptId, handIndex, handCardEntry);
     if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '改判失败');
     this.gameService.syncRoomFromEngine(room, engine);
     return room;
@@ -1252,10 +1253,11 @@ export class RoomService implements OnModuleInit {
     actingPlayerId: string,
     promptId: string,
     handIndex: number,
+    handCardEntry?: string,
   ): Room {
     const room = this.getRoomByPlayerId(socketPlayerId);
     const engine = this.requireSandboxEngine(room);
-    const res = engine.submitModifyJudge(actingPlayerId, promptId, handIndex);
+    const res = engine.submitModifyJudge(actingPlayerId, promptId, handIndex, handCardEntry);
     if (!res.ok) throw new RoomError('ACTION_FAILED', res.error ?? '改判失败');
     this.gameService.syncRoomFromEngine(room, engine);
     return room;
@@ -1322,6 +1324,16 @@ export class RoomService implements OnModuleInit {
     if (!target) throw new RoomError('PLAYER_NOT_FOUND', '角色不存在');
     const trimmed = card.trim();
     if (!trimmed) throw new RoomError('INVALID_CARD', '请输入牌名');
+    const engine = this.gameService.getRoomEngine(room.id);
+    if (engine && room.status === 'playing') {
+      const enginePlayer = engine.getState().players.find((p) => p.id === targetId);
+      if (enginePlayer) {
+        const entry = normalizeHandEntry(trimmed);
+        enginePlayer.handCards.push(entry);
+        this.gameService.syncRoomFromEngine(room, engine);
+        return room;
+      }
+    }
     if (!target.handCards) target.handCards = [];
     target.handCards.push(trimmed);
     return room;

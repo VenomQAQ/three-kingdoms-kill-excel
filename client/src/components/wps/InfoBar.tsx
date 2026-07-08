@@ -136,7 +136,7 @@ export function InfoBar({
         <>
           <span className={styles.sep}>|</span>
           <span>
-            回合 <strong>{turnName}</strong>
+            当前回合 <strong>{turnName}</strong>
           </span>
         </>
       )}

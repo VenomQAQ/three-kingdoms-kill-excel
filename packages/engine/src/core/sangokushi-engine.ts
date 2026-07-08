@@ -28,7 +28,7 @@ import {
   setYajiaoContext,
   setZonePickContext,
 } from '../resolution/card-play-context';
-import { cardNameFromHandEntry } from '../engine/card-label';
+import { cardNameFromHandEntry, formatHandEntryForLog } from '../engine/card-label';
 import { removeCardFromHand } from '../engine/effect-runner';
 import { validResponseCardsForPlayer } from '../engine/virtual-card';
 import { nextPromptId } from '../utils/prompt-id';
@@ -52,7 +52,7 @@ import type { RoomPlayerInput } from '../engine/game-engine';
 import { checkVictory } from './identity';
 import { discardOneFromZone } from '../engine/equipment-zone';
 import { createCardInstance, formatCardInstance, isBlack, isRed } from '../engine/card-instance';
-import { listZoneCards } from '../engine/zone-card-pick';
+import { canDiscardZoneCard, listZoneCards, parseZoneCardId } from '../engine/zone-card-pick';
 
 let eventIdSeq = 0;
 
@@ -1316,17 +1316,22 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
           return { ok: true };
         }
         if (event) {
-          await this.rules.confirmReactiveSkill(
+          const paused = await this.rules.confirmReactiveSkill(
             {
               state: this.state,
               event,
               phase: 'post',
               log: (m) => this.log(m),
               deck: this.deck,
+              setPrompt: (prompt) => this.setPrompt(prompt),
             },
             playerId,
             skillId,
           );
+          if (paused) {
+            this.syncStackToState();
+            return { ok: true };
+          }
         }
         this.setPrompt(null);
         this.syncStackToState();
@@ -1582,8 +1587,59 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
 
     this.log(`${dyingPlayer.generalName} 未被救回，濒死结算结束`);
     setDyingRescueContext(this.state.resolution.context, undefined);
+    this.clearDeferredAfterDamage(dyingPlayer.id);
     this.setPrompt(null);
     void this.handlePlayerDeath(dyingPlayer.id);
+  }
+
+  /** 濒死被救回后，补结算因 hp<=0 而延后的受伤后技能（奸雄/反馈等） */
+  private async resumeAfterDamageSkills(victimId: string): Promise<void> {
+    const deferredId = this.state.resolution.context.deferredAfterDamagePlayerId as
+      | string
+      | undefined;
+    if (deferredId !== victimId) return;
+
+    const event = this.state.resolution.context.lastDamageEvent as GameEvent | undefined;
+    if (!event || event.type !== GameEventType.TAKE_DAMAGE) {
+      this.clearDeferredAfterDamage(victimId);
+      return;
+    }
+    const eventVictimId = event.payload.targetPlayerIds?.[0];
+    if (eventVictimId !== victimId) return;
+
+    const victim = this.state.players.find((player) => player.id === victimId);
+    if (!victim || victim.hp <= 0 || victim.dead) {
+      this.clearDeferredAfterDamage(victimId);
+      return;
+    }
+
+    delete this.state.resolution.context.deferredAfterDamagePlayerId;
+
+    await this.rules.emitForPlayersWithSkills(
+      {
+        state: this.state,
+        event,
+        phase: 'post',
+        ownerPlayerId: victimId,
+        log: (message) => this.log(message),
+        deck: this.deck,
+        setPrompt: (prompt) => this.setPrompt(prompt),
+      },
+      GameTiming.AFTER_DAMAGE,
+    );
+  }
+
+  private clearDeferredAfterDamage(victimId: string): void {
+    const deferredId = this.state.resolution.context.deferredAfterDamagePlayerId as
+      | string
+      | undefined;
+    if (deferredId === victimId) {
+      delete this.state.resolution.context.deferredAfterDamagePlayerId;
+    }
+    const event = this.state.resolution.context.lastDamageEvent as GameEvent | undefined;
+    if (event?.type === GameEventType.TAKE_DAMAGE && event.payload.targetPlayerIds?.[0] === victimId) {
+      delete this.state.resolution.context.lastDamageEvent;
+    }
   }
 
   /** 角色死亡：公开身份、弃置所有牌、击杀奖惩、胜负判定 */
@@ -1592,6 +1648,8 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
     const victim = this.state.players.find((p) => p.id === playerId);
     if (!victim || victim.dead) return;
     if (victim.hp > 0) return;
+
+    this.clearDeferredAfterDamage(playerId);
 
     victim.dead = true;
     victim.roleRevealed = true;
@@ -1700,8 +1758,11 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
       if (dyingPlayer.hp > 0) {
         setDyingRescueContext(this.state.resolution.context, undefined);
         this.setPrompt(null);
-        await this.drainStack();
-        await this.cardPlay.advanceAoeIfPending(this);
+        await this.resumeAfterDamageSkills(dyingPlayer.id);
+        if (!this.state.prompt) {
+          await this.drainStack();
+          await this.cardPlay.advanceAoeIfPending(this);
+        }
         return { ok: true };
       }
     } else if (choiceId === 'pass') {
@@ -1894,8 +1955,9 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
     sourceId: string,
     promptId: string,
     handIndex: number,
+    handCardEntry?: string,
   ): { ok: boolean; error?: string } {
-    return this.turnRunner.submitModifyJudge(sourceId, promptId, handIndex);
+    return this.turnRunner.submitModifyJudge(sourceId, promptId, handIndex, handCardEntry);
   }
 
   skipModifyJudge(sourceId: string, promptId: string): { ok: boolean; error?: string } {
@@ -1914,11 +1976,20 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
     return this.turnRunner.cancelDiscard(sourceId, promptId);
   }
 
-  submitZoneCard(
+  async submitZoneCard(
     sourceId: string,
     promptId: string,
     choiceId: string,
-  ): { ok: boolean; error?: string } {
+  ): Promise<{ ok: boolean; error?: string }> {
+    const prompt = this.state.prompt;
+    if (prompt?.skillId === 'ganglie') {
+      const res = this.submitGanglieZoneCard(sourceId, promptId, choiceId);
+      if (res.ok) {
+        this.syncStackToState();
+        await this.drainStack();
+      }
+      return res;
+    }
     const res = this.cardPlay.submitZoneCardSelection(
       this,
       sourceId,
@@ -1927,6 +1998,71 @@ export class SangokushiEngine implements EventResolverHost, TurnRunnerHost {
     );
     this.syncStackToState();
     return res;
+  }
+
+  private submitGanglieZoneCard(
+    pickerId: string,
+    promptId: string,
+    choiceId: string,
+  ): { ok: boolean; error?: string } {
+    const prompt = this.state.prompt;
+    const zonePick = getZonePickContext(this.state.resolution.context);
+    if (!prompt || prompt.id !== promptId || !zonePick || prompt.skillId !== 'ganglie') {
+      return { ok: false, error: '提示已失效' };
+    }
+    if (prompt.type !== 'select_zone_card' || prompt.playerId !== pickerId) {
+      return { ok: false, error: '当前不能选牌' };
+    }
+
+    const parsed = parseZoneCardId(choiceId);
+    if (!parsed) return { ok: false, error: '请选择一张牌' };
+
+    const picker = this.state.players.find((player) => player.id === zonePick.sourcePlayerId);
+    const target = this.state.players.find((player) => player.id === zonePick.targetPlayerId);
+    if (!picker || !target) {
+      setZonePickContext(this.state.resolution.context, undefined);
+      this.setPrompt(null);
+      return { ok: false, error: '状态错误' };
+    }
+    if (!canDiscardZoneCard(picker, target, parsed.zone, parsed.index)) {
+      return { ok: false, error: '所选牌无效' };
+    }
+
+    let removed: string | undefined;
+    if (parsed.zone === 'hand') {
+      if (parsed.index < 0 || parsed.index >= target.handCards.length) {
+        return { ok: false, error: '所选牌无效' };
+      }
+      removed = target.handCards.splice(parsed.index, 1)[0];
+      this.afterPlayerLostHandCards(target, 1);
+    } else if (parsed.zone === 'equipment') {
+      if (parsed.index < 0 || parsed.index >= target.equipment.length) {
+        return { ok: false, error: '所选牌无效' };
+      }
+      removed = target.equipment.splice(parsed.index, 1)[0];
+      this.afterPlayerLostEquipmentCards(target, 1);
+    } else {
+      if (parsed.index < 0 || parsed.index >= target.judgeCards.length) {
+        return { ok: false, error: '所选牌无效' };
+      }
+      removed = target.judgeCards.splice(parsed.index, 1)[0];
+    }
+
+    if (!removed) return { ok: false, error: '所选牌无效' };
+    this.deck.discardCard(removed);
+    if (parsed.zone === 'equipment') {
+      this.log(`${picker.generalName} 弃置 ${target.generalName} 的装备【${removed}】`);
+    } else if (parsed.zone === 'judge') {
+      this.log(`${picker.generalName} 弃置 ${target.generalName} 的判定区【${removed}】`);
+    } else {
+      this.log(
+        `${picker.generalName} 弃置 ${target.generalName} 的${formatHandEntryForLog(removed)}`,
+      );
+    }
+
+    setZonePickContext(this.state.resolution.context, undefined);
+    this.setPrompt(null);
+    return { ok: true };
   }
 
   submitQianxun(

@@ -1,25 +1,10 @@
 import { CardRegistry } from '@tk/engine';
-import { stripGeneralPrefixInText } from '../../utils/display';
+import { stripGeneralPrefixInText, formatCardTypeLabel } from '../../utils/display';
 import styles from './GameModal.module.css';
 
 interface CardDetailModalProps {
   cardName: string;
   onClose: () => void;
-}
-
-function slotLabel(subType?: string | null): string {
-  switch (subType) {
-    case 'weapon':
-      return '武器';
-    case 'armor':
-      return '防具';
-    case 'horse_plus':
-      return '+1马';
-    case 'horse_minus':
-      return '-1马';
-    default:
-      return '装备';
-  }
 }
 
 export function CardDetailModal({ cardName, onClose }: CardDetailModalProps) {
@@ -43,7 +28,7 @@ export function CardDetailModal({ cardName, onClose }: CardDetailModalProps) {
         <div className={styles.body}>
           <dl className={styles.meta}>
             <dt>类型</dt>
-            <dd>{slotLabel(card.subType)}</dd>
+            <dd>{formatCardTypeLabel(card.type, card.subType)}</dd>
             <dt>卡牌名</dt>
             <dd>{stripGeneralPrefixInText(card.name)}</dd>
           </dl>

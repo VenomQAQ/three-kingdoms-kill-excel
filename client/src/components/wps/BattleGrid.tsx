@@ -1,15 +1,16 @@
 import { CardRegistry } from '@tk/engine';
 import { ChatMessage, Room, RoomPlayer } from '@tk/shared';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { HandCardPick } from '../../types/hand';
 import { COL_LABELS } from '../../data/decoy';
-import { formatCharacterLine, formatPlayerName, stripGeneralPrefixInText } from '../../utils/display';
+import { formatCharacterLine, formatPlayerName, splitLogLineForSuitColors, stripGeneralPrefixInText } from '../../utils/display';
 import { formatChatTime } from '../../utils/chatTime';
 import { useCellFiller } from '../../utils/useCellFiller';
 import styles from './SpreadsheetGrid.module.css';
 
-const HEADERS = ['用户', '角色名', '技能', '血量', '手牌', '装备区', '判定区', '回合状态'];
+const HEADERS = ['用户', '武将', '技能', '血量', '手牌', '装备区', '判定区', '回合状态'];
 const COL_WIDTHS = [180, 140, 72, 62, 80, 150, 110, 96];
+const DATA_COL_COUNT = HEADERS.length;
 const ROWS_PER_PLAYER = 2;
 
 interface BattleGridProps {
@@ -40,6 +41,26 @@ function formatEquipmentName(name: string): string {
 
 function isPlayerDead(player: RoomPlayer): boolean {
   return (player.hp ?? 0) <= 0;
+}
+
+function renderFillerCells(
+  rowNum: number,
+  allCols: string[],
+  fillerColCount: number,
+  selectedCell: string,
+  onSelectCell: (ref: string) => void,
+) {
+  return Array.from({ length: fillerColCount }, (_, index) => {
+    const col = allCols[DATA_COL_COUNT + index];
+    const ref = `${col}${rowNum}`;
+    return (
+      <div
+        key={ref}
+        className={`${styles.fillerCell} ${ref === selectedCell ? styles.selected : ''}`}
+        onClick={() => onSelectCell(ref)}
+      />
+    );
+  });
 }
 
 export function BattleGrid({
@@ -73,7 +94,7 @@ export function BattleGrid({
     }
   }, [chatMessages]);
 
-  const cols = COL_LABELS.slice(0, HEADERS.length);
+  const cols = COL_LABELS.slice(0, DATA_COL_COUNT);
   const acting = actingPlayerId ?? playerId;
   const turnPlayer =
     room.sandbox != null ? room.players[room.sandbox.turnIndex] : null;
@@ -81,7 +102,14 @@ export function BattleGrid({
   const logs = room.sandbox?.log ?? [];
   const orderedLogs = [...logs].reverse();
   const dataRowCount = playerStartRow + room.players.length * ROWS_PER_PLAYER;
-  const filler = useCellFiller(wrapRef, dataRowCount);
+  const filler = useCellFiller(wrapRef, dataRowCount, DATA_COL_COUNT);
+  const allCols = useMemo(
+    () => Array.from(
+      { length: DATA_COL_COUNT + filler.cols },
+      (_, index) => COL_LABELS[index] ?? `C${index + 1}`,
+    ),
+    [filler.cols],
+  );
   const totalRows = dataRowCount + filler.rows;
 
   const handleChatSubmit = () => {
@@ -107,6 +135,7 @@ export function BattleGrid({
               style={{ minWidth: COL_WIDTHS[index], width: COL_WIDTHS[index] }}
             />
           ))}
+          {renderFillerCells(rowNum, allCols, filler.cols, selectedCell, onSelectCell)}
         </div>
       );
     }
@@ -294,6 +323,7 @@ export function BattleGrid({
 
           return null;
         })}
+        {renderFillerCells(rowNum, allCols, filler.cols, selectedCell, onSelectCell)}
       </div>
     );
   };
@@ -313,6 +343,12 @@ export function BattleGrid({
                 {col}
               </div>
             ))}
+            {allCols.slice(DATA_COL_COUNT).map((col) => (
+              <div key={col} className={styles.colHeader}>
+                {col}
+              </div>
+            ))}
+            {filler.cols === 0 ? <div className={styles.colHeaderFlex} /> : null}
           </div>
           <div className={styles.body}>
             <div className={styles.row}>
@@ -332,6 +368,7 @@ export function BattleGrid({
                   </div>
                 );
               })}
+              {renderFillerCells(1, allCols, filler.cols, selectedCell, onSelectCell)}
             </div>
 
             {room.players.map((player, index) => {
@@ -369,7 +406,7 @@ export function BattleGrid({
                         onClick={() => onSelectCell(`${col}${rowNum}`)}
                       />
                     ))}
-                    <div className={styles.fillerCellFlex} />
+                    {renderFillerCells(rowNum, allCols, filler.cols, selectedCell, onSelectCell)}
                   </div>
                 );
               },
@@ -402,7 +439,15 @@ export function BattleGrid({
                     line.includes('判定') ? styles.judgeLogLine : ''
                   }`}
                 >
-                  {line}
+                  {splitLogLineForSuitColors(line).map((segment, segmentIndex) =>
+                    segment.redSuit ? (
+                      <span key={`${index}-${segmentIndex}`} className={styles.redSuit}>
+                        {segment.text}
+                      </span>
+                    ) : (
+                      <span key={`${index}-${segmentIndex}`}>{segment.text}</span>
+                    ),
+                  )}
                 </div>
               ))
             )}

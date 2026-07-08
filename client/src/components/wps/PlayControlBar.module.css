@@ -107,6 +107,15 @@
   box-shadow: 0 2px 4px rgba(33, 115, 70, 0.25);
 }
 
+.redSuit {
+  color: #c00000;
+}
+
+.chipOn .redSuit,
+.chip:not(:disabled):hover .redSuit {
+  color: #ffd6d6;
+}
+
 .empty {
   color: #aaa;
 }

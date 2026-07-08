@@ -572,7 +572,7 @@ describe('CardPlayService trick resolution', () => {
     expect(prompt.zoneCardOptions?.some((option) => /^手牌 \d+$/.test(option.label))).toBe(true);
     expect(prompt.zoneCardOptions?.some((option) => option.label.includes('【闪】'))).toBe(false);
 
-    expect(engine.submitZoneCard('a', prompt.id, 'judge:0')).toMatchObject({ ok: true });
+    await expect(engine.submitZoneCard('a', prompt.id, 'judge:0')).resolves.toMatchObject({ ok: true });
     expect(target.judgeCards).toEqual([]);
     expect(engine.getState().discardPile).toContain('闪电');
     expect(engine.getState().log).toContain('关羽 失去判定区【闪电】');
@@ -598,7 +598,7 @@ describe('CardPlayService trick resolution', () => {
       ]),
     );
 
-    expect(engine.submitZoneCard('a', prompt.id, 'judge:0')).toMatchObject({ ok: true });
+    await expect(engine.submitZoneCard('a', prompt.id, 'judge:0')).resolves.toMatchObject({ ok: true });
     expect(target.judgeCards).toEqual([]);
     expect(source.handCards).toContain('乐不思蜀');
     expect(engine.getState().log).toContain('刘备 获得 关羽 的判定区【乐不思蜀】');
@@ -617,7 +617,7 @@ describe('CardPlayService trick resolution', () => {
     const prompt = engine.getState().prompt!;
     expect(prompt).toMatchObject({ type: 'select_zone_card', playerId: 'a', cardName: '过河拆桥' });
 
-    expect(engine.submitZoneCard('a', prompt.id, 'hand:0')).toMatchObject({ ok: true });
+    await expect(engine.submitZoneCard('a', prompt.id, 'hand:0')).resolves.toMatchObject({ ok: true });
     expect(target.handCards).toHaveLength(1);
     expect(target.handCards[0]).toContain('【杀】');
     expect(target.skillUseCount.lianying).toBe(1);
@@ -638,7 +638,7 @@ describe('CardPlayService trick resolution', () => {
 
     const prompt = engine.getState().prompt!;
     expect(prompt).toMatchObject({ type: 'select_zone_card', playerId: 'a' });
-    expect(engine.submitZoneCard('a', prompt.id, 'equipment:0')).toMatchObject({ ok: true });
+    await expect(engine.submitZoneCard('a', prompt.id, 'equipment:0')).resolves.toMatchObject({ ok: true });
 
     expect(target.equipment).toEqual([]);
     expect(target.handCards).toHaveLength(handCountBefore + 2);
@@ -663,7 +663,7 @@ describe('CardPlayService trick resolution', () => {
 
     const prompt = engine.getState().prompt!;
     expect(prompt).toMatchObject({ type: 'select_zone_card', playerId: 'a' });
-    expect(engine.submitZoneCard('a', prompt.id, 'equipment:0')).toMatchObject({ ok: true });
+    await expect(engine.submitZoneCard('a', prompt.id, 'equipment:0')).resolves.toMatchObject({ ok: true });
 
     expect(target.equipment).toEqual([]);
     expect(source.handCards).toContain('青龙偃月刀');
@@ -750,7 +750,7 @@ describe('CardPlayService trick resolution', () => {
       playerId: 'a',
       cardName: '顺手牵羊',
     });
-    expect(engine.submitZoneCard('a', zonePrompt.id, 'equipment:0')).toMatchObject({ ok: true });
+    await expect(engine.submitZoneCard('a', zonePrompt.id, 'equipment:0')).resolves.toMatchObject({ ok: true });
     expect(target.equipment).toEqual([]);
     expect(source.handCards).toContain('青龙偃月刀');
   });
@@ -764,7 +764,32 @@ describe('CardPlayService trick resolution', () => {
 
     expect(engine.getState().prompt).toBeNull();
     expect(engine.getState().resolution.targetQueue).toBeNull();
-    expect(engine.getState().log).toContain('【南蛮入侵】被【无懈可击】抵消');
+    expect(engine.getState().log).toContain('【南蛮入侵】被抵消');
+  });
+
+  it('顺手牵羊被无懈抵消时日志按使用→无懈→被抵消顺序记录', async () => {
+    const engine = engineWithHands('顺手牵羊');
+    const target = engine.getState().players[1]!;
+    target.generalName = '曹操';
+
+    expect(engine.initiatePlayCard('a', '顺手牵羊').ok).toBe(true);
+    await chooseTargets(engine, ['b']);
+
+    const wuxiePrompt = engine.getState().prompt!;
+    expect(wuxiePrompt).toMatchObject({ type: 'response', playerId: 'b' });
+    await engine.submitPromptChoice('b', wuxiePrompt.id, 'wuxie:b');
+
+    expect(engine.getState().prompt).toBeNull();
+    const log = engine.getState().log;
+    expect(log).toContain('刘备 对 曹操 使用【顺手牵羊】');
+    expect(log).toContain('曹操 使用【无懈可击】抵消【顺手牵羊】对曹操的效果');
+    expect(log).toContain('【顺手牵羊】被抵消');
+
+    const useIdx = log.findIndex((line) => line.includes('使用【顺手牵羊】'));
+    const wuxieIdx = log.findIndex((line) => line.includes('使用【无懈可击】'));
+    const cancelIdx = log.findIndex((line) => line.includes('【顺手牵羊】被抵消'));
+    expect(useIdx).toBeGreaterThan(wuxieIdx);
+    expect(wuxieIdx).toBeGreaterThan(cancelIdx);
   });
 
   it('界黄月英使用普通锦囊时触发集智摸一张牌', async () => {
@@ -840,7 +865,7 @@ describe('CardPlayService trick resolution', () => {
       { id: 'equipment:2', label: '装备【赤兔】' },
     ]);
 
-    expect(engine.submitZoneCard('a', prompt.id, 'equipment:0')).toMatchObject({
+    await expect(engine.submitZoneCard('a', prompt.id, 'equipment:0')).resolves.toMatchObject({
       ok: false,
       error: '所选牌无效',
     });
@@ -1488,5 +1513,70 @@ describe('CardPlayService trick resolution', () => {
     expect(source.handCards).toEqual([]);
     expect(source.equipment).toEqual([]);
     expect(engine.getState().log).toContain('刘备 发动【贯石斧】，弃置两张牌令【杀】强制命中 张飞');
+  });
+
+  it('仁王盾只令黑色杀无效，红色杀可继续结算且日志展示花色', async () => {
+    const redEngine = new SangokushiEngine({
+      players: [
+        player('a', 1, '刘备', ['♥7【杀】']),
+        {
+          ...player('b', 2, '关羽', ['闪']),
+          equipment: ['仁王盾'],
+        },
+      ],
+    });
+    redEngine.getState().turn.index = 0;
+    redEngine.getState().turn.phase = 'play';
+
+    expect(redEngine.initiatePlayCard('a', '杀', 0)).toMatchObject({ ok: true });
+    await chooseTargets(redEngine, ['b']);
+    expect(redEngine.getState().prompt).toMatchObject({ type: 'response', playerId: 'b', cardName: '杀' });
+    expect(redEngine.getState().log).toContain('刘备 对 关羽 使用♥7【杀】');
+
+    const blackEngine = new SangokushiEngine({
+      players: [
+        player('a', 1, '刘备', ['♣7【杀】']),
+        {
+          ...player('b', 2, '关羽', ['闪']),
+          equipment: ['仁王盾'],
+        },
+      ],
+    });
+    blackEngine.getState().turn.index = 0;
+    blackEngine.getState().turn.phase = 'play';
+
+    expect(blackEngine.initiatePlayCard('a', '杀', 0)).toMatchObject({ ok: true });
+    await chooseTargets(blackEngine, ['b']);
+    expect(blackEngine.getState().prompt).toBeNull();
+    expect(blackEngine.getState().log).toContain('【仁王盾】生效，♣7【杀】 对 关羽 无效');
+  });
+
+  it('借刀杀人：持刀者出杀后继续向被杀目标询问闪', async () => {
+    const engine = new SangokushiEngine({
+      players: [
+        {
+          ...player('a', 1, '曹操', ['借刀杀人']),
+          kingdom: 'wei',
+        },
+        {
+          ...player('b', 2, '刘备', ['♣9【杀】']),
+          equipment: ['青龙偃月刀'],
+        },
+        player('c', 3, '司马懿', ['闪']),
+      ],
+    });
+    engine.getState().turn.index = 0;
+    engine.getState().turn.phase = 'play';
+
+    expect(engine.initiatePlayCard('a', '借刀杀人')).toMatchObject({ ok: true });
+    await chooseTargets(engine, ['b', 'c']);
+
+    const holderPrompt = engine.getState().prompt!;
+    expect(holderPrompt).toMatchObject({ type: 'response', playerId: 'b', cardName: '借刀杀人' });
+    await engine.submitPromptChoice('b', holderPrompt.id, 'card:♣9【杀】');
+
+    expect(engine.getState().log).toContain('刘备 打出 ♣9【杀】（1/1）');
+    expect(engine.getState().log).toContain('刘备 对 司马懿 使用♣9【杀】（借刀杀人）');
+    expect(engine.getState().prompt).toMatchObject({ type: 'response', playerId: 'c', cardName: '杀' });
   });
 });

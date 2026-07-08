@@ -1,8 +1,12 @@
-import { CardRegistry } from '@tk/engine';
+import { CardRegistry, isInAttackRange, playerHasWeapon } from '@tk/engine';
+import type { EnginePlayerState } from '@tk/engine';
 import type { GamePrompt, PromptSkillInfo, Room, RoomPlayer } from '@tk/shared';
 import { useEffect, useMemo, useState } from 'react';
 import {
   formatGeneralName,
+  formatCardTypeLabel,
+  formatHandCardLabel,
+  formatPlayCardButtonLabel,
   stripGeneralPrefixInText,
   toChineseCount,
 } from '../../utils/display';
@@ -18,7 +22,7 @@ interface GamePromptModalProps {
   onRendeGive: (targetId: string, cards: string[], handIndices: number[]) => void;
   onQingnangRecover: (targetId: string, handIndices: number[]) => void;
   onZhihengConfirm: (handIndices: number[]) => void;
-  onModifyJudge: (promptId: string, handIndex: number) => void;
+  onModifyJudge: (promptId: string, handIndex: number, handCardEntry?: string) => void;
   onSkipModifyJudge: (promptId: string) => void;
   onDiscardCards: (promptId: string, handIndices: number[]) => void;
   onSelectZoneCard: (promptId: string, choiceId: string) => void;
@@ -60,17 +64,43 @@ function SkillListSection({ skills }: { skills: PromptSkillInfo[] }) {
   );
 }
 
-function judgeCardDescription(cardName?: string): string {
+function judgeCardRule(cardName?: string): string {
   switch (stripGeneralPrefixInText(cardName ?? '')) {
     case '乐不思蜀':
-      return '判定为红桃时不生效，可以正常出牌；否则跳过出牌阶段。';
+      return '判定结果为红桃时不生效，可正常出牌；否则跳过出牌阶段。';
     case '兵粮寸断':
-      return '判定为梅花时不生效，可以正常摸牌；否则跳过摸牌阶段。';
+      return '判定结果为梅花时不生效，可正常摸牌；否则跳过摸牌阶段。';
     case '闪电':
-      return '判定为黑桃 2 到 9 时生效，受到 3 点雷电伤害；否则不生效。';
+      return '判定结果为黑桃 2～9 时生效，受到 3 点雷电伤害；否则移入下一名角色判定区。';
     default:
-      return '选择一张手牌打出，替换当前判定结果。';
+      return '按该锦囊的判定说明结算。';
   }
+}
+
+function asEnginePlayer(player: RoomPlayer): EnginePlayerState {
+  return {
+    id: player.id,
+    seat: player.seat ?? 0,
+    nickname: player.nickname,
+    generalId: player.general ?? player.id,
+    generalName: player.general ?? player.nickname,
+    role: player.role ?? '反贼',
+    roleRevealed: player.roleRevealed,
+    kingdom: 'shu',
+    hp: player.hp ?? 4,
+    maxHp: player.maxHp ?? 4,
+    handCards: player.handCards ?? [],
+    equipment: player.equipment ?? [],
+    judgeCards: player.judgeCards ?? [],
+    shaUsedCount: 0,
+    skillUseCount: {},
+    skillTargetUseCount: {},
+    dead: player.dead,
+  };
+}
+
+function isAlivePlayer(player: RoomPlayer): boolean {
+  return !player.dead && (player.hp ?? 0) > 0;
 }
 
 function CardPickChips({
@@ -123,6 +153,8 @@ export function GamePromptModal({
   onSelectZoneCard,
   onClose,
 }: GamePromptModalProps) {
+  const [jiedaoHolderId, setJiedaoHolderId] = useState('');
+  const [jiedaoVictimId, setJiedaoVictimId] = useState('');
   const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
   const [rendeTarget, setRendeTarget] = useState('');
   const [rendeCardIndices, setRendeCardIndices] = useState<number[]>([]);
@@ -137,6 +169,8 @@ export function GamePromptModal({
 
   useEffect(() => {
     setSelectedTargets([]);
+    setJiedaoHolderId('');
+    setJiedaoVictimId('');
     setRendeTarget('');
     setRendeCardIndices([]);
     setZhihengCardIndices([]);
@@ -150,16 +184,54 @@ export function GamePromptModal({
     setGuanxingTopCount(guanxingCards.length);
   }, [prompt.id]);
 
-  const cardDef = prompt.cardName ? CardRegistry.getByName(prompt.cardName) : undefined;
+  const cardDef = prompt.cardName
+    ? CardRegistry.getByName(prompt.cardName)
+    : prompt.cardId
+      ? CardRegistry.getById(prompt.cardId)
+      : undefined;
+  const isJiedao =
+    prompt.type === 'select_targets' &&
+    (prompt.cardId === 'jiedao_sharen' || cardDef?.id === 'jiedao_sharen');
   const targetMin = cardDef?.targeting.count?.min ?? 1;
   const targetMax = cardDef?.targeting.count?.max ?? 1;
   const singleTarget = targetMax <= 1;
   const sourcePlayer = room.players.find((player) => player.id === prompt.sourcePlayerId);
   const promptActor = room.players.find((player) => player.id === prompt.playerId);
+  const dyingPlayer = prompt.dyingPlayerId
+    ? room.players.find((player) => player.id === prompt.dyingPlayerId)
+    : undefined;
   const judgeTarget = prompt.judgeTargetId
     ? room.players.find((player) => player.id === prompt.judgeTargetId)
     : undefined;
   const turnPhase = room.sandbox?.turnPhase;
+  const enginePlayers = useMemo(
+    () => room.players.map(asEnginePlayer),
+    [room.players],
+  );
+  const jiedaoSourceId = prompt.playerId;
+  const jiedaoHolderCandidates = useMemo(
+    () =>
+      room.players.filter(
+        (player) =>
+          isAlivePlayer(player) &&
+          player.id !== jiedaoSourceId &&
+          playerHasWeapon(asEnginePlayer(player)),
+      ),
+    [room.players, jiedaoSourceId],
+  );
+  const jiedaoHolder = jiedaoHolderCandidates.find((player) => player.id === jiedaoHolderId);
+  const jiedaoVictimCandidates = useMemo(() => {
+    if (!jiedaoHolder) return [];
+    const holderState = asEnginePlayer(jiedaoHolder);
+    return room.players.filter(
+      (player) =>
+        isAlivePlayer(player) &&
+        player.id !== jiedaoSourceId &&
+        player.id !== jiedaoHolder.id &&
+        isInAttackRange(enginePlayers, holderState, asEnginePlayer(player)),
+    );
+  }, [enginePlayers, jiedaoHolder, jiedaoSourceId, room.players]);
+  const noJiedaoHolders = isJiedao && jiedaoHolderCandidates.length === 0;
   const validTargets = (prompt.validTargetIds ?? [])
     .map((id) => room.players.find((player) => player.id === id))
     .filter((player): player is RoomPlayer => !!player);
@@ -207,11 +279,37 @@ export function GamePromptModal({
     prompt.validResponseCards?.includes('无懈可击') === true &&
     !!sourcePlayer &&
     (prompt.targetPlayerIds?.length ?? 0) > 0;
+  const hasResponseContext =
+    prompt.type === 'response' &&
+    !!sourcePlayer &&
+    !!prompt.cardName &&
+    (prompt.targetPlayerIds?.length ?? 0) > 0;
+  const hasDyingRescueContext =
+    prompt.type === 'dying_rescue' && !!dyingPlayer && !!promptActor;
+  const isSelfDyingRescue =
+    hasDyingRescueContext && dyingPlayer!.id === promptActor!.id;
+  const dyingRescueHint = useMemo(() => {
+    if (!hasDyingRescueContext || !dyingPlayer || !promptActor) return '';
+    if (isSelfDyingRescue) {
+      return `轮到你（${formatGeneralName(promptActor)}）决定是否使用【桃】或【酒】自救`;
+    }
+    if (prompt.message?.includes('【救援】')) {
+      return `轮到你（${formatGeneralName(promptActor)}）响应【救援】，替 ${formatGeneralName(dyingPlayer)} 打出【桃】`;
+    }
+    return `轮到你（${formatGeneralName(promptActor)}）决定是否对 ${formatGeneralName(dyingPlayer)} 使用【桃】救助`;
+  }, [
+    dyingPlayer,
+    hasDyingRescueContext,
+    isSelfDyingRescue,
+    prompt.message,
+    promptActor,
+  ]);
   const discardNeed = prompt.discardCount ?? 0;
   const discardRecoverNeed = Math.max(1, prompt.discardCount ?? 1);
   const noLegalTargets =
     (prompt.type === 'select_targets' ||
       (prompt.type === 'use_skill' && Array.isArray(prompt.validTargetIds))) &&
+    !isJiedao &&
     validTargets.length === 0;
 
   const title = useMemo(() => {
@@ -235,12 +333,19 @@ export function GamePromptModal({
       return '是否发动改判？';
     }
     if (prompt.type === 'response') {
+      if (isWuxieResponse) return '是否使用【无懈可击】？';
+      if (prompt.cardName) {
+        return `响应【${stripGeneralPrefixInText(prompt.cardName)}】`;
+      }
       return '请进行响应';
     }
     if (prompt.type === 'pick_revealed') {
       return '五谷丰登 · 选牌';
     }
     if (prompt.type === 'dying_rescue') {
+      if (prompt.dyingPlayerId && prompt.dyingPlayerId === prompt.playerId) {
+        return '濒死自救';
+      }
       return '濒死救助';
     }
     if (isLiuli) {
@@ -295,7 +400,10 @@ export function GamePromptModal({
     isYijuePindian,
     isYijueRecover,
     isZhiheng,
+    isWuxieResponse,
     prompt.cardName,
+    prompt.dyingPlayerId,
+    prompt.playerId,
     prompt.skillName,
     prompt.type,
     zhihengCardIndices.length,
@@ -318,7 +426,7 @@ export function GamePromptModal({
   const lijianTargetOptions = validTargets.filter((target) => target.id !== rendeTarget);
   const liyuCardOptions = prompt.skillCardOptions ?? [];
   const zhihengHand = actingPlayer?.handCards ?? [];
-  const modifyHand = promptActor?.handCards ?? [];
+  const modifyHand = prompt.modifyHandCards ?? promptActor?.handCards ?? [];
   const handForDiscard = actingPlayer?.handCards ?? [];
   const zonePickTarget = (prompt.targetPlayerIds ?? [])[0]
     ? room.players.find((player) => player.id === prompt.targetPlayerIds![0])
@@ -327,6 +435,27 @@ export function GamePromptModal({
     .map((id) => room.players.find((player) => player.id === id))
     .filter((player): player is RoomPlayer => !!player)
     .map((player) => formatGeneralName(player));
+
+  const formatResponseOptionLabel = (optionId: string, optionLabel: string): string => {
+    if (optionId.startsWith('lord:card:')) {
+      return formatPlayCardButtonLabel(optionId.slice('lord:card:'.length));
+    }
+    if (optionId.startsWith('card:')) {
+      return formatPlayCardButtonLabel(optionId.slice('card:'.length));
+    }
+    if (!isWuxieResponse) return optionLabel;
+    if (optionId === 'pass') return '不出【无懈可击】';
+    if (optionId === 'wuxie:all') {
+      return `为 ${wuxieTargetNames.join('、')} 抵消【${stripGeneralPrefixInText(prompt.cardName ?? '锦囊')}】`;
+    }
+    if (optionId.startsWith('wuxie:')) {
+      const targetId = optionId.slice('wuxie:'.length);
+      const target = room.players.find((player) => player.id === targetId);
+      const targetName = target ? formatGeneralName(target) : '目标';
+      return `为 ${targetName} 抵消【${stripGeneralPrefixInText(prompt.cardName ?? '锦囊')}】`;
+    }
+    return optionLabel;
+  };
   const guanxingCards = prompt.guanxingCards ?? [];
   const orderedGuanxingCards = guanxingOrder.map((index) => guanxingCards[index]).filter(Boolean);
   const skillCardOptions = prompt.skillCardOptions ?? [];
@@ -434,20 +563,64 @@ export function GamePromptModal({
           )}
         </header>
         <div className={styles.body}>
-          {/* {prompt.message &&
-            prompt.type !== 'play_card_confirm' &&
-            prompt.type !== 'select_targets' && (
-            <p className={styles.message}>
-              {isWuxieResponse && sourcePlayer
-                ? `${formatGeneralName(sourcePlayer)}对${wuxieTargetNames.join('、')}使用【${stripGeneralPrefixInText(prompt.cardName ?? '')}】`
-                : prompt.message}
-            </p>
-          )} */}
-          {/* 保留引用避免 noUnusedLocals；上方 JSX 已注释 */}
-          {void isWuxieResponse}
-          {void wuxieTargetNames}
+          {hasDyingRescueContext && dyingPlayer && promptActor && (
+            <section className={styles.section}>
+              <h3>濒死局面</h3>
+              <div className={styles.playChainBox}>
+                <p className={styles.playChainLine}>
+                  <span className={styles.playChainActor}>{formatGeneralName(dyingPlayer)}</span>
+                  {' 体力 '}
+                  {dyingPlayer.hp ?? 0}/{dyingPlayer.maxHp ?? 0}
+                  {'，濒临死亡'}
+                </p>
+                <p className={styles.playChainHint}>
+                  {dyingRescueHint}
+                  {' · 手牌 '}
+                  {promptActor.handCards?.length ?? 0}
+                  {' 张'}
+                </p>
+              </div>
+            </section>
+          )}
 
-          {actingPlayer && (
+          {hasResponseContext && sourcePlayer && (
+            <section className={styles.section}>
+              <h3>{isWuxieResponse ? '锦囊结算' : '当前局面'}</h3>
+              <div className={styles.playChainBox}>
+                <p className={styles.playChainLine}>
+                  <span className={styles.playChainActor}>{formatGeneralName(sourcePlayer)}</span>
+                  {' 对 '}
+                  <span className={styles.playChainTarget}>{wuxieTargetNames.join('、')}</span>
+                  {' 使用了 '}
+                  <span className={styles.playChainCard}>
+                    【{stripGeneralPrefixInText(prompt.cardName ?? '')}】
+                  </span>
+                </p>
+                {isWuxieResponse ? (
+                  <p className={styles.playChainHint}>
+                    轮到你（{formatGeneralName(promptActor)}）决定是否打出【无懈可击】抵消该锦囊
+                    {promptActor ? ` · 手牌 ${promptActor.handCards?.length ?? 0} 张` : ''}。
+                  </p>
+                ) : promptActor ? (
+                  <p className={styles.playChainHint}>
+                    {stripGeneralPrefixInText(prompt.message) ||
+                      `轮到你（${formatGeneralName(promptActor)}）响应`}
+                    {' · 手牌 '}
+                    {promptActor.handCards?.length ?? 0}
+                    {' 张'}
+                  </p>
+                ) : prompt.message ? (
+                  <p className={styles.playChainHint}>{stripGeneralPrefixInText(prompt.message)}</p>
+                ) : null}
+              </div>
+            </section>
+          )}
+
+          {actingPlayer &&
+            prompt.type !== 'response' &&
+            prompt.type !== 'dying_rescue' &&
+            !isModifyJudge &&
+            !isWuxieResponse && (
             <section className={styles.section}>
               {/* <h3>当前操控</h3>
               <p className={styles.inlineMeta}>
@@ -468,15 +641,29 @@ export function GamePromptModal({
             </section>
           )}
 
+          {noJiedaoHolders && (
+            <section className={styles.section}>
+              <p className={styles.notice}>当前没有其他角色装备武器，无法使用【借刀杀人】。</p>
+            </section>
+          )}
+
           {isModifyJudge && (
             <section className={styles.section}>
               <h3>判定信息</h3>
-              <p>
-                被判定：{formatGeneralName(judgeTarget) || '—'} · 【
-                {prompt.judgeCardName ?? '未知'}】
-              </p>
-              <p>{judgeCardDescription(prompt.judgeCardName)}</p>
-              <p>当前判定结果：{prompt.judgeResult}</p>
+              <dl className={styles.meta}>
+                <dt>被判定人</dt>
+                <dd>{formatGeneralName(judgeTarget) || '—'}</dd>
+                <dt>触发锦囊</dt>
+                <dd>【{stripGeneralPrefixInText(prompt.judgeCardName ?? '未知')}】</dd>
+                <dt>判定规则</dt>
+                <dd>{judgeCardRule(prompt.judgeCardName)}</dd>
+                <dt>当前判定牌</dt>
+                <dd>
+                  {prompt.judgeResult
+                    ? formatHandCardLabel(prompt.judgeResult)
+                    : '尚未翻开'}
+                </dd>
+              </dl>
               <p className={styles.muted}>选择一张手牌打出，替换当前判定结果。</p>
               <ul className={styles.cardPickList}>
                 {modifyHand.map((card, index) => (
@@ -488,7 +675,7 @@ export function GamePromptModal({
                         checked={modifyJudgeIndex === index}
                         onChange={() => setModifyJudgeIndex(index)}
                       />
-                      <span>【{card}】</span>
+                      <span>{formatHandCardLabel(card)}</span>
                     </label>
                   </li>
                 ))}
@@ -499,7 +686,10 @@ export function GamePromptModal({
                   className={styles.primary}
                   disabled={modifyJudgeIndex == null}
                   onClick={() => {
-                    if (modifyJudgeIndex != null) onModifyJudge(prompt.id, modifyJudgeIndex);
+                    if (modifyJudgeIndex != null) {
+                      const handCardEntry = modifyHand[modifyJudgeIndex];
+                      onModifyJudge(prompt.id, modifyJudgeIndex, handCardEntry);
+                    }
                   }}
                 >
                   发动【{prompt.skillName ?? '改判'}】
@@ -515,7 +705,11 @@ export function GamePromptModal({
             </section>
           )}
 
-          {promptActor && (prompt.type === 'response' || prompt.type === 'dying_rescue') && (
+          {promptActor &&
+            (prompt.type === 'response' || prompt.type === 'dying_rescue') &&
+            !isWuxieResponse &&
+            !hasResponseContext &&
+            !hasDyingRescueContext && (
             <section className={styles.section}>
               <h3>{prompt.type === 'dying_rescue' ? '询问角色' : '响应角色'}</h3>
               <p>
@@ -524,15 +718,86 @@ export function GamePromptModal({
             </section>
           )}
 
-          {cardDef && (
+          {cardDef && !isWuxieResponse && (
             <section className={styles.section}>
               <h3>卡牌说明 · 【{stripGeneralPrefixInText(cardDef.name)}】</h3>
               <p>{stripGeneralPrefixInText(cardDef.description)}</p>
-              <p className={styles.muted}>类型：{cardDef.type}</p>
+              <p className={styles.muted}>
+                类型：{formatCardTypeLabel(cardDef.type, cardDef.subType)}
+              </p>
             </section>
           )}
 
-          {prompt.type === 'select_targets' && (
+          {isJiedao && (
+            <section className={styles.section}>
+              <h3>选择借刀对象与杀的目标</h3>
+              {!noJiedaoHolders && (
+                <>
+                  <label className={styles.fieldLabel}>
+                    有武器的角色
+                    <select
+                      className={styles.select}
+                      value={jiedaoHolderId}
+                      onChange={(event) => {
+                        setJiedaoHolderId(event.target.value);
+                        setJiedaoVictimId('');
+                      }}
+                    >
+                      <option value="">请选择持刀角色</option>
+                      {jiedaoHolderCandidates.map((target) => (
+                        <option key={target.id} value={target.id}>
+                          {formatGeneralName(target)} 体力:{target.hp ?? 0}/{target.maxHp ?? 0}
+                          {target.equipment?.length ? ` · 装备:${target.equipment.join('、')}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    杀的目标
+                    <select
+                      className={styles.select}
+                      value={jiedaoVictimId}
+                      onChange={(event) => setJiedaoVictimId(event.target.value)}
+                      disabled={!jiedaoHolderId}
+                    >
+                      <option value="">
+                        {jiedaoHolderId ? '请选择被杀目标' : '请先选择持刀角色'}
+                      </option>
+                      {jiedaoVictimCandidates.map((target) => (
+                        <option key={target.id} value={target.id}>
+                          {formatGeneralName(target)} 体力:{target.hp ?? 0}/{target.maxHp ?? 0}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {jiedaoHolderId && jiedaoVictimCandidates.length === 0 ? (
+                    <p className={styles.notice}>该角色攻击范围内没有其他可指定目标。</p>
+                  ) : null}
+                </>
+              )}
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={noJiedaoHolders || !jiedaoHolderId || !jiedaoVictimId}
+                  onClick={() =>
+                    onSelectTargets(prompt.id, [jiedaoHolderId, jiedaoVictimId])
+                  }
+                >
+                  确认目标
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => onConfirmPlay(prompt.id, 'cancel')}
+                >
+                  取消
+                </button>
+              </div>
+            </section>
+          )}
+
+          {prompt.type === 'select_targets' && !isJiedao && (
             <section className={styles.section}>
               <h3>选择使用目标</h3>
               {!noLegalTargets && (
@@ -1330,7 +1595,7 @@ export function GamePromptModal({
                       <div className={`${styles.targetOption} ${styles.sortableOption}`}>
                         <span className={styles.dragHandle} aria-hidden="true">⋮⋮</span>
                         <span className={styles.sortableCardText}>
-                          {position < topLimit ? '顶' : '底'} · 【{card}】
+                          {position < topLimit ? '顶' : '底'} · {formatHandCardLabel(card)}
                         </span>
                       </div>
                     </li>
@@ -1446,6 +1711,7 @@ export function GamePromptModal({
             !isModifyJudge &&
             !isDiscard &&
             !isZonePick &&
+            !isJiedao &&
             prompt.type !== 'select_targets' && (
               <div className={styles.actions}>
                 {prompt.options.map((option) => (
@@ -1465,7 +1731,7 @@ export function GamePromptModal({
                       }
                     }}
                   >
-                    {option.label}
+                    {formatResponseOptionLabel(option.id, option.label)}
                   </button>
                 ))}
               </div>

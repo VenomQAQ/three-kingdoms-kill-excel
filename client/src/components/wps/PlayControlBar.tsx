@@ -2,7 +2,7 @@ import { CardRegistry, CharacterRegistry, GameTiming } from '@tk/engine';
 import { RoomPlayer } from '@tk/shared';
 import type { HandCardPick } from '../../types/hand';
 import { isHandSelected } from '../../types/hand';
-import { formatGeneralName, stripGeneralPrefixInText } from '../../utils/display';
+import { formatGeneralName, splitLogLineForSuitColors, stripGeneralPrefixInText } from '../../utils/display';
 import styles from './PlayControlBar.module.css';
 
 interface PlayControlBarProps {
@@ -33,6 +33,18 @@ function equipmentSkillLabel(cardName: string): string | null {
   const card = CardRegistry.getByName(cardName);
   if (!card || card.type !== 'equipment') return null;
   return stripGeneralPrefixInText(card.name);
+}
+
+function renderHandCardText(card: string) {
+  return splitLogLineForSuitColors(card).map((segment, segmentIndex) =>
+    segment.redSuit ? (
+      <span key={segmentIndex} className={styles.redSuit}>
+        {segment.text}
+      </span>
+    ) : (
+      <span key={segmentIndex}>{segment.text}</span>
+    ),
+  );
 }
 
 export function PlayControlBar({
@@ -92,13 +104,13 @@ export function PlayControlBar({
         </select>
       </div>
       <span className={styles.sep}>|</span>
-      <div className={styles.item}>
+      {/* <div className={styles.item}>
         <span className={styles.label}>当前回合</span>
         <strong className={styles.turnName}>
           {formatGeneralName(turnPlayer) || '—'}
         </strong>
       </div>
-      <span className={styles.sep}>|</span>
+      <span className={styles.sep}>|</span> */}
       <div className={styles.cards}>
         <span className={styles.label}>手牌</span>
         {hand.length === 0 ? (
@@ -116,7 +128,7 @@ export function PlayControlBar({
               disabled={!isMyTurn}
               title={isMyTurn ? `单击选中，双击打出 ${card}` : '非当前回合角色'}
             >
-              {card}
+              {renderHandCardText(card)}
             </button>
           ))
         )}

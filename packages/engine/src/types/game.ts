@@ -68,6 +68,8 @@ export interface GamePrompt {
   judgeCardName?: string;
   judgeResult?: string;
   judgeTargetId?: string;
+  /** 改判时可打出的手牌（与引擎一致） */
+  modifyHandCards?: string[];
   message: string;
   options?: PromptOption[];
 }

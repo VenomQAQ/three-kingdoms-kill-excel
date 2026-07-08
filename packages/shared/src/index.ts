@@ -124,6 +124,8 @@ export interface GamePrompt {
   judgeCardName?: string;
   judgeResult?: string;
   judgeTargetId?: string;
+  /** 改判时可打出的手牌（与引擎一致，避免与 room.players 不同步） */
+  modifyHandCards?: string[];
   message: string;
   options?: { id: string; label: string }[];
 }
@@ -312,7 +314,7 @@ export interface ClientToServerEvents {
   'sandbox:rendeFinish': () => void;
   'sandbox:qingnangRecover': (payload: { targetId: string; handIndex?: number; handIndices?: number[] }) => void;
   'sandbox:zhihengConfirm': (payload: { handIndices: number[] }) => void;
-  'sandbox:modifyJudge': (payload: { promptId: string; handIndex: number }) => void;
+  'sandbox:modifyJudge': (payload: { promptId: string; handIndex: number; handCardEntry?: string }) => void;
   'sandbox:skipModifyJudge': (payload: { promptId: string }) => void;
   'sandbox:discardCards': (payload: { promptId: string; handIndices: number[] }) => void;
   'sandbox:cancelDiscard': (payload: { promptId: string }) => void;
@@ -337,7 +339,7 @@ export interface ClientToServerEvents {
   'game:rendeFinish': () => void;
   'game:qingnangRecover': (payload: { targetId: string; handIndex?: number; handIndices?: number[] }) => void;
   'game:zhihengConfirm': (payload: { handIndices: number[] }) => void;
-  'game:modifyJudge': (payload: { promptId: string; handIndex: number }) => void;
+  'game:modifyJudge': (payload: { promptId: string; handIndex: number; handCardEntry?: string }) => void;
   'game:skipModifyJudge': (payload: { promptId: string }) => void;
   'game:discardCards': (payload: { promptId: string; handIndices: number[] }) => void;
   'game:cancelDiscard': (payload: { promptId: string }) => void;

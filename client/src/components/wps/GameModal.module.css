@@ -188,6 +188,46 @@
   font-weight: 600;
 }
 
+.playChainBox {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #d9e8de;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #f8fcf9 0%, #f2f9f4 100%);
+}
+
+.playChainLine {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #262626;
+}
+
+.playChainActor,
+.playChainTarget,
+.playChainCard {
+  font-weight: 700;
+}
+
+.playChainActor {
+  color: #1a5c38;
+}
+
+.playChainTarget {
+  color: #c0392b;
+}
+
+.playChainCard {
+  color: #8b4513;
+}
+
+.playChainHint {
+  margin: 8px 0 0;
+  color: #666666;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

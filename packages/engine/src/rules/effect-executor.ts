@@ -1,6 +1,6 @@
 import type { EffectDefinition } from '../types/card';
 import { CardRegistry } from '../registry/card-registry';
-import type { EnginePlayerState } from '../types/game';
+import type { EnginePlayerState, GamePrompt } from '../types/game';
 import type { GameState } from '../state/game-state';
 import type { GameEvent } from '../types/event';
 import type { DeckPile } from '../engine/deck-pile';
@@ -15,6 +15,9 @@ import {
   equipToSlot,
   takeOneFromZone,
 } from '../engine/equipment-zone';
+import { listZoneCards } from '../engine/zone-card-pick';
+import { setZonePickContext } from '../resolution/card-play-context';
+import { nextPromptId } from '../utils/prompt-id';
 
 export interface EffectExecutionContext {
   state: GameState;
@@ -23,20 +26,22 @@ export interface EffectExecutionContext {
   targets: EnginePlayerState[];
   log: (message: string) => void;
   deck?: DeckPile;
+  setPrompt?: (prompt: GamePrompt | null) => void;
 }
 
 /**
  * 原子效果执行器：配置中的 effects[] 只映射到这里，不按卡牌 id 分支。
  */
 export class EffectExecutor {
-  runAll(effects: EffectDefinition[] | undefined, ctx: EffectExecutionContext): void {
-    if (!effects?.length) return;
+  runAll(effects: EffectDefinition[] | undefined, ctx: EffectExecutionContext): boolean {
+    if (!effects?.length) return false;
     for (const effect of effects) {
-      this.runOne(effect, ctx);
+      if (this.runOne(effect, ctx)) return true;
     }
+    return false;
   }
 
-  runOne(effect: EffectDefinition, ctx: EffectExecutionContext): void {
+  runOne(effect: EffectDefinition, ctx: EffectExecutionContext): boolean {
     switch (effect.action) {
       case 'draw':
         this.draw(ctx, effect);
@@ -51,8 +56,7 @@ export class EffectExecutor {
         this.discard(ctx, effect);
         break;
       case 'judge':
-        this.judge(ctx, effect);
-        break;
+        return this.judge(ctx, effect);
       case 'moveCard':
         this.moveCard(ctx, effect);
         break;
@@ -68,8 +72,9 @@ export class EffectExecutor {
         break;
       default:
         ctx.log(`[effect] unhandled primitive: ${effect.action}`);
-        break;
+        return false;
     }
+    return false;
   }
 
   private draw(ctx: EffectExecutionContext, effect: EffectDefinition): void {
@@ -124,7 +129,7 @@ export class EffectExecutor {
     }
   }
 
-  private judge(ctx: EffectExecutionContext, effect: EffectDefinition): void {
+  private judge(ctx: EffectExecutionContext, effect: EffectDefinition): boolean {
     if (effect.params?.placeInJudge) {
       const targets = ctx.targets.length ? ctx.targets : [ctx.source];
       const cardName = (ctx.event.payload.cardName as string | undefined) ?? '判定牌';
@@ -132,7 +137,7 @@ export class EffectExecutor {
         target.judgeCards.push(cardName);
         ctx.log(`${target.generalName} 的判定区置入【${cardName}】`);
       }
-      return;
+      return false;
     }
 
     const judgeName =
@@ -154,36 +159,72 @@ export class EffectExecutor {
 
     if (isRed(result) && redAction) {
       this.runJudgeFollowup(redAction, ctx, followupTargets);
-      return;
+      return false;
     }
 
     if (isBlack(result) && blackAction) {
-      this.runJudgeFollowup(blackAction, ctx, followupTargets);
+      return this.runJudgeFollowup(blackAction, ctx, followupTargets);
     }
+    return false;
   }
 
   private runJudgeFollowup(
     action: string,
     ctx: EffectExecutionContext,
     targets: EnginePlayerState[],
-  ): void {
-    if (targets.length === 0) return;
+  ): boolean {
+    if (targets.length === 0) return false;
     switch (action) {
       case 'damage':
         this.damage(
           { ...ctx, targets },
           { action: 'damage', params: { amount: 1 } },
         );
-        break;
+        return false;
       case 'discard':
         this.discard(
           { ...ctx, targets },
           { action: 'discard', params: { count: 1, zone: 'any' } },
         );
-        break;
+        return false;
+      case 'pickDiscard': {
+        const target = targets[0];
+        if (!target) return false;
+        const options = listZoneCards(target, { hideHand: false, shuffleHand: false });
+        if (options.length === 0) {
+          ctx.log(`${ctx.source.generalName} 发动【刚烈】，${target.generalName} 区域无牌`);
+          return false;
+        }
+        if (!ctx.setPrompt) {
+          this.discard(
+            { ...ctx, targets },
+            { action: 'discard', params: { count: 1, zone: 'any' } },
+          );
+          return false;
+        }
+        setZonePickContext(ctx.state.resolution.context, {
+          action: 'discard',
+          sourcePlayerId: ctx.source.id,
+          targetPlayerId: target.id,
+        });
+        ctx.setPrompt({
+          id: nextPromptId(),
+          type: 'select_zone_card',
+          playerId: ctx.source.id,
+          skillId: 'ganglie',
+          skillName: '刚烈',
+          targetPlayerIds: [target.id],
+          message: `【刚烈】：请选择 ${target.generalName} 区域内一张牌弃置`,
+          zoneCardOptions: options.map((option) => ({
+            id: option.id,
+            label: option.label,
+          })),
+        });
+        return true;
+      }
       default:
         ctx.log(`[effect] unhandled judge followup: ${action}`);
-        break;
+        return false;
     }
   }
 

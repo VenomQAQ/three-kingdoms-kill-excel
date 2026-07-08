@@ -15,7 +15,7 @@ import {
   type Suit,
   judgeDelayEffect,
 } from '../engine/card-instance';
-import { cardNameFromHandEntry } from '../engine/card-label';
+import { cardNameFromHandEntry, formatHandEntryForLog, resolveHandPickIndex } from '../engine/card-label';
 import { nextPromptId } from '../utils/prompt-id';
 import {
   characterSkillsForPrompt,
@@ -266,6 +266,7 @@ export class TurnRunner {
         skillId: modSkill?.id,
         skillName: skillLabel,
         characterSkills: characterSkillsForPrompt(modifier),
+        modifyHandCards: [...modifier.handCards],
         message: `${target?.generalName ?? '角色'} 的判定【${pending.judgeCardName}】为 ${formatCardInstance(pending.result)}，是否发动【${skillLabel}】？`,
         options: [{ id: 'skip', label: '不改判' }],
       });
@@ -279,6 +280,7 @@ export class TurnRunner {
     modifierId: string,
     promptId: string,
     handIndex: number,
+    handCardEntry?: string,
   ): { ok: boolean; error?: string } {
     const state = this.host.getState();
     const prompt = state.prompt;
@@ -296,13 +298,19 @@ export class TurnRunner {
 
     const modifier = state.players.find((p) => p.id === modifierId);
     if (!modifier) return { ok: false, error: '角色不存在' };
-    if (handIndex < 0 || handIndex >= modifier.handCards.length) {
-      return { ok: false, error: '选手牌无效' };
+
+    const resolvedIndex = resolveHandPickIndex(
+      modifier.handCards,
+      handIndex,
+      handCardEntry,
+    );
+    if (resolvedIndex < 0) {
+      return { ok: false, error: handCardEntry?.trim() ? '所选改判牌无效' : '选手牌无效' };
     }
 
-    const cardEntry = modifier.handCards[handIndex]!;
-    modifier.handCards.splice(handIndex, 1);
-    const replacement = createCardInstance(cardNameFromHandEntry(cardEntry));
+    const cardEntry = modifier.handCards[resolvedIndex]!;
+    modifier.handCards.splice(resolvedIndex, 1);
+    const replacement = createCardInstance(cardEntry);
     this.host.getDeck().discardCard(pending.resultCardEntry);
 
     pending.result = replacement;
@@ -312,7 +320,7 @@ export class TurnRunner {
       (s) => s.effects?.some((e) => e.action === 'modifyJudge'),
     );
     this.host.log(
-      `${modifier.generalName} 发动【${modSkill?.name ?? '改判'}】，以 ${formatCardInstance(replacement)} 代替判定结果`,
+      `${modifier.generalName} 发动【${modSkill?.name ?? '改判'}】，以 ${formatHandEntryForLog(cardEntry)} 代替判定结果`,
     );
     this.host.setPrompt(null);
     this.finishJudgeResolution();
