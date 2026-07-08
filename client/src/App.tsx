@@ -190,6 +190,7 @@ function App() {
     lianliankanConfig,
     lianliankanSession,
     lianliankanLoading,
+    lianliankanSettling,
     loadLianliankanConfig,
     startLianliankan,
     finishLianliankan,
@@ -1210,6 +1211,7 @@ function App() {
             config={lianliankanConfig}
             session={lianliankanSession}
             loading={lianliankanLoading}
+            settling={lianliankanSettling}
             selectedCell={selectedCell}
             isAuthed={isAuthed}
             coins={user?.coins}

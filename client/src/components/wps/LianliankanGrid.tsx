@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LianliankanConfig, LianliankanDisplayMode, LianliankanSession, LianliankanTile } from '@tk/shared';
 import { COL_LABELS } from '../../data/decoy';
-import { canConnect } from '../../utils/lianliankan';
+import { buildDemoBoard, canConnect, formatLianliankanTime } from '../../utils/lianliankan';
 import { useCellFiller } from '../../utils/useCellFiller';
 import styles from './SpreadsheetGrid.module.css';
 
@@ -9,6 +9,7 @@ interface LianliankanGridProps {
   config: LianliankanConfig | null;
   session: LianliankanSession | null;
   loading: boolean;
+  settling: boolean;
   selectedCell: string;
   isAuthed: boolean;
   coins?: number;
@@ -22,17 +23,11 @@ export function mismatchNotice(isSameItem: boolean): string {
   return isSameItem ? '这对还连不上' : '请选择相同图案';
 }
 
-function formatTime(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 1000));
-  const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
-}
-
 export function LianliankanGrid({
   config,
   session,
   loading,
+  settling,
   selectedCell,
   isAuthed,
   coins,
@@ -45,11 +40,16 @@ export function LianliankanGrid({
   const [difficultyId, setDifficultyId] = useState('');
   const [tiles, setTiles] = useState<LianliankanTile[]>([]);
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
-  const [displayMode, setDisplayMode] = useState<LianliankanDisplayMode>('emoji');
+  const [displayMode, setDisplayMode] = useState<LianliankanDisplayMode>('text');
   const [notice, setNotice] = useState('');
   const [now, setNow] = useState(Date.now());
+  const [winAt, setWinAt] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const timeoutHandledRef = useRef(false);
+  const startGuardRef = useRef(false);
+
+  const isActiveGame = session?.status === 'playing';
+  const setupLocked = loading || settling || isActiveGame;
 
   useEffect(() => {
     if (!config) return;
@@ -58,34 +58,71 @@ export function LianliankanGrid({
   }, [config]);
 
   useEffect(() => {
-    setTiles(session?.board ?? []);
+    if (!session || session.status !== 'playing') return;
+    setTiles(session.board);
     setSelectedTileId(null);
     setNotice('');
+    setWinAt(null);
     timeoutHandledRef.current = false;
-  }, [session?.sessionId]);
+  }, [session?.sessionId, session?.status, session?.board]);
 
   useEffect(() => {
+    if (session?.status === 'won' && session.finishedAt && winAt == null) {
+      setWinAt(session.finishedAt);
+    }
+  }, [session?.status, session?.finishedAt, winAt]);
+
+  useEffect(() => {
+    if (!isActiveGame || winAt != null) return undefined;
     const timer = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [isActiveGame, winAt]);
 
   useEffect(() => {
-    if (!session || session.status !== 'playing' || tiles.length === 0) return;
+    if (!session || session.status !== 'playing' || tiles.length === 0 || winAt != null) return;
     if (now <= session.deadlineAt) return;
     if (timeoutHandledRef.current) return;
     timeoutHandledRef.current = true;
     setNotice('时间到，挑战失败');
     void onFinish('lost', tiles.length);
-  }, [now, onFinish, session, tiles.length]);
+  }, [now, onFinish, session, tiles.length, winAt]);
 
-  const theme = config?.themes.find((item) => item.themeId === (session?.themeId ?? themeId));
-  const difficulty = config?.difficulties.find((item) => item.difficultyId === (session?.difficultyId ?? difficultyId));
+  const previewTheme = config?.themes.find((item) => item.themeId === themeId);
+  const previewDifficulty = config?.difficulties.find((item) => item.difficultyId === difficultyId);
+  const activeThemeId = isActiveGame ? (session?.themeId ?? themeId) : themeId;
+  const activeDifficultyId = isActiveGame ? (session?.difficultyId ?? difficultyId) : difficultyId;
+  const theme = config?.themes.find((item) => item.themeId === activeThemeId);
+  const difficulty = config?.difficulties.find((item) => item.difficultyId === activeDifficultyId);
   const itemMap = useMemo(() => new Map(theme?.items.map((item) => [item.id, item]) ?? []), [theme]);
-  const tileMap = useMemo(() => new Map(tiles.map((tile) => [`${tile.row},${tile.col}`, tile])), [tiles]);
+
+  const demoTiles = useMemo(() => {
+    if (!previewTheme || !previewDifficulty) return [];
+    return buildDemoBoard(
+      previewTheme.items.map((item) => item.id),
+      previewDifficulty.rows,
+      previewDifficulty.cols,
+      previewDifficulty.kindCount,
+    );
+  }, [previewTheme, previewDifficulty]);
+
+  const displayTiles = isActiveGame ? tiles : demoTiles;
+  const tileMap = useMemo(
+    () => new Map(displayTiles.map((tile) => [`${tile.row},${tile.col}`, tile])),
+    [displayTiles],
+  );
   const activeMap = useMemo(() => new Map(tiles.map((tile) => [tile.tileId, tile])), [tiles]);
-  const remainingMs = session ? session.deadlineAt - now : 0;
-  const dataColCount = session?.cols ?? difficulty?.cols ?? 8;
-  const rows = session?.rows ?? difficulty?.rows ?? 8;
+
+  const clockAt = winAt ?? now;
+  const remainingMs = session ? Math.max(0, session.deadlineAt - clockAt) : 0;
+  const elapsedMs = session && winAt != null ? winAt - session.startedAt : 0;
+  const showElapsed = winAt != null;
+
+  const dataColCount = isActiveGame
+    ? (session?.cols ?? previewDifficulty?.cols ?? 8)
+    : (previewDifficulty?.cols ?? 8);
+  const rows = isActiveGame
+    ? (session?.rows ?? previewDifficulty?.rows ?? 8)
+    : (previewDifficulty?.rows ?? 8);
   const filler = useCellFiller(wrapRef, rows, dataColCount, 92);
   const cols = useMemo(
     () => Array.from({ length: dataColCount + filler.cols }, (_, index) => COL_LABELS[index] ?? `C${index + 1}`),
@@ -97,12 +134,20 @@ export function LianliankanGrid({
       onRequireLogin();
       return;
     }
-    const next = await onStart(themeId, difficultyId);
-    if (next) setNotice('');
+    if (setupLocked || startGuardRef.current) return;
+    startGuardRef.current = true;
+    try {
+      const next = await onStart(themeId, difficultyId);
+      if (next) setNotice('');
+    } finally {
+      window.setTimeout(() => {
+        startGuardRef.current = false;
+      }, 1000);
+    }
   };
 
   const handleTile = (tile: LianliankanTile) => {
-    if (!session || session.status !== 'playing') return;
+    if (!session || session.status !== 'playing' || settling) return;
     if (!selectedTileId) {
       setSelectedTileId(tile.tileId);
       return;
@@ -124,6 +169,7 @@ export function LianliankanGrid({
     setNotice(nextTiles.length === 0 ? '挑战成功' : '');
     if (nextTiles.length === 0) {
       timeoutHandledRef.current = true;
+      setWinAt(Date.now());
       void onFinish('won', 0);
     }
   };
@@ -133,7 +179,7 @@ export function LianliankanGrid({
       <div className={styles.llkToolbar}>
         <label>
           主题
-          <select value={themeId} onChange={(event) => setThemeId(event.target.value)} disabled={loading}>
+          <select value={themeId} onChange={(event) => setThemeId(event.target.value)} disabled={setupLocked}>
             {(config?.themes ?? []).map((item) => (
               <option key={item.themeId} value={item.themeId}>{item.name}</option>
             ))}
@@ -141,7 +187,7 @@ export function LianliankanGrid({
         </label>
         <label>
           难度
-          <select value={difficultyId} onChange={(event) => setDifficultyId(event.target.value)} disabled={loading}>
+          <select value={difficultyId} onChange={(event) => setDifficultyId(event.target.value)} disabled={setupLocked}>
             {(config?.difficulties ?? []).map((item) => (
               <option key={item.difficultyId} value={item.difficultyId}>
                 {item.name} · {item.entryFee} 金币
@@ -150,8 +196,8 @@ export function LianliankanGrid({
           </select>
         </label>
         {difficulty ? <span className={styles.llkMeta}>通关奖励{difficulty.rewardCoins}金币</span> : null}
-        <button type="button" className={styles.llkStartBtn} onClick={handleStart} disabled={loading || !config}>
-          {loading ? '开局中' : '开始'}
+        <button type="button" className={styles.llkStartBtn} onClick={handleStart} disabled={setupLocked || !config}>
+          {loading ? '开局中' : settling ? '结算中' : '开始'}
         </button>
         <div className={styles.llkSegmented} aria-label="展示模式">
           <button
@@ -170,8 +216,17 @@ export function LianliankanGrid({
           </button>
         </div>
         <span className={styles.llkMeta}>当前余额：{coins ?? 0}</span>
-        {session ? <span className={styles.llkMeta}>剩余 {formatTime(remainingMs)}</span> : null}
-        {notice ? <span className={styles.llkNotice}>{notice}</span> : null}
+        {session ? (
+          <span className={styles.llkMeta}>
+            剩余 {formatLianliankanTime(remainingMs)}
+            {showElapsed ? ` · 消耗 ${formatLianliankanTime(elapsedMs)}` : ''}
+          </span>
+        ) : null}
+        {settling ? (
+          <span className={styles.llkSettling}>结算中…</span>
+        ) : notice ? (
+          <span className={styles.llkNotice}>{notice}</span>
+        ) : null}
       </div>
       <div className={styles.wrap} ref={wrapRef}>
         <div className={styles.corner} />
@@ -194,14 +249,15 @@ export function LianliankanGrid({
                 const tile = tileMap.get(`${rowIndex},${colIndex}`);
                 const item = tile ? itemMap.get(tile.itemId) : null;
                 const isFillerCol = colIndex >= dataColCount;
+                const isPlayable = isActiveGame && tile && !isFillerCol;
                 return (
                   <button
                     key={ref}
                     type="button"
-                    className={`${styles.cell} ${styles.llkCell} ${isFillerCol ? styles.llkFillerCell : ''} ${ref === selectedCell ? styles.selected : ''} ${tile?.tileId === selectedTileId ? styles.llkTileSelected : ''}`}
+                    className={`${styles.cell} ${styles.llkCell} ${isFillerCol ? styles.llkFillerCell : ''} ${!isActiveGame && tile ? styles.llkDemoCell : ''} ${ref === selectedCell ? styles.selected : ''} ${tile?.tileId === selectedTileId ? styles.llkTileSelected : ''}`}
                     onClick={() => {
                       onSelectCell(ref);
-                      if (tile) handleTile(tile);
+                      if (isPlayable) handleTile(tile);
                     }}
                     disabled={!tile || isFillerCol}
                     title={item?.text}

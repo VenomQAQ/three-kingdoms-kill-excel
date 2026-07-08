@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { LianliankanConfig, LianliankanSession, LianliankanTile, Room, RoomListItem } from '@tk/shared';
 import { formatChatTime } from '../../utils/chatTime';
-import { canConnect } from '../../utils/lianliankan';
+import { canConnect, buildDemoBoard } from '../../utils/lianliankan';
 import { LIANLIANKAN_SHEET_ID, ROOM_LIST_SHEET_ID } from '../../data/decoy';
 import { BattleGrid } from './BattleGrid';
 import { PlayerProfileModal } from './PlayerProfileModal';
@@ -132,6 +132,7 @@ describe('REQ-2026-005 UI acceptance', () => {
         config={llkConfig}
         session={session}
         loading={false}
+        settling={false}
         selectedCell="A1"
         isAuthed
         coins={42}
@@ -243,5 +244,11 @@ describe('REQ-2026-005 UI acceptance', () => {
 
   it('keeps the lianliankan sheet id stable', () => {
     expect(LIANLIANKAN_SHEET_ID).toBe('lianliankan');
+  });
+
+  it('builds demo boards from theme and difficulty', () => {
+    const demo = buildDemoBoard(['apple', 'pear'], 2, 2, 2);
+    expect(demo).toHaveLength(4);
+    expect(demo.map((tile) => tile.itemId)).toEqual(['apple', 'pear', 'apple', 'pear']);
   });
 });

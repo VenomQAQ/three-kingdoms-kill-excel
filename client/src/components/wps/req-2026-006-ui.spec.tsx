@@ -130,7 +130,7 @@ describe('REQ-2026-006 UI acceptance', () => {
       ['hard', 12, 12],
     ]);
     expect(LIANLIANKAN_CONFIG.themes.map((item) => item.name)).toEqual(
-      expect.arrayContaining(['颜文字', 'Emoji表情']),
+      expect.arrayContaining(['颜文字', 'Emoji表情', '动物', '职业', '物品', '食物', '蔬菜']),
     );
   });
 

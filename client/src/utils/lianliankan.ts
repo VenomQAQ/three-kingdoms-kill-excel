@@ -1,5 +1,28 @@
 import type { LianliankanTile } from '@tk/shared';
 
+export function buildDemoBoard(
+  itemIds: string[],
+  rows: number,
+  cols: number,
+  kindCount: number,
+): LianliankanTile[] {
+  const total = rows * cols;
+  const selected = itemIds.slice(0, Math.max(1, Math.min(kindCount, itemIds.length)));
+  return Array.from({ length: total }, (_, index) => ({
+    tileId: `demo-${index}`,
+    itemId: selected[index % selected.length]!,
+    row: Math.floor(index / cols),
+    col: index % cols,
+  }));
+}
+
+export function formatLianliankanTime(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
 export function canConnect(board: Map<string, LianliankanTile>, a: LianliankanTile, b: LianliankanTile): boolean {
   if (a.itemId !== b.itemId || a.tileId === b.tileId) return false;
   const rows = Math.max(a.row, b.row, ...Array.from(board.values(), (tile) => tile.row)) + 2;

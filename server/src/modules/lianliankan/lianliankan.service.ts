@@ -33,6 +33,15 @@ export class LianliankanService {
   }
 
   async createSession(userId: string, input: { themeId?: string; difficultyId?: string; mode?: 'solo' | 'race' }) {
+    const existingPlaying = await this.sessionRepo.findOne({ where: { userId, status: 'playing' } });
+    if (existingPlaying) {
+      return {
+        session: this.toSession(existingPlaying),
+        wallet: await this.loadWallet(userId),
+        _v: 1 as const,
+      };
+    }
+
     const themeId = input.themeId || LIANLIANKAN_CONFIG.defaultThemeId;
     const difficultyId = input.difficultyId || LIANLIANKAN_CONFIG.defaultDifficultyId;
     const theme = LIANLIANKAN_CONFIG.themes.find((item) => item.themeId === themeId);

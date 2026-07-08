@@ -54,6 +54,7 @@ interface AppState {
   lianliankanSession: LianliankanSession | null;
   lianliankanLoading: boolean;
   lianliankanSettling: boolean;
+  lianliankanLastStartAt: number;
 
   setNickname: (nickname: string) => Promise<void>;
   connect: () => void;
@@ -186,6 +187,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   lianliankanSession: null,
   lianliankanLoading: false,
   lianliankanSettling: false,
+  lianliankanLastStartAt: 0,
 
   setNickname: async (nickname) => {
     const trimmed = nickname.trim();
@@ -749,11 +751,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   startLianliankan: async (themeId, difficultyId) => {
-    if (get().authStatus !== 'authed') {
+    const state = get();
+    if (state.authStatus !== 'authed') {
       set({ lastError: '请先登录' });
       return null;
     }
-    set({ lianliankanLoading: true });
+    if (state.lianliankanLoading || state.lianliankanSession?.status === 'playing') {
+      return state.lianliankanSession?.status === 'playing' ? state.lianliankanSession : null;
+    }
+    const now = Date.now();
+    if (now - state.lianliankanLastStartAt < 1000) {
+      return null;
+    }
+    set({ lianliankanLoading: true, lianliankanLastStartAt: now });
     try {
       const result = await LianliankanApi.createSession({ themeId, difficultyId, mode: 'solo' });
       set((s) => ({
