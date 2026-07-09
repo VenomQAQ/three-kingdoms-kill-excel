@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import type { LobbyChatMessage } from '../../store/chatSlice';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { filterLobbyMessagesForDisplay, type LobbyChatMessage } from '../../store/chatSlice';
 import { formatChatTime } from '../../utils/chatTime';
 import styles from './LobbyChatPanel.module.css';
 
@@ -22,12 +22,16 @@ export function LobbyChatPanel({
 }: LobbyChatPanelProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState('');
+  const visibleMessages = useMemo(
+    () => filterLobbyMessagesForDisplay(messages),
+    [messages],
+  );
 
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages.length]);
+  }, [visibleMessages.length]);
 
   if (!visible) return null;
 
@@ -50,10 +54,10 @@ export function LobbyChatPanel({
         <div className={styles.hint}>登录后可发送消息</div>
       )}
       <div className={styles.list} ref={listRef}>
-        {messages.length === 0 && (
+        {visibleMessages.length === 0 && (
           <div className={styles.empty}>暂无消息，在下方输入框发送。</div>
         )}
-        {messages.map((message) => (
+        {visibleMessages.map((message) => (
           <div key={message.id} className={styles.msg}>
             <button
               type="button"

@@ -32,3 +32,26 @@ export function appendLobbyMessage(
   if (existing.some((m) => m.id === msg.id)) return existing;
   return [...existing, msg];
 }
+
+export const LOBBY_CHAT_DISPLAY_LIMIT = 1000;
+
+function isSameLocalDay(ts: number, now: number): boolean {
+  const date = new Date(ts);
+  const current = new Date(now);
+  return (
+    date.getFullYear() === current.getFullYear() &&
+    date.getMonth() === current.getMonth() &&
+    date.getDate() === current.getDate()
+  );
+}
+
+/** 聊天区展示：仅当日消息，最多保留最近 limit 条（时间升序） */
+export function filterLobbyMessagesForDisplay(
+  messages: LobbyChatMessage[],
+  now = Date.now(),
+  limit = LOBBY_CHAT_DISPLAY_LIMIT,
+): LobbyChatMessage[] {
+  const todayMessages = messages.filter((m) => isSameLocalDay(m.ts, now));
+  if (todayMessages.length <= limit) return todayMessages;
+  return todayMessages.slice(-limit);
+}
