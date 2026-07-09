@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { useAppStore } from './store/appStore';
 import './styles/global.css';
 
 try {
@@ -9,6 +10,8 @@ try {
 } catch {
   // localStorage may be unavailable in strict browser privacy modes.
 }
+
+useAppStore.getState().connect();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -61,7 +61,7 @@ describe('REQ-2026-006 UI acceptance', () => {
     const html = htmlOf(
       <InfoBar
         nickname="阿斗"
-        connected
+        connectionStatus="online"
         accountLabel="Lv.3 阿斗 · 88金币"
         isAuthed
         onProfileClick={vi.fn()}
@@ -74,6 +74,14 @@ describe('REQ-2026-006 UI acceptance', () => {
     expect(html).not.toContain('已登录');
     expect(html).not.toContain('连接：已连接');
     expect(html).not.toContain('已连接');
+  });
+
+  it('shows connecting state while socket is reconnecting', () => {
+    const html = htmlOf(
+      <InfoBar nickname="阿斗" connectionStatus="connecting" isAuthed accountLabel="Lv.3 阿斗" />,
+    );
+    expect(html).toContain('连接中');
+    expect(html).not.toContain('离线');
   });
 
   it('keeps the spreadsheet status bar free of socket connection copy', () => {

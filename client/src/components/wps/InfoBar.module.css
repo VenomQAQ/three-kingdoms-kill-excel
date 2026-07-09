@@ -25,6 +25,10 @@
   color: #217346;
 }
 
+.pending {
+  color: #b8860b;
+}
+
 .err {
   color: #c0392b;
 }

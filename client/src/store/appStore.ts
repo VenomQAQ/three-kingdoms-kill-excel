@@ -23,6 +23,12 @@ import {
   LobbyChatMessage,
   mergeLobbyMessages,
 } from './chatSlice';
+import {
+  readLobbyChatCache,
+  readRoomListCache,
+  writeLobbyChatCache,
+  writeRoomListCache,
+} from '../utils/lobbyCache';
 import { useToastStore } from './toastStore';
 
 type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -30,9 +36,12 @@ type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 /** REQ-2026-001 · FE-2 · 认证状态机 */
 export type AuthStatus = 'loading' | 'guest' | 'authed';
 
+export type ConnectionStatus = 'connecting' | 'online' | 'offline';
+
 interface AppState {
   socket: GameSocket | null;
   connected: boolean;
+  connectionStatus: ConnectionStatus;
   playerId: string | null;
   actingPlayerId: string | null;
   nickname: string;
@@ -168,14 +177,15 @@ function routeGameEmit(
 export const useAppStore = create<AppState>((set, get) => ({
   socket: null,
   connected: false,
+  connectionStatus: 'connecting',
   playerId: null,
   actingPlayerId: null,
   nickname: localStorage.getItem('tk_nickname') ?? '表格用户',
   room: null,
-  roomList: [],
+  roomList: readRoomListCache(),
   chatMessages: [],
   lastError: null,
-  lobbyMessages: [],
+  lobbyMessages: readLobbyChatCache(),
   chatChannel: null,
 
   // REQ-2026-001 · FE-2 · auth 初值
@@ -204,27 +214,35 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   connect: () => {
     if (socketInstance) {
+      const isOnline = socketInstance.connected;
       set({
         socket: socketInstance,
-        connected: socketInstance.connected,
+        connected: isOnline,
+        connectionStatus: isOnline ? 'online' : 'connecting',
       });
-      if (!socketInstance.connected) {
+      if (!isOnline) {
         socketInstance.connect();
       }
       return;
     }
 
     const socket: GameSocket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'],
+      // polling 优先：部分环境 WebSocket 握手慢或失败，先建立长轮询可更快首屏可用
+      transports: ['polling', 'websocket'],
       autoConnect: true,
     });
     socketInstance = socket;
 
     socket.on('connect', () => {
-      set({ connected: true, socket });
+      set({ connected: true, connectionStatus: 'online', socket });
       void get().fetchRoomList();
     });
-    socket.on('disconnect', () => set({ connected: false }));
+    socket.on('disconnect', () => {
+      set({
+        connected: false,
+        connectionStatus: socket.active ? 'connecting' : 'offline',
+      });
+    });
 
     socket.on('room:created', (room) => set((s) => applyRoomState(room, s)));
     socket.on('room:joined', (room) => set((s) => applyRoomState(room, s)));
@@ -253,7 +271,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     (socket as any).on('lobby:chat:message', (msg: LobbyChatMessage) => {
       if (get().chatChannel !== 'lobby') return;
-      set((s) => ({ lobbyMessages: appendLobbyMessage(s.lobbyMessages, msg) }));
+      set((s) => {
+        const lobbyMessages = appendLobbyMessage(s.lobbyMessages, msg);
+        writeLobbyChatCache(lobbyMessages);
+        return { lobbyMessages };
+      });
     });
     (socket as any).on('chat:error', (payload: { code?: string; message?: string; scope?: string }) => {
       set({ lastError: translateError(payload?.code, payload?.message) });
@@ -319,7 +341,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         'room:list' as any,
         { versionId: currentVersion, gameType: 'all', _v: 1 },
         (list?: RoomListItem[]) => {
-          if (Array.isArray(list)) set({ roomList: list });
+          if (Array.isArray(list)) {
+            set({ roomList: list });
+            writeRoomListCache(currentVersion, list);
+          }
           resolve();
         },
       );
@@ -625,17 +650,27 @@ export const useAppStore = create<AppState>((set, get) => ({
   subscribeLobbyChat: () => {
     const { socket } = get();
     if (!socket) return;
-    set({ chatChannel: 'lobby', lobbyMessages: [] });
+    const cached = readLobbyChatCache();
+    set((s) => ({
+      chatChannel: 'lobby',
+      lobbyMessages: s.lobbyMessages.length ? s.lobbyMessages : cached,
+    }));
     socket.emit('lobby:chat:snapshot' as any, { _v: 1 }, (messages?: LobbyChatMessage[]) => {
       if (get().chatChannel !== 'lobby') return;
       if (messages?.length) {
-        set((s) => ({ lobbyMessages: mergeLobbyMessages(s.lobbyMessages, messages) }));
+        set((s) => {
+          const lobbyMessages = mergeLobbyMessages(s.lobbyMessages, messages);
+          writeLobbyChatCache(lobbyMessages);
+          return { lobbyMessages };
+        });
       }
     });
   },
 
   unsubscribeLobbyChat: () => {
-    set({ chatChannel: null, lobbyMessages: [] });
+    const { lobbyMessages } = get();
+    writeLobbyChatCache(lobbyMessages);
+    set({ chatChannel: null });
   },
 
   sendLobbyChat: (content) => {
@@ -660,21 +695,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     ]);
     if (capsRes.status === 'fulfilled') {
       const caps = capsRes.value;
+      const currentVersion =
+        get().user?.preferredVersion ??
+        caps.versions.find((v) => v.default)?.id ??
+        get().currentVersion;
+      const cachedRooms = readRoomListCache(currentVersion);
       set({
         capabilities: caps,
-        currentVersion:
-          get().user?.preferredVersion ??
-          caps.versions.find((v) => v.default)?.id ??
-          get().currentVersion,
+        currentVersion,
+        ...(cachedRooms.length && !get().roomList.length ? { roomList: cachedRooms } : {}),
       });
     }
     if (meRes.status === 'fulfilled') {
       const u = meRes.value;
+      const cachedRooms = readRoomListCache(u.preferredVersion);
       set({
         authStatus: 'authed',
         user: u,
         currentVersion: u.preferredVersion,
         nickname: u.nickname,
+        ...(cachedRooms.length && !get().roomList.length ? { roomList: cachedRooms } : {}),
       });
     } else {
       set({ authStatus: 'guest', user: null });

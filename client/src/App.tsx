@@ -134,6 +134,7 @@ function App() {
   const {
     connect,
     connected,
+    connectionStatus,
     room,
     roomList,
     playerId,
@@ -1027,7 +1028,7 @@ function App() {
       />
       <InfoBar
         nickname={nickname}
-        connected={connected}
+        connectionStatus={connectionStatus}
         accountLabel={accountLabel}
         roomCode={bossMode ? undefined : room?.code}
         roomStatus={room ? roomStatusLabel : undefined}

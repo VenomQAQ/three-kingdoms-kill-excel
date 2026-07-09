@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ConnectionStatus } from '../../store/appStore';
 import styles from './InfoBar.module.css';
 
 interface InfoBarProps {
   nickname: string;
-  connected: boolean;
+  connectionStatus: ConnectionStatus;
   accountLabel?: string;
   roomCode?: string;
   roomStatus?: string;
@@ -19,7 +20,7 @@ interface InfoBarProps {
 
 export function InfoBar({
   nickname,
-  connected,
+  connectionStatus,
   accountLabel,
   roomCode,
   roomStatus,
@@ -43,6 +44,19 @@ export function InfoBar({
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [menuOpen]);
+
+  const statusLabel =
+    connectionStatus === 'online'
+      ? '在线'
+      : connectionStatus === 'connecting'
+        ? '连接中'
+        : '离线';
+  const statusClass =
+    connectionStatus === 'online'
+      ? styles.ok
+      : connectionStatus === 'connecting'
+        ? styles.pending
+        : styles.err;
 
   return (
     <div className={styles.bar}>
@@ -108,8 +122,8 @@ export function InfoBar({
       <span className={styles.sep}>|</span>
       <span>
         当前状态{' '}
-        <strong className={connected ? styles.ok : styles.err}>
-          {connected ? '在线' : '离线'}
+        <strong className={statusClass}>
+          {statusLabel}
         </strong>
       </span>
       {roomCode && (
