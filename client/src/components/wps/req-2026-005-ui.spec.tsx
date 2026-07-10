@@ -42,6 +42,7 @@ const llkConfig: LianliankanConfig = {
       similarGroupWeight: 0,
     },
   ],
+  refreshFee: 5,
   _v: 1,
 };
 
@@ -129,6 +130,7 @@ describe('REQ-2026-005 UI acceptance', () => {
       rewardCoins: 8,
       startedAt: Date.now(),
       deadlineAt: Date.now() + 120_000,
+      refreshUsed: false,
       board: [
         { tileId: 'a1', itemId: 'apple', row: 0, col: 0 },
         { tileId: 'a2', itemId: 'apple', row: 0, col: 1 },
@@ -141,12 +143,14 @@ describe('REQ-2026-005 UI acceptance', () => {
         session={session}
         loading={false}
         settling={false}
+        refreshing={false}
         selectedCell="A1"
         isAuthed
         coins={42}
         onSelectCell={vi.fn()}
         onStart={vi.fn()}
         onFinish={vi.fn()}
+        onRefresh={vi.fn()}
         onRequireLogin={vi.fn()}
       />,
     );
@@ -157,6 +161,7 @@ describe('REQ-2026-005 UI acceptance', () => {
     expect(html).toContain('文字');
     expect(html).toContain('当前余额：42');
     expect(html).toContain('通关奖励8金币');
+    expect(html).toContain('刷新 · 5金币');
   });
 
   it('renders battle chat time and exposes virtual player profile entry', () => {

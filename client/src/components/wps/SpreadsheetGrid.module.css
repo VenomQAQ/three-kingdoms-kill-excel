@@ -704,6 +704,24 @@
   cursor: not-allowed;
 }
 
+.llkRefreshBtn {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid #cfcfcf;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #444444;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.llkRefreshBtn:disabled {
+  color: #999999;
+  background: #f5f5f5;
+  cursor: not-allowed;
+}
+
 .llkSegmented {
   display: inline-flex;
   height: 26px;

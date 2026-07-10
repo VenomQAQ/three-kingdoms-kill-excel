@@ -513,6 +513,8 @@ export interface LianliankanConfig {
   difficulties: LianliankanDifficulty[];
   defaultThemeId: string;
   defaultDifficultyId: LianliankanDifficultyId;
+  /** 局内刷新棋盘费用（金币）；一局仅一次 */
+  refreshFee: number;
   _v: 1;
 }
 
@@ -538,6 +540,8 @@ export interface LianliankanSession {
   startedAt: number;
   deadlineAt: number;
   finishedAt?: number;
+  /** 本局是否已使用过刷新 */
+  refreshUsed: boolean;
   board: LianliankanTile[];
   _v: 1;
 }

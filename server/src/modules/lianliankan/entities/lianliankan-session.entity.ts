@@ -50,6 +50,10 @@ export class LianliankanSessionEntity {
   @Column('text')
   boardJson!: string;
 
+  /** 本局是否已使用过刷新重排 */
+  @Column('boolean', { default: false })
+  refreshUsed!: boolean;
+
   @Column('datetime')
   startedAt!: Date;
 

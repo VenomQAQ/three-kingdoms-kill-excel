@@ -264,5 +264,6 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
     { difficultyId: 'normal', name: '普通', rows: 10, cols: 10, kindCount: 20, timeLimitSec: 180, entryFee: 5, rewardCoins: 18, similarGroupWeight: 0.38 },
     { difficultyId: 'hard', name: '困难', rows: 12, cols: 12, kindCount: 30, timeLimitSec: 210, entryFee: 5, rewardCoins: 32, similarGroupWeight: 0.62 },
   ],
+  refreshFee: 5,
   _v: 1,
 };

@@ -22,6 +22,13 @@ export interface FinishLianliankanSessionResult {
   _v: 1;
 }
 
+export interface RefreshLianliankanSessionResult {
+  session: LianliankanSession;
+  wallet: WalletView;
+  refreshFee: number;
+  _v: 1;
+}
+
 export const LianliankanApi = {
   getConfig: () => httpGet<LianliankanConfig>('/api/lianliankan/config'),
   createSession: (input: { themeId: string; difficultyId: string; mode?: 'solo' | 'race' }) =>
@@ -34,5 +41,13 @@ export const LianliankanApi = {
       `/api/lianliankan/sessions/${encodeURIComponent(sessionId)}/finish`,
       input,
       { retries: 5, retryDelayMs: 800 },
+    ),
+  refreshSession: (
+    sessionId: string,
+    input: { remainingTiles: LianliankanSession['board'] },
+  ) =>
+    httpPost<RefreshLianliankanSessionResult>(
+      `/api/lianliankan/sessions/${encodeURIComponent(sessionId)}/refresh`,
+      input,
     ),
 };

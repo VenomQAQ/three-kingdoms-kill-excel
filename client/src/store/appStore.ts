@@ -63,6 +63,7 @@ interface AppState {
   lianliankanSession: LianliankanSession | null;
   lianliankanLoading: boolean;
   lianliankanSettling: boolean;
+  lianliankanRefreshing: boolean;
   lianliankanLastStartAt: number;
 
   setNickname: (nickname: string) => Promise<void>;
@@ -121,6 +122,7 @@ interface AppState {
   loadLianliankanConfig: () => Promise<void>;
   startLianliankan: (themeId: string, difficultyId: string) => Promise<LianliankanSession | null>;
   finishLianliankan: (result: 'won' | 'lost', remainingTiles: number) => Promise<void>;
+  refreshLianliankan: (remainingTiles: LianliankanSession['board']) => Promise<LianliankanSession | null>;
   setCurrentVersion: (versionId: string) => void;
   markUnauthenticated: (reason?: string) => void;
 }
@@ -197,6 +199,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   lianliankanSession: null,
   lianliankanLoading: false,
   lianliankanSettling: false,
+  lianliankanRefreshing: false,
   lianliankanLastStartAt: 0,
 
   setNickname: async (nickname) => {
@@ -876,6 +879,36 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showError(code, err instanceof Error ? err.message : fallback);
     } finally {
       set({ lianliankanSettling: false });
+    }
+  },
+
+  refreshLianliankan: async (remainingTiles) => {
+    const session = get().lianliankanSession;
+    if (
+      !session
+      || session.status !== 'playing'
+      || session.refreshUsed
+      || get().lianliankanSettling
+      || get().lianliankanRefreshing
+      || get().lianliankanLoading
+    ) {
+      return null;
+    }
+    set({ lianliankanRefreshing: true });
+    try {
+      const result = await LianliankanApi.refreshSession(session.sessionId, { remainingTiles });
+      set((s) => ({
+        lianliankanSession: result.session,
+        user: s.user ? { ...s.user, ...result.wallet } : s.user,
+      }));
+      useToastStore.getState().show(`棋盘已刷新：金币 -${result.refreshFee}`);
+      return result.session;
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      get().showError(code, err instanceof Error ? err.message : '刷新失败');
+      return null;
+    } finally {
+      set({ lianliankanRefreshing: false });
     }
   },
 

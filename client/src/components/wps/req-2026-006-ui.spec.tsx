@@ -140,6 +140,7 @@ describe('REQ-2026-006 UI acceptance', () => {
     expect(LIANLIANKAN_CONFIG.themes.map((item) => item.name)).toEqual(
       expect.arrayContaining(['颜文字', 'Emoji表情', '动物', '职业', '物品', '食物', '蔬菜']),
     );
+    expect(LIANLIANKAN_CONFIG.refreshFee).toBe(5);
   });
 
   it('lets the room list create and display world monopoly rooms', () => {

@@ -205,9 +205,11 @@ function App() {
     lianliankanSession,
     lianliankanLoading,
     lianliankanSettling,
+    lianliankanRefreshing,
     loadLianliankanConfig,
     startLianliankan,
     finishLianliankan,
+    refreshLianliankan,
   } = useAppStore();
 
   const handleViewChatProfile = useCallback((message: { playerId?: string; userId?: string; nickname: string }) => {
@@ -1247,12 +1249,14 @@ function App() {
             session={lianliankanSession}
             loading={lianliankanLoading}
             settling={lianliankanSettling}
+            refreshing={lianliankanRefreshing}
             selectedCell={selectedCell}
             isAuthed={isAuthed}
             coins={user?.coins}
             onSelectCell={setSelectedCell}
             onStart={startLianliankan}
             onFinish={finishLianliankan}
+            onRefresh={refreshLianliankan}
             onRequireLogin={() => {
               showToast('请先登录');
               setShowLoginDialog(true);
