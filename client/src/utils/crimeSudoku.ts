@@ -101,6 +101,35 @@ export type CheckWinResult =
   | { ok: true }
   | { ok: false; reason: string };
 
+/**
+ * 锁定真凶：受害者所在房间/区域内，盘面上出现的唯一嫌疑人编号即为凶手。
+ * （凶案现场通常设计为单格房间，故「独处」自然成立。）
+ */
+export function findAloneWithVictim(
+  level: CrimeSudokuLevel,
+  board: number[][],
+): { ok: true; killer: number } | { ok: false; reason: string } {
+  const roomId = level.victim.room;
+  const nums = new Set<number>();
+  for (let r = 0; r < level.size; r += 1) {
+    for (let c = 0; c < level.size; c += 1) {
+      if (sceneAt(level, r, c).room !== roomId) continue;
+      const v = board[r]?.[c] ?? 0;
+      if (v) nums.add(v);
+    }
+  }
+  if (nums.size === 0) {
+    return { ok: false, reason: `受害者所在区域「${level.rooms[roomId]?.name ?? roomId}」尚无站位` };
+  }
+  if (nums.size > 1) {
+    return {
+      ok: false,
+      reason: `「${level.rooms[roomId]?.name ?? roomId}」内有 ${nums.size} 人，无法锁定独处真凶`,
+    };
+  }
+  return { ok: true, killer: [...nums][0]! };
+}
+
 export function checkWin(
   level: CrimeSudokuLevel,
   board: number[][],
@@ -113,6 +142,11 @@ export function checkWin(
   if (!boardsEqual(board, level.solution)) {
     return { ok: false, reason: '盘面无冲突，但与标准解不一致' };
   }
+  const alone = findAloneWithVictim(level, board);
+  if (!alone.ok) return alone;
+  if (alone.killer !== level.killer) {
+    return { ok: false, reason: '关卡配置异常：独处真凶与标准答案不一致' };
+  }
   if (accused == null) return { ok: false, reason: '请先指认凶手' };
   if (accused !== level.killer) {
     const wrong = level.suspects.find((s) => s.num === accused);
@@ -122,13 +156,14 @@ export function checkWin(
 }
 
 export const CRIME_SUDOKU_RULES_HTML = `
-<p><strong>一句话</strong>：先按普通数独把盘面填对，再从嫌疑人里<strong>点选唯一真凶</strong>，点「验算通关」即可。</p>
+<p><strong>一句话</strong>：先按普通数独把盘面填对，再根据「同区独处」从嫌疑人里<strong>点选唯一真凶</strong>，点「验算通关」即可。</p>
 
 <h4>1. 怎么玩（核心）</h4>
 <ul>
   <li><strong>主体就是数独</strong>：把 1～N 填进格子，保证每行、每列、每宫不重复。</li>
-  <li>格子上的房间/家具是线索提示，帮你推理谁站在哪、谁是真凶。</li>
-  <li><strong>指认凶手只能选一个人</strong>：在右侧「嫌疑人 · 口供」或盘面旁名单里点选；再点别人会改成新的指认。</li>
+  <li>格子上的房间/家具是线索提示，帮你推理谁站在哪。</li>
+  <li><strong>锁定真凶</strong>：全部人放好后，唯一与受害者在同一个房间/区域独处的人即为凶手。</li>
+  <li><strong>指认凶手只能选一个人</strong>：在右侧「嫌疑人 · 口供」里点选；再点别人会改成新的指认。</li>
   <li>通关条件 = 盘面与标准解一致 + 指认的那个人就是真凶。</li>
 </ul>
 
@@ -160,8 +195,9 @@ export const CRIME_SUDOKU_RULES_HTML = `
 
 <h4>5. 破案步骤</h4>
 <ol>
-  <li>阅读右侧案情与线索，对照平面图上的房间与物品。</li>
+  <li>阅读右侧案情、受害者位置与线索，对照平面图上的房间与物品。</li>
   <li>像普通数独一样把盘面填满（不确定时可先用笔记标记候选）。</li>
+  <li>全部人放好后，找出<strong>唯一与受害者同房间/区域独处</strong>的人，即为真凶。</li>
   <li>在嫌疑人列表中<strong>点选唯一真凶</strong>（只能指认一人）。</li>
   <li>点击「验算通关」：盘面正确且指认正确，才算破案。</li>
 </ol>

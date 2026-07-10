@@ -838,6 +838,11 @@ export function CrimeSudokuGrid({
             <div className={styles.csCaseCard}>
               <h3>{level.title}</h3>
               <p>{level.story}</p>
+              <div className={styles.csCaseMeta}>
+                受害者：{level.victim.name} · {level.rooms[level.victim.room]?.name ?? level.victim.room}
+                <br />
+                {level.victim.clue}
+              </div>
               <div className={styles.csCaseMeta}>{level.ruleHint}</div>
             </div>
             <ul className={styles.csClueList}>

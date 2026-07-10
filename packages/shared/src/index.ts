@@ -419,6 +419,14 @@ export interface CrimeSudokuSuspect {
   clue: string;
 }
 
+/** 受害者：固定在某个房间/区域；不占数独编号 */
+export interface CrimeSudokuVictim {
+  name: string;
+  /** 尸体所在房间 id（通常为单格凶案现场） */
+  room: string;
+  clue: string;
+}
+
 export interface CrimeSudokuLevel {
   id: string;
   name: string;
@@ -432,6 +440,8 @@ export interface CrimeSudokuLevel {
   rooms: Record<string, CrimeSudokuRoomDef>;
   scene: CrimeSudokuSceneCell[][];
   suspects: CrimeSudokuSuspect[];
+  /** 受害者（用于「同区独处即真凶」） */
+  victim: CrimeSudokuVictim;
   killer: number;
   clues: string[];
   given: number[][];
