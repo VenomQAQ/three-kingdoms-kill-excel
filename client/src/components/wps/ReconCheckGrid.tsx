@@ -277,8 +277,8 @@ export function ReconCheckGrid({
         </label>
         {difficulty ? (
           <span className={styles.llkMeta}>
-            单侧{difficulty.rows}×{difficulty.cols}
-            {' · '}
+            {/* 单侧{difficulty.rows}×{difficulty.cols}
+            {' · '} */}
             {difficulty.rounds} 轮
             {' · '}
             每轮{difficulty.diffsPerRound}处差异
@@ -322,7 +322,7 @@ export function ReconCheckGrid({
           </span>
         ) : (
           <span className={styles.llkMeta}>
-            预览 · 本档每轮 {previewDifficulty?.diffsPerRound ?? diffsPerRound} 处差异
+            {/* 预览 · 本档每轮 {previewDifficulty?.diffsPerRound ?? diffsPerRound} 处差异 */}
           </span>
         )}
         {settling ? (
