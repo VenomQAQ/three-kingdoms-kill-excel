@@ -39,7 +39,7 @@ function safeParse<T>(raw: string | null, fallback: T): T {
 export function isCrimeSudokuProgressValid(
   level: CrimeSudokuLevel,
   progress: CrimeSudokuLocalProgress | null | undefined,
-): progress is CrimeSudokuLocalProgress {
+): boolean {
   if (!progress || progress.levelId !== level.id) return false;
   if (!Array.isArray(progress.board) || progress.board.length !== level.size) return false;
   if (!Array.isArray(progress.notes) || progress.notes.length !== level.size) return false;

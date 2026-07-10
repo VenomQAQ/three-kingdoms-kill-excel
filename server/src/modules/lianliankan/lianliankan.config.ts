@@ -218,7 +218,7 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
         { id: 'rice', text: '米饭', emoji: '🍚', similarGroup: 'staple' },
         { id: 'noodles', text: '面条', emoji: '🍜', similarGroup: 'staple' },
         { id: 'dumpling', text: '饺子', emoji: '🥟', similarGroup: 'staple' },
-        { id: 'baozi', text: '包子', emoji: '🫓', similarGroup: 'staple' },
+        { id: 'beer', text: '啤酒', emoji: '🍺', similarGroup: 'staple' },
         { id: 'burger', text: '汉堡', emoji: '🍔', similarGroup: 'fast' },
         { id: 'fries', text: '薯条', emoji: '🍟', similarGroup: 'fast' },
         { id: 'pizza', text: '披萨', emoji: '🍕', similarGroup: 'western' },
