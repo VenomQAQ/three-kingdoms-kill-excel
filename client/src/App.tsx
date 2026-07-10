@@ -22,6 +22,7 @@ import { DecoyGrid } from './components/wps/DecoyGrid';
 import { RoomListGrid } from './components/wps/RoomListGrid';
 import { GameGrid } from './components/wps/GameGrid';
 import { LianliankanGrid } from './components/wps/LianliankanGrid';
+import { CrimeSudokuGrid } from './components/wps/CrimeSudokuGrid';
 import { ChatPanel } from './components/wps/ChatPanel';
 import { LobbyChatPanel } from './components/wps/LobbyChatPanel';
 import { LoginDialog } from './components/wps/LoginDialog';
@@ -31,6 +32,7 @@ import { SettingsDialog } from './components/wps/SettingsDialog';
 import { BossKeyOverlay } from './components/wps/BossKeyOverlay';
 import { Toast } from './components/wps/Toast';
 import {
+  CRIME_SUDOKU_SHEET_ID,
   CURRENT_ROOM_SHEET_ID,
   DEFAULT_FILE_NAMES,
   isSheetId,
@@ -231,6 +233,7 @@ function App() {
   const onLobbySheet = activeSheet === ROOM_LIST_SHEET_ID;
   const onCurrentRoomSheet = activeSheet === CURRENT_ROOM_SHEET_ID;
   const onLianliankanSheet = activeSheet === LIANLIANKAN_SHEET_ID;
+  const onCrimeSudokuSheet = activeSheet === CRIME_SUDOKU_SHEET_ID;
   const onSalesSheet = activeSheet === SALES_SHEET_ID;
 
   useEffect(() => {
@@ -286,9 +289,13 @@ function App() {
       void joinRoom(context.roomCode)
         .then(() => {
           const preferred = isSheetId(context.activeSheet) ? context.activeSheet : CURRENT_ROOM_SHEET_ID;
-          // 刷新时若已从 localStorage 恢复到连连看等单人 Sheet，不要被房间重连强行切走
+          // 刷新时若已从 localStorage 恢复到单人 Sheet，不要被房间重连强行切走
           setActiveSheet((prev) =>
-            prev === LIANLIANKAN_SHEET_ID || prev === SALES_SHEET_ID ? prev : preferred,
+            prev === LIANLIANKAN_SHEET_ID
+              || prev === CRIME_SUDOKU_SHEET_ID
+              || prev === SALES_SHEET_ID
+              ? prev
+              : preferred,
           );
         })
         .catch(() => window.sessionStorage.removeItem('roomContext'));
@@ -744,7 +751,7 @@ function App() {
       ];
     }
 
-    if (onSalesSheet || onLianliankanSheet) {
+    if (onSalesSheet || onLianliankanSheet || onCrimeSudokuSheet) {
       return [];
     }
 
@@ -856,7 +863,7 @@ function App() {
       );
     }
     return base;
-  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onSalesSheet, actingPlayer]);
+  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onCrimeSudokuSheet, onSalesSheet, actingPlayer]);
 
   const handleFormulaSubmit = useCallback(async () => {
     const raw = formulaInput.trim();
@@ -1127,15 +1134,17 @@ function App() {
                   : turnPlayer?.id === playerId
                     ? '等待你的回合'
                     : `当前回合：${turnPlayer?.nickname ?? '—'}`
-            : onLobbySheet
-              ? isAuthed
-                ? '大厅聊天或 /create · /join 房间号'
-                : '登录后可发送消息 · /create · /join 需登录'
-              : room
-                ? '聊天或 /ready /start /add 角色名'
-                : sandboxEnabled
-                  ? '/create · /join 房间号 · /sandbox 测试房'
-                  : '/create · /join 房间号'
+            : onCrimeSudokuSheet
+              ? '点击盘面查看：房间 / 家具 / 站位编号'
+              : onLobbySheet
+                ? isAuthed
+                  ? '大厅聊天或 /create · /join 房间号'
+                  : '登录后可发送消息 · /create · /join 需登录'
+                : room
+                  ? '聊天或 /ready /start /add 角色名'
+                  : sandboxEnabled
+                    ? '/create · /join 房间号 · /sandbox 测试房'
+                    : '/create · /join 房间号'
         }
       />
       {lastError && (
@@ -1248,6 +1257,24 @@ function App() {
               showToast('请先登录');
               setShowLoginDialog(true);
             }}
+          />
+        ) : displaySheet === CRIME_SUDOKU_SHEET_ID ? (
+          <CrimeSudokuGrid
+            selectedCell={selectedCell}
+            isAuthed={isAuthed}
+            coins={user?.coins}
+            onSelectCell={setSelectedCell}
+            onCellDetail={setFormulaInput}
+            onRequireLogin={() => {
+              showToast('请先登录');
+              setShowLoginDialog(true);
+            }}
+            onWalletUpdate={(wallet) => {
+              useAppStore.setState((s) => ({
+                user: s.user ? { ...s.user, ...wallet } : s.user,
+              }));
+            }}
+            onToast={(message) => useToastStore.getState().show(message)}
           />
         ) : (
           <DecoyGrid selectedCell={selectedCell} onSelectCell={setSelectedCell} />

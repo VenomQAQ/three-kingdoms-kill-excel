@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import styles from './SheetTabs.module.css';
 import {
+  CRIME_SUDOKU_SHEET_ID,
   CURRENT_ROOM_SHEET_ID,
   LIANLIANKAN_SHEET_ID,
   ROOM_LIST_SHEET_ID,
@@ -15,7 +16,13 @@ interface SheetTabsProps {
   currentRoomDisabled?: boolean;
 }
 
-const ALL_SHEETS: SheetId[] = [ROOM_LIST_SHEET_ID, CURRENT_ROOM_SHEET_ID, LIANLIANKAN_SHEET_ID, SALES_SHEET_ID];
+const ALL_SHEETS: SheetId[] = [
+  ROOM_LIST_SHEET_ID,
+  CURRENT_ROOM_SHEET_ID,
+  LIANLIANKAN_SHEET_ID,
+  CRIME_SUDOKU_SHEET_ID,
+  SALES_SHEET_ID,
+];
 const STORAGE_KEY = 'tk_sheet_labels';
 
 function loadLocalLabels(): Partial<Record<SheetId, string>> {

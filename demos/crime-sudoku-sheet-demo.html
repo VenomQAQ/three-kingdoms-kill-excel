@@ -1,0 +1,1419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>凶案数独 · Sheet Demo（场景格）</title>
+  <style>
+    :root {
+      --wps-green: #217346;
+      --wps-green-soft: rgba(33, 115, 70, 0.12);
+      --border: #d0d0d0;
+      --header-bg: #f3f3f3;
+      --header-text: #666;
+      --cell-bg: #fff;
+      --selected-border: #217346;
+      --given: #1a1a1a;
+      --input: #1565c0;
+      --error: #c62828;
+      --ok: #2e7d32;
+      --clue-bg: #fffdf5;
+      --suspect-hot: #ffebee;
+      --title-red: #c00000;
+      --wall: #2b2b2b;
+      --cell-size: 72px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      display: flex;
+      flex-direction: column;
+      background: #f5f5f5;
+      color: #333;
+      font-size: 12px;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    .titlebar {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 12px;
+      background: linear-gradient(180deg, #2d8a55, var(--wps-green));
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .titlebar .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: rgba(255,255,255,.35);
+    }
+    .titlebar .file { font-weight: 400; opacity: .9; }
+
+    .ribbon {
+      height: 40px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      background: #fff;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .ribbon label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #555;
+    }
+    .ribbon select, .ribbon button, .numpad button {
+      height: 26px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+    .ribbon select:hover, .ribbon button:hover, .numpad button:hover {
+      border-color: var(--wps-green);
+      background: var(--wps-green-soft);
+    }
+    .ribbon button.primary {
+      background: var(--wps-green);
+      border-color: var(--wps-green);
+      color: #fff;
+    }
+    .ribbon button.primary:hover { background: #1b5e3a; }
+    .ribbon .meta { color: #888; margin-left: 4px; }
+    .ribbon .sep {
+      width: 1px; height: 20px; background: var(--border); margin: 0 4px;
+    }
+    .notice {
+      margin-left: auto;
+      padding: 2px 10px;
+      border-radius: 3px;
+      font-weight: 600;
+    }
+    .notice.ok { color: var(--ok); background: #e8f5e9; }
+    .notice.err { color: var(--error); background: #ffebee; }
+    .notice.info { color: #555; background: #f5f5f5; }
+
+    .formula {
+      height: 28px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 8px;
+      background: #fff;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .formula .name {
+      min-width: 52px;
+      text-align: center;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      height: 22px;
+      line-height: 20px;
+      background: #fafafa;
+      font-weight: 600;
+    }
+    .formula .fx { color: #888; font-style: italic; }
+    .formula .value {
+      flex: 1;
+      height: 22px;
+      line-height: 20px;
+      padding: 0 8px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .main {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      background: #fff;
+    }
+
+    .gridPane {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      border-right: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .legendBar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      background: #fafafa;
+      flex-shrink: 0;
+    }
+    .legendItem {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 8px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: #fff;
+      font-size: 11px;
+      color: #555;
+    }
+    .legendSwatch {
+      width: 12px; height: 12px;
+      border-radius: 2px;
+      border: 1px solid rgba(0,0,0,.15);
+    }
+
+    .sheetWrap {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      position: relative;
+      background: #fff;
+    }
+
+    .sheet {
+      display: grid;
+      /* A..L + row header; board cells are wider */
+      grid-template-columns: 36px repeat(12, var(--cell-size));
+      grid-auto-rows: var(--cell-size);
+      width: max-content;
+      border-top: 1px solid var(--border);
+      border-left: 1px solid var(--border);
+    }
+
+    .corner, .colH, .rowH {
+      background: var(--header-bg);
+      color: var(--header-text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      position: sticky;
+      z-index: 2;
+    }
+    .corner { top: 0; left: 0; z-index: 3; height: 28px; }
+    .colH { top: 0; height: 28px; }
+    .rowH { left: 0; }
+
+    /* first header row shorter */
+    .sheet { grid-template-rows: 28px; }
+
+    .cell {
+      border-right: 1px solid #e0e0e0;
+      border-bottom: 1px solid #e0e0e0;
+      background: var(--cell-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      cursor: default;
+      outline: none;
+      overflow: hidden;
+    }
+    .cell.selected {
+      outline: 2px solid var(--selected-border);
+      outline-offset: -2px;
+      z-index: 4;
+    }
+
+    .cell.label {
+      justify-content: flex-start;
+      padding: 0 8px;
+      color: #666;
+      font-size: 11px;
+      background: #f7f7f7;
+    }
+    .cell.title-cell {
+      justify-content: flex-start;
+      padding: 0 10px;
+      font-weight: 700;
+      color: var(--title-red);
+      font-size: 13px;
+    }
+    .cell.suspect-cell {
+      justify-content: flex-start;
+      padding: 0 8px;
+      gap: 6px;
+      font-size: 12px;
+      background: #fff;
+    }
+    .cell.suspect-cell .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px; height: 18px;
+      border-radius: 3px;
+      background: #eee;
+      font-weight: 700;
+      font-size: 11px;
+    }
+    .cell.suspect-hot { background: var(--suspect-hot); }
+
+    /* —— Murdoku scene cell —— */
+    .cell.play {
+      cursor: pointer;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 4px 3px 3px;
+      /* default thin wall; room edges override */
+      border-color: #cfcfcf;
+    }
+    .cell.play.wall-l { border-left: 3px solid var(--wall); }
+    .cell.play.wall-r { border-right: 3px solid var(--wall); }
+    .cell.play.wall-t { border-top: 3px solid var(--wall); }
+    .cell.play.wall-b { border-bottom: 3px solid var(--wall); }
+
+    .cell.play .sceneTop {
+      width: 100%;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 2px;
+      min-height: 14px;
+      pointer-events: none;
+    }
+    .cell.play .roomTag {
+      font-size: 9px;
+      line-height: 1;
+      color: rgba(0,0,0,.45);
+      font-weight: 600;
+      letter-spacing: .2px;
+      max-width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .cell.play .propIcon {
+      font-size: 22px;
+      line-height: 1;
+      filter: drop-shadow(0 1px 0 rgba(255,255,255,.6));
+      pointer-events: none;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+    }
+    .cell.play .propIcon.empty {
+      font-size: 14px;
+      opacity: .35;
+    }
+    .cell.play .numRow {
+      width: 100%;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      min-height: 18px;
+      pointer-events: none;
+    }
+    .cell.play .num {
+      font-size: 16px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .cell.play.given .num { color: var(--given); }
+    .cell.play.user .num { color: var(--input); }
+    .cell.play.error {
+      box-shadow: inset 0 0 0 2px rgba(198, 40, 40, .45);
+    }
+    .cell.play.error .num { color: var(--error); }
+    .cell.play.hl-soft { filter: brightness(0.97); }
+    .cell.play.same-num { box-shadow: inset 0 0 0 2px rgba(33, 115, 70, .35); }
+    .cell.play.selected { box-shadow: inset 0 0 0 2px var(--selected-border); }
+
+    .notes {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      width: 100%;
+      font-size: 8px;
+      color: #777;
+      line-height: 1.1;
+    }
+    .notes span {
+      display: flex; align-items: center; justify-content: center;
+    }
+    .notes span.on { color: #333; font-weight: 700; }
+
+    .side {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: #fff;
+      box-shadow: -1px 0 3px rgba(0,0,0,.03);
+    }
+    .panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .panel:last-child { border-bottom: none; }
+    .panel.case { flex: 1.15; }
+    .panel.suspects { flex: 0.85; min-height: 180px; }
+    .panel.config { flex: 0.7; min-height: 140px; }
+
+    .panelTitle {
+      height: 28px;
+      line-height: 28px;
+      padding: 0 12px;
+      font-weight: 600;
+      font-size: 12px;
+      color: var(--title-red);
+      background: #fafafa;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .panelTitle .tag { font-weight: 500; color: #888; font-size: 11px; }
+    .panelBody {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 10px 12px;
+    }
+
+    .caseCard {
+      background: var(--clue-bg);
+      border: 1px solid #efe6c8;
+      border-radius: 4px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    .caseCard h3 { font-size: 13px; margin-bottom: 6px; }
+    .caseCard p { color: #555; line-height: 1.55; margin-bottom: 4px; }
+    .caseCard .meta { margin-top: 8px; color: #888; font-size: 11px; }
+
+    .clueList { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .clueList li {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: #fff;
+      line-height: 1.45;
+      color: #444;
+    }
+    .clueList li .n {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--wps-green-soft);
+      color: var(--wps-green);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 10px;
+    }
+    .clueList li.used { opacity: .55; text-decoration: line-through; }
+    .clueList li button {
+      grid-column: 1 / -1;
+      justify-self: start;
+      margin-top: 2px;
+      font-size: 11px;
+      color: var(--wps-green);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .suspectGrid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .suspect {
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px 10px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .suspect:hover { border-color: var(--wps-green); }
+    .suspect .name { font-weight: 700; font-size: 13px; margin-bottom: 2px; }
+    .suspect .role { color: #888; font-size: 11px; margin-bottom: 4px; }
+    .suspect .clue {
+      color: #555;
+      font-size: 11px;
+      line-height: 1.4;
+      background: #fafafa;
+      border-radius: 3px;
+      padding: 4px 6px;
+      border: 1px dashed #e0e0e0;
+    }
+    .suspect .num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px; height: 20px;
+      padding: 0 5px;
+      border-radius: 3px;
+      background: #f0f0f0;
+      font-weight: 700;
+      margin-right: 4px;
+    }
+    .suspect.picked, .suspect.hot {
+      background: var(--suspect-hot);
+      border-color: #ef9a9a;
+      outline: 2px solid var(--wps-green);
+      outline-offset: -1px;
+    }
+    .suspect .status {
+      margin-top: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #888;
+    }
+    .suspect.hot .status { color: var(--error); }
+
+    .numpad {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .numpad button {
+      height: 32px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .numpad button.wide { grid-column: span 2; font-size: 12px; font-weight: 600; }
+
+    .configPre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10.5px;
+      line-height: 1.45;
+      background: #fafafa;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 8px 10px;
+      white-space: pre;
+      overflow: auto;
+      color: #444;
+      max-height: 100%;
+    }
+
+    .tabs {
+      height: 28px;
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      padding: 0 8px;
+      background: #e8e8e8;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .tab {
+      height: 24px;
+      padding: 0 14px;
+      background: #f0f0f0;
+      border: 1px solid var(--border);
+      border-bottom: none;
+      border-radius: 3px 3px 0 0;
+      color: #555;
+      font: inherit;
+      cursor: pointer;
+    }
+    .tab.active {
+      background: #fff;
+      color: var(--wps-green);
+      font-weight: 600;
+      border-top: 2px solid var(--wps-green);
+      height: 26px;
+    }
+
+    .statusbar {
+      height: 22px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 12px;
+      background: var(--wps-green);
+      color: #fff;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    .hint {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      max-width: 280px;
+      padding: 8px 10px;
+      background: rgba(33,33,33,.88);
+      color: #fff;
+      border-radius: 4px;
+      font-size: 11px;
+      line-height: 1.45;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .2s;
+      z-index: 5;
+    }
+    .hint.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="titlebar">
+    <span class="dot"></span>
+    <span>WPS 表格</span>
+    <span class="file">— 三国杀摸鱼版.xlsx · 凶案数独</span>
+  </div>
+
+  <div class="ribbon">
+    <label>
+      关卡
+      <select id="levelSelect"></select>
+    </label>
+    <span class="sep"></span>
+    <button type="button" class="primary" id="btnStart">开始 / 重置</button>
+    <button type="button" id="btnCheck">验算</button>
+    <button type="button" id="btnHint">提示</button>
+    <button type="button" id="btnNotes">笔记模式</button>
+    <span class="sep"></span>
+    <span class="meta" id="levelMeta">—</span>
+    <div class="notice info" id="notice">格子里是场景；数字 = 站在该格的人</div>
+  </div>
+
+  <div class="formula">
+    <div class="name" id="cellName">B3</div>
+    <span class="fx">fx</span>
+    <div class="value" id="cellValue">点击盘面查看：房间 / 家具 / 站位编号</div>
+  </div>
+
+  <div class="main">
+    <div class="gridPane">
+      <div class="legendBar" id="legendBar"></div>
+      <div class="sheetWrap" id="sheetWrap">
+        <div class="sheet" id="sheet"></div>
+        <div class="hint" id="floatHint"></div>
+      </div>
+    </div>
+
+    <aside class="side">
+      <section class="panel case">
+        <div class="panelTitle">案情线索 <span class="tag" id="clueCount">0 条</span></div>
+        <div class="panelBody">
+          <div class="caseCard" id="caseCard"></div>
+          <ul class="clueList" id="clueList"></ul>
+        </div>
+      </section>
+
+      <section class="panel suspects">
+        <div class="panelTitle">嫌疑人 · 口供 <span class="tag">点选指认真凶</span></div>
+        <div class="panelBody">
+          <div class="suspectGrid" id="suspectGrid"></div>
+          <div class="numpad" id="numpad"></div>
+        </div>
+      </section>
+
+      <section class="panel config">
+        <div class="panelTitle">关卡配置预览 <span class="tag">含 rooms / props</span></div>
+        <div class="panelBody" style="padding: 8px;">
+          <pre class="configPre" id="configPre"></pre>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <div class="tabs">
+    <button type="button" class="tab">房间列表</button>
+    <button type="button" class="tab">当前房间</button>
+    <button type="button" class="tab">连连看</button>
+    <button type="button" class="tab active">凶案数独</button>
+    <button type="button" class="tab">销售数据</button>
+  </div>
+
+  <div class="statusbar">
+    <span>就绪</span>
+    <span id="statusLevel">关卡 —</span>
+    <span id="statusProgress">进度 0/0</span>
+    <span id="statusMode">模式：填数</span>
+    <span style="margin-left:auto">Murdoku 场景格 · Excel Sheet Demo</span>
+  </div>
+
+  <script>
+    /**
+     * Murdoku 风格关卡配置
+     * - rooms: 房间定义（色、名）
+     * - scene[r][c]: { room, prop, propLabel } 场景格
+     * - 粗墙：相邻格 room 不同则画墙
+     * - 数字仍是数独约束；同时 = 嫌疑人编号（站位）
+     */
+    const LEVELS = [
+      {
+        id: 'lv1',
+        name: '第 1 关 · 客栈夜杀',
+        difficulty: '入门',
+        size: 6,
+        box: [2, 3], // 数独宫（逻辑）；视觉房间可与宫不完全重合
+        title: '客栈夜杀',
+        story: '洛阳客栈夜半命案。盘面是当晚平面图：每格是一个站位，格子里的家具/地面即场景。把 1–6 号人物填入，使每行/列/宫不重复，并结合口供找出真凶。',
+        ruleHint: '场景格：房间底色 + 家具图标。数字 = 站在该格的人。粗线 = 房间隔墙。',
+        rooms: {
+          dining:  { name: '饭厅',   color: '#fff8e7' },
+          bedroom: { name: '客房',   color: '#f3e5f5' },
+          kitchen: { name: '厨房',   color: '#eceff1' },
+          porch:   { name: '门廊',   color: '#efebe9' },
+          yard:    { name: '前院',   color: '#e3f2fd' },
+          account: { name: '账房',   color: '#e8f5e9' },
+        },
+        // prop: emoji；空地用 floor 类
+        scene: [
+          [
+            { room: 'dining',  prop: '🪑', propLabel: '太师椅' },
+            { room: 'dining',  prop: '🪑', propLabel: '太师椅' },
+            { room: 'dining',  prop: '🪵', propLabel: '长桌' },
+            { room: 'bedroom', prop: '🛏️', propLabel: '卧榻' },
+            { room: 'bedroom', prop: '🪴', propLabel: '盆景' },
+            { room: 'bedroom', prop: '',   propLabel: '空地' },
+          ],
+          [
+            { room: 'dining',  prop: '🪴', propLabel: '盆景' },
+            { room: 'dining',  prop: '🪵', propLabel: '长桌' },
+            { room: 'dining',  prop: '🪑', propLabel: '太师椅' },
+            { room: 'bedroom', prop: '',   propLabel: '空地' },
+            { room: 'bedroom', prop: '🛏️', propLabel: '卧榻' },
+            { room: 'bedroom', prop: '🪟', propLabel: '窗边' },
+          ],
+          [
+            { room: 'kitchen', prop: '🔥', propLabel: '灶台' },
+            { room: 'kitchen', prop: '🪵', propLabel: '案板' },
+            { room: 'kitchen', prop: '',   propLabel: '空地' },
+            { room: 'porch',   prop: '🟫', propLabel: '地毯' },
+            { room: 'porch',   prop: '🪑', propLabel: '条凳' },
+            { room: 'porch',   prop: '🚪', propLabel: '大门' },
+          ],
+          [
+            { room: 'kitchen', prop: '🪣', propLabel: '水缸' },
+            { room: 'kitchen', prop: '🔥', propLabel: '灶台' },
+            { room: 'kitchen', prop: '🪵', propLabel: '案板' },
+            { room: 'porch',   prop: '🟫', propLabel: '地毯' },
+            { room: 'porch',   prop: '',   propLabel: '空地' },
+            { room: 'porch',   prop: '🟫', propLabel: '地毯' },
+          ],
+          [
+            { room: 'account', prop: '📜', propLabel: '账册' },
+            { room: 'account', prop: '🪑', propLabel: '坐席' },
+            { room: 'account', prop: '',   propLabel: '空地' },
+            { room: 'yard',    prop: '🌿', propLabel: '灌木' },
+            { room: 'yard',    prop: '🌿', propLabel: '灌木' },
+            { room: 'yard',    prop: '',   propLabel: '空地' },
+          ],
+          [
+            { room: 'account', prop: '',   propLabel: '空地' },
+            { room: 'account', prop: '📜', propLabel: '账册' },
+            { room: 'account', prop: '💡', propLabel: '灯台' },
+            { room: 'yard',    prop: '🌿', propLabel: '灌木' },
+            { room: 'yard',    prop: '',   propLabel: '空地' },
+            { room: 'yard',    prop: '🌿', propLabel: '灌木' },
+          ],
+        ],
+        suspects: [
+          { num: 1, name: '赵六', role: '跑堂', clue: '我在账房坐席上。' },
+          { num: 2, name: '钱七', role: '镖师', clue: '我在厨房灶台边。' },
+          { num: 3, name: '孙八', role: '书生', clue: '我在饭厅长桌旁；客房内另有真凶。' },
+          { num: 4, name: '李九', role: '商人', clue: '我在前院灌木旁。' },
+          { num: 5, name: '周十', role: '游侠', clue: '我站在门廊地毯上。' },
+          { num: 6, name: '吴十一', role: '捕快', clue: '我刚到前院空地。' },
+        ],
+        killer: 3,
+        clues: [
+          '饭厅「长桌」旁是书生（3）。',
+          '厨房「灶台」边是镖师（2）。',
+          '门廊「地毯」上是游侠（5）。',
+          '账房「坐席」是跑堂赵六（1）。',
+          '前院「灌木」旁是商人（4）。',
+          '死者在客房卧榻；当时客房内另有一人即真凶（书生）。',
+        ],
+        // 合法 6×6（宫 2×3）；预填与解一致。场景线索为视觉示意。
+        given: [
+          [0, 0, 3, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0],
+          [2, 0, 0, 5, 0, 0],
+          [0, 0, 0, 0, 0, 0],
+          [0, 1, 0, 0, 4, 0],
+          [0, 0, 0, 0, 0, 0],
+        ],
+        solution: [
+          [1, 2, 3, 4, 5, 6],
+          [4, 5, 6, 1, 2, 3],
+          [2, 3, 1, 5, 6, 4],
+          [5, 6, 4, 2, 3, 1],
+          [3, 1, 2, 6, 4, 5],
+          [6, 4, 5, 3, 1, 2],
+        ],
+      },
+      {
+        id: 'lv2',
+        name: '第 2 关 · 府衙签押',
+        difficulty: '进阶',
+        size: 9,
+        box: [3, 3],
+        title: '府衙签押',
+        story: '县令死于签押房。九宫平面图划分公堂、签押、牢侧、花园等区域。先还原站位，再指认真凶。',
+        ruleHint: '9×9 标准数独 + 场景房间。粗线为房间墙，不一定等于 3×3 宫线。',
+        rooms: {
+          hall:   { name: '公堂', color: '#fff8e1' },
+          office: { name: '签押', color: '#fce4ec' },
+          jail:   { name: '牢侧', color: '#efebe9' },
+          garden: { name: '花园', color: '#e8f5e9' },
+          gate:   { name: '仪门', color: '#e3f2fd' },
+          side:   { name: '厢房', color: '#f3e5f5' },
+        },
+        scene: null, // 运行时生成
+        suspects: [
+          { num: 1, name: '主簿', role: '文吏', clue: '我在公堂案桌旁。' },
+          { num: 2, name: '捕头', role: '武职', clue: '我守在仪门。' },
+          { num: 3, name: '师爷', role: '幕僚', clue: '我在签押房。' },
+          { num: 4, name: '衙役甲', role: '差役', clue: '我在牢侧。' },
+          { num: 5, name: '衙役乙', role: '差役', clue: '我在厢房空地。' },
+          { num: 6, name: '讼棍', role: '访客', clue: '我在花园石凳。' },
+          { num: 7, name: '药铺掌柜', role: '访客', clue: '死者独与我同处签押——且我是真凶。' },
+          { num: 8, name: '县尉', role: '武职', clue: '我在公堂一侧。' },
+          { num: 9, name: '夫人', role: '内眷', clue: '我在厢房窗边。' },
+        ],
+        killer: 7,
+        clues: [
+          '公堂「案桌」旁是主簿。',
+          '仪门有捕头把守。',
+          '花园「石凳」上是讼棍。',
+          '厢房「窗边」是夫人。',
+          '签押房内除死者外另有一人，即真凶（药铺掌柜）。',
+        ],
+        given: [
+          [5, 3, 0, 0, 7, 0, 0, 0, 0],
+          [6, 0, 0, 1, 9, 5, 0, 0, 0],
+          [0, 9, 8, 0, 0, 0, 0, 6, 0],
+          [8, 0, 0, 0, 6, 0, 0, 0, 3],
+          [4, 0, 0, 8, 0, 3, 0, 0, 1],
+          [7, 0, 0, 0, 2, 0, 0, 0, 6],
+          [0, 6, 0, 0, 0, 0, 2, 8, 0],
+          [0, 0, 0, 4, 1, 9, 0, 0, 5],
+          [0, 0, 0, 0, 8, 0, 0, 7, 9],
+        ],
+        solution: [
+          [5, 3, 4, 6, 7, 8, 9, 1, 2],
+          [6, 7, 2, 1, 9, 5, 3, 4, 8],
+          [1, 9, 8, 3, 4, 2, 5, 6, 7],
+          [8, 5, 9, 7, 6, 1, 4, 2, 3],
+          [4, 2, 6, 8, 5, 3, 7, 9, 1],
+          [7, 1, 3, 9, 2, 4, 8, 5, 6],
+          [9, 6, 1, 5, 3, 7, 2, 8, 4],
+          [2, 8, 7, 4, 1, 9, 6, 3, 5],
+          [3, 4, 5, 2, 8, 6, 1, 7, 9],
+        ],
+      },
+    ];
+
+    // 第 2 关：按房间色块生成场景家具
+    (function buildLv2Scene() {
+      const lv = LEVELS[1];
+      const roomsGrid = [
+        ['hall','hall','hall','office','office','office','gate','gate','gate'],
+        ['hall','hall','hall','office','office','office','gate','gate','gate'],
+        ['hall','hall','hall','office','office','office','gate','gate','gate'],
+        ['side','side','side','jail','jail','jail','garden','garden','garden'],
+        ['side','side','side','jail','jail','jail','garden','garden','garden'],
+        ['side','side','side','jail','jail','jail','garden','garden','garden'],
+        ['side','side','side','jail','jail','jail','garden','garden','garden'],
+        ['side','side','side','office','office','office','gate','gate','gate'],
+        ['side','side','side','office','office','office','gate','gate','gate'],
+      ];
+      const props = {
+        hall:   [['⚖️','案桌'], ['', '空地'], ['🪑','公座'], ['📜','文牍'], ['', '空地'], ['🪑','旁席'], ['🪟','窗'], ['', '空地'], ['💡','灯']],
+        office: [['🛏️','尸榻'], ['📜','签押'], ['', '空地'], ['🪑','坐席'], ['🪴','盆景'], ['', '空地'], ['🪟','窗'], ['💡','灯'], ['', '空地']],
+        gate:   [['🚪','仪门'], ['', '空地'], ['🌿','树'], ['🪑','门岗'], ['', '空地'], ['🌿','树'], ['', '空地'], ['🚪','侧门'], ['', '空地']],
+        side:   [['🛏️','卧榻'], ['', '空地'], ['🪟','窗边'], ['🪑','坐席'], ['', '空地'], ['🪴','盆景'], ['', '空地'], ['💡','灯'], ['', '空地']],
+        jail:   [['⛓️','枷锁'], ['', '空地'], ['🪑','看守'], ['', '空地'], ['⛓️','枷锁'], ['', '空地'], ['🪟','铁窗'], ['', '空地'], ['🪣','水桶']],
+        garden: [['🌿','花木'], ['🪨','石凳'], ['🌿','花木'], ['', '空地'], ['🌿','花木'], ['', '空地'], ['🪴','盆景'], ['🌿','花木'], ['', '空地']],
+      };
+      const counter = { hall:0, office:0, gate:0, side:0, jail:0, garden:0 };
+      lv.scene = roomsGrid.map((row) =>
+        row.map((room) => {
+          const i = counter[room]++;
+          const pair = (props[room] && props[room][i % props[room].length]) || ['', '空地'];
+          return { room, prop: pair[0], propLabel: pair[1] };
+        })
+      );
+    })();
+
+    const COLS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const SHEET_COLS = 12;
+    const SHEET_ROWS = 18;
+
+    const state = {
+      levelId: LEVELS[0].id,
+      board: [],
+      givenMask: [],
+      notes: [],
+      selected: null,
+      noteMode: false,
+      accused: null,
+      usedClues: new Set(),
+      errors: new Set(),
+    };
+
+    const $ = (id) => document.getElementById(id);
+    function level() {
+      return LEVELS.find((l) => l.id === state.levelId) || LEVELS[0];
+    }
+    function boardOrigin() {
+      return { row: 2, col: 1 }; // B3
+    }
+
+    function sceneAt(lv, r, c) {
+      return lv.scene?.[r]?.[c] || { room: 'hall', prop: '', propLabel: '空地' };
+    }
+
+    function roomWalls(lv, r, c) {
+      const cur = sceneAt(lv, r, c).room;
+      const wall = { l: false, r: false, t: false, b: false };
+      if (c === 0 || sceneAt(lv, r, c - 1).room !== cur) wall.l = true;
+      if (c === lv.size - 1 || sceneAt(lv, r, c + 1).room !== cur) wall.r = true;
+      if (r === 0 || sceneAt(lv, r - 1, c).room !== cur) wall.t = true;
+      if (r === lv.size - 1 || sceneAt(lv, r + 1, c).room !== cur) wall.b = true;
+      return wall;
+    }
+
+    function initBoard() {
+      const lv = level();
+      state.board = lv.given.map((row) => row.slice());
+      state.givenMask = lv.given.map((row) => row.map((n) => n !== 0));
+      state.notes = Array.from({ length: lv.size }, () =>
+        Array.from({ length: lv.size }, () => new Set())
+      );
+      state.selected = { r: 0, c: 0 };
+      state.accused = null;
+      state.usedClues = new Set();
+      state.errors = new Set();
+      state.noteMode = false;
+      $('btnNotes').textContent = '笔记模式';
+      $('statusMode').textContent = '模式：填数';
+      setNotice('info', '关卡已载入：先看格子场景，再填站位编号');
+      renderAll();
+    }
+
+    function setNotice(type, text) {
+      const el = $('notice');
+      el.className = 'notice ' + type;
+      el.textContent = text;
+    }
+    function showHint(text) {
+      const el = $('floatHint');
+      el.textContent = text;
+      el.classList.add('show');
+      clearTimeout(showHint._t);
+      showHint._t = setTimeout(() => el.classList.remove('show'), 2200);
+    }
+    function cellRef(r, c) { return COLS[c] + (r + 1); }
+
+    function isConflict(board, size, box, r, c, val) {
+      if (!val) return false;
+      for (let i = 0; i < size; i++) {
+        if (i !== c && board[r][i] === val) return true;
+        if (i !== r && board[i][c] === val) return true;
+      }
+      const [br, bc] = box;
+      const r0 = Math.floor(r / br) * br;
+      const c0 = Math.floor(c / bc) * bc;
+      for (let i = r0; i < r0 + br; i++) {
+        for (let j = c0; j < c0 + bc; j++) {
+          if ((i !== r || j !== c) && board[i][j] === val) return true;
+        }
+      }
+      return false;
+    }
+
+    function recomputeErrors() {
+      const lv = level();
+      state.errors = new Set();
+      for (let r = 0; r < lv.size; r++) {
+        for (let c = 0; c < lv.size; c++) {
+          const v = state.board[r][c];
+          if (v && isConflict(state.board, lv.size, lv.box, r, c, v)) {
+            state.errors.add(r + ',' + c);
+          }
+        }
+      }
+    }
+
+    function filledCount() {
+      const lv = level();
+      let n = 0, total = lv.size * lv.size;
+      for (let r = 0; r < lv.size; r++)
+        for (let c = 0; c < lv.size; c++)
+          if (state.board[r][c]) n++;
+      return { n, total };
+    }
+
+    function renderLegend() {
+      const lv = level();
+      const bar = $('legendBar');
+      bar.innerHTML = '';
+      Object.entries(lv.rooms).forEach(([id, room]) => {
+        const el = document.createElement('span');
+        el.className = 'legendItem';
+        el.innerHTML = `<span class="legendSwatch" style="background:${room.color}"></span>${room.name}`;
+        bar.appendChild(el);
+      });
+      const tip = document.createElement('span');
+      tip.className = 'legendItem';
+      tip.textContent = '粗线 = 房间墙 · 图标 = 家具/地面';
+      bar.appendChild(tip);
+    }
+
+    function renderSheet() {
+      const lv = level();
+      const origin = boardOrigin();
+      const sheet = $('sheet');
+      sheet.innerHTML = '';
+
+      const corner = document.createElement('div');
+      corner.className = 'corner';
+      sheet.appendChild(corner);
+
+      for (let c = 0; c < SHEET_COLS; c++) {
+        const h = document.createElement('div');
+        h.className = 'colH';
+        h.textContent = COLS[c];
+        sheet.appendChild(h);
+      }
+
+      for (let r = 0; r < SHEET_ROWS; r++) {
+        const rh = document.createElement('div');
+        rh.className = 'rowH';
+        rh.textContent = String(r + 1);
+        sheet.appendChild(rh);
+
+        for (let c = 0; c < SHEET_COLS; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          const inBoard =
+            r >= origin.row &&
+            r < origin.row + lv.size &&
+            c >= origin.col &&
+            c < origin.col + lv.size;
+
+          if (r === 0 && c === 1) {
+            cell.classList.add('title-cell');
+            cell.textContent = '【' + lv.title + '】平面图 · ' + lv.difficulty;
+          } else if (r === 1 && c === 1) {
+            cell.classList.add('label');
+            cell.textContent = lv.ruleHint;
+          } else if (inBoard) {
+            const br = r - origin.row;
+            const bc = c - origin.col;
+            const scn = sceneAt(lv, br, bc);
+            const room = lv.rooms[scn.room];
+            const val = state.board[br][bc];
+            const given = state.givenMask[br][bc];
+            const key = br + ',' + bc;
+            const walls = roomWalls(lv, br, bc);
+
+            cell.classList.add('play');
+            cell.style.background = room?.color || '#fff';
+            if (given) cell.classList.add('given');
+            else if (val) cell.classList.add('user');
+            if (state.errors.has(key)) cell.classList.add('error');
+            if (walls.l) cell.classList.add('wall-l');
+            if (walls.r) cell.classList.add('wall-r');
+            if (walls.t) cell.classList.add('wall-t');
+            if (walls.b) cell.classList.add('wall-b');
+
+            if (state.selected && 'r' in state.selected) {
+              const sr = state.selected.r, sc = state.selected.c;
+              if (sr === br && sc === bc) cell.classList.add('selected');
+              else if (sr === br || sc === bc) cell.classList.add('hl-soft');
+              const selVal = state.board[sr][sc];
+              if (selVal && val === selVal) cell.classList.add('same-num');
+            }
+
+            const top = document.createElement('div');
+            top.className = 'sceneTop';
+            const tag = document.createElement('span');
+            tag.className = 'roomTag';
+            tag.textContent = room?.name || scn.room;
+            top.appendChild(tag);
+            cell.appendChild(top);
+
+            const icon = document.createElement('div');
+            icon.className = 'propIcon' + (scn.prop ? '' : ' empty');
+            icon.textContent = scn.prop || '·';
+            icon.title = scn.propLabel;
+            cell.appendChild(icon);
+
+            const numRow = document.createElement('div');
+            numRow.className = 'numRow';
+            if (val) {
+              const num = document.createElement('span');
+              num.className = 'num';
+              num.textContent = String(val);
+              numRow.appendChild(num);
+            } else if (state.notes[br][bc].size) {
+              const notes = document.createElement('div');
+              notes.className = 'notes';
+              for (let n = 1; n <= 9; n++) {
+                const s = document.createElement('span');
+                if (n <= lv.size && state.notes[br][bc].has(n)) {
+                  s.className = 'on';
+                  s.textContent = String(n);
+                }
+                notes.appendChild(s);
+              }
+              numRow.appendChild(notes);
+            }
+            cell.appendChild(numRow);
+
+            cell.title = `${room?.name || ''} · ${scn.propLabel}${val ? ' · 站位 ' + val : ''}`;
+            cell.dataset.br = br;
+            cell.dataset.bc = bc;
+            cell.tabIndex = 0;
+          } else if (r === origin.row && c === origin.col + lv.size + 1) {
+            cell.classList.add('label');
+            cell.textContent = '嫌疑人';
+          } else if (
+            c === origin.col + lv.size + 1 &&
+            r > origin.row &&
+            r <= origin.row + Math.min(lv.suspects.length, SHEET_ROWS - origin.row - 1)
+          ) {
+            const s = lv.suspects[r - origin.row - 1];
+            if (s) {
+              cell.classList.add('suspect-cell');
+              if (state.accused === s.num) cell.classList.add('suspect-hot');
+              const badge = document.createElement('span');
+              badge.className = 'badge';
+              badge.textContent = s.num;
+              cell.appendChild(badge);
+              cell.appendChild(document.createTextNode(s.name));
+            }
+          }
+
+          cell.addEventListener('click', () => onSheetClick(r, c, cell));
+          sheet.appendChild(cell);
+        }
+      }
+    }
+
+    function onSheetClick(sr, sc, cell) {
+      const lv = level();
+      const origin = boardOrigin();
+      const inBoard =
+        sr >= origin.row &&
+        sr < origin.row + lv.size &&
+        sc >= origin.col &&
+        sc < origin.col + lv.size;
+
+      if (inBoard) {
+        const br = sr - origin.row;
+        const bc = sc - origin.col;
+        state.selected = { r: br, c: bc };
+        updateFormulaBar(br, bc);
+      } else {
+        state.selected = { kind: 'sheet', r: sr, c: sc };
+        $('cellName').textContent = cellRef(sr, sc);
+        $('cellValue').textContent = cell.textContent || '（空）';
+      }
+      renderSheet();
+      renderNumpad();
+    }
+
+    function updateFormulaBar(br, bc) {
+      const lv = level();
+      const origin = boardOrigin();
+      const ref = cellRef(origin.row + br, origin.col + bc);
+      $('cellName').textContent = ref;
+      const scn = sceneAt(lv, br, bc);
+      const room = lv.rooms[scn.room];
+      const val = state.board[br][bc];
+      const given = state.givenMask[br][bc];
+      const suspect = lv.suspects.find((s) => s.num === val);
+      let text = `${room?.name || scn.room} · ${scn.propLabel}`;
+      if (scn.prop) text += ` ${scn.prop}`;
+      text += given ? ' · 题面给定' : ' · 可填';
+      if (val) text += ` · 站位 ${val}`;
+      if (suspect) text += `「${suspect.name}」`;
+      if (state.notes[br][bc].size) {
+        text += ` · 笔记 [${[...state.notes[br][bc]].sort().join(',')}]`;
+      }
+      $('cellValue').textContent = text;
+    }
+
+    function placeNumber(n) {
+      if (!state.selected || !('r' in state.selected)) return;
+      const { r, c } = state.selected;
+      if (state.givenMask[r][c]) {
+        setNotice('err', '题面数字不可改');
+        return;
+      }
+      const lv = level();
+      if (n !== 0 && (n < 1 || n > lv.size)) return;
+
+      if (state.noteMode && n !== 0) {
+        const set = state.notes[r][c];
+        if (set.has(n)) set.delete(n);
+        else set.add(n);
+        state.board[r][c] = 0;
+      } else {
+        state.board[r][c] = n;
+        state.notes[r][c].clear();
+      }
+      recomputeErrors();
+      updateFormulaBar(r, c);
+      updateProgress();
+      renderSheet();
+      renderSuspects();
+    }
+
+    function renderCase() {
+      const lv = level();
+      $('caseCard').innerHTML = `
+        <h3>${lv.title}</h3>
+        <p>${lv.story}</p>
+        <div class="meta">${lv.ruleHint}</div>
+      `;
+      $('clueCount').textContent = lv.clues.length + ' 条';
+      const list = $('clueList');
+      list.innerHTML = '';
+      lv.clues.forEach((text, i) => {
+        const li = document.createElement('li');
+        if (state.usedClues.has(i)) li.classList.add('used');
+        li.innerHTML = `<span class="n">${i + 1}</span><span>${text}</span>`;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = state.usedClues.has(i) ? '标为未用' : '标为已用';
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (state.usedClues.has(i)) state.usedClues.delete(i);
+          else state.usedClues.add(i);
+          renderCase();
+        });
+        li.appendChild(btn);
+        list.appendChild(li);
+      });
+    }
+
+    function renderSuspects() {
+      const lv = level();
+      const grid = $('suspectGrid');
+      grid.innerHTML = '';
+      lv.suspects.forEach((s) => {
+        const el = document.createElement('div');
+        el.className = 'suspect';
+        if (state.accused === s.num) el.classList.add('picked', 'hot');
+        el.innerHTML = `
+          <div class="name"><span class="num">${s.num}</span>${s.name}</div>
+          <div class="role">${s.role}</div>
+          <div class="clue">${s.clue || ''}</div>
+          <div class="status">${state.accused === s.num ? '已指认' : '点击指认'}</div>
+        `;
+        el.addEventListener('click', () => {
+          state.accused = s.num;
+          setNotice('info', `已指认：${s.name}（${s.num}）`);
+          renderSuspects();
+          renderSheet();
+        });
+        grid.appendChild(el);
+      });
+    }
+
+    function renderNumpad() {
+      const lv = level();
+      const pad = $('numpad');
+      pad.innerHTML = '';
+      for (let n = 1; n <= Math.min(lv.size, 9); n++) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = String(n);
+        b.addEventListener('click', () => placeNumber(n));
+        pad.appendChild(b);
+      }
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'wide';
+      clear.textContent = '清除';
+      clear.addEventListener('click', () => placeNumber(0));
+      pad.appendChild(clear);
+      const accuse = document.createElement('button');
+      accuse.type = 'button';
+      accuse.className = 'wide';
+      accuse.textContent = '验算通关';
+      accuse.addEventListener('click', checkWin);
+      pad.appendChild(accuse);
+    }
+
+    function renderConfig() {
+      const lv = level();
+      const sample = lv.scene[0].slice(0, 3);
+      const preview = {
+        id: lv.id,
+        size: lv.size,
+        box: lv.box,
+        rooms: Object.fromEntries(
+          Object.entries(lv.rooms).map(([k, v]) => [k, v.name])
+        ),
+        sceneSample: sample,
+        killer: lv.killer,
+        givenCells: lv.given.flat().filter(Boolean).length,
+      };
+      $('configPre').textContent = JSON.stringify(preview, null, 2);
+    }
+
+    function updateProgress() {
+      const lv = level();
+      const { n, total } = filledCount();
+      $('statusProgress').textContent =
+        `进度 ${n}/${total}` + (state.errors.size ? ` · 冲突 ${state.errors.size}` : '');
+      $('statusLevel').textContent = `关卡 ${lv.name}`;
+      $('levelMeta').textContent =
+        `${lv.size}×${lv.size} · ${Object.keys(lv.rooms).length} 个房间 · ${lv.difficulty}`;
+    }
+
+    function renderAll() {
+      renderLegend();
+      renderSheet();
+      renderCase();
+      renderSuspects();
+      renderNumpad();
+      renderConfig();
+      updateProgress();
+      if (state.selected && 'r' in state.selected) {
+        updateFormulaBar(state.selected.r, state.selected.c);
+      }
+    }
+
+    function checkWin() {
+      const lv = level();
+      recomputeErrors();
+      const { n, total } = filledCount();
+      if (n < total) {
+        setNotice('err', `盘面未填完（${n}/${total}）`);
+        renderSheet();
+        return;
+      }
+      if (state.errors.size) {
+        setNotice('err', `存在 ${state.errors.size} 处冲突`);
+        renderSheet();
+        return;
+      }
+      for (let r = 0; r < lv.size; r++) {
+        for (let c = 0; c < lv.size; c++) {
+          if (state.board[r][c] !== lv.solution[r][c]) {
+            setNotice('err', '盘面无冲突，但与标准解不一致');
+            renderSheet();
+            return;
+          }
+        }
+      }
+      if (state.accused == null) {
+        setNotice('err', '请先指认凶手');
+        return;
+      }
+      if (state.accused !== lv.killer) {
+        const wrong = lv.suspects.find((s) => s.num === state.accused);
+        setNotice('err', `指认错误：${wrong?.name || state.accused} 不是真凶`);
+        return;
+      }
+      const killer = lv.suspects.find((s) => s.num === lv.killer);
+      setNotice('ok', `破案成功！真凶是「${killer.name}」`);
+      showHint('通关！场景推理 + 数独站位都正确。');
+    }
+
+    function giveHint() {
+      const lv = level();
+      if (!state.selected || !('r' in state.selected)) {
+        setNotice('info', '先选中一个空格');
+        return;
+      }
+      const { r, c } = state.selected;
+      if (state.givenMask[r][c] || state.board[r][c]) {
+        setNotice('info', '该格已有数字');
+        return;
+      }
+      const ans = lv.solution[r][c];
+      const scn = sceneAt(lv, r, c);
+      state.board[r][c] = ans;
+      state.notes[r][c].clear();
+      recomputeErrors();
+      updateFormulaBar(r, c);
+      updateProgress();
+      renderSheet();
+      setNotice('info', `提示：${scn.propLabel} ← ${ans}`);
+      showHint(`${lv.rooms[scn.room].name}·${scn.propLabel} = ${ans}`);
+    }
+
+    function fillLevelSelect() {
+      const sel = $('levelSelect');
+      sel.innerHTML = '';
+      LEVELS.forEach((l) => {
+        const opt = document.createElement('option');
+        opt.value = l.id;
+        opt.textContent = l.name;
+        sel.appendChild(opt);
+      });
+      sel.value = state.levelId;
+      sel.addEventListener('change', () => {
+        state.levelId = sel.value;
+        initBoard();
+      });
+    }
+
+    $('btnStart').addEventListener('click', initBoard);
+    $('btnCheck').addEventListener('click', checkWin);
+    $('btnHint').addEventListener('click', giveHint);
+    $('btnNotes').addEventListener('click', () => {
+      state.noteMode = !state.noteMode;
+      $('btnNotes').textContent = state.noteMode ? '笔记中…' : '笔记模式';
+      $('statusMode').textContent = state.noteMode ? '模式：笔记' : '模式：填数';
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (!state.selected || !('r' in state.selected)) return;
+      const lv = level();
+      if (e.key >= '1' && e.key <= String(Math.min(lv.size, 9))) {
+        placeNumber(Number(e.key));
+        e.preventDefault();
+      } else if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
+        placeNumber(0);
+        e.preventDefault();
+      } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        let { r, c } = state.selected;
+        if (e.key === 'ArrowUp') r = Math.max(0, r - 1);
+        if (e.key === 'ArrowDown') r = Math.min(lv.size - 1, r + 1);
+        if (e.key === 'ArrowLeft') c = Math.max(0, c - 1);
+        if (e.key === 'ArrowRight') c = Math.min(lv.size - 1, c + 1);
+        state.selected = { r, c };
+        updateFormulaBar(r, c);
+        renderSheet();
+        e.preventDefault();
+      } else if (e.key === 'n' || e.key === 'N') {
+        $('btnNotes').click();
+      }
+    });
+
+    fillLevelSelect();
+    initBoard();
+  </script>
+</body>
+</html>

@@ -398,6 +398,80 @@ export type LianliankanDisplayMode = 'emoji' | 'text';
 export type LianliankanDifficultyId = 'easy' | 'normal' | 'hard';
 export type LianliankanSessionStatus = 'playing' | 'won' | 'lost' | 'expired';
 
+/** 凶案数独展示模式：文字（默认）/ 图标 */
+export type CrimeSudokuDisplayMode = 'text' | 'icon';
+
+export interface CrimeSudokuRoomDef {
+  name: string;
+  color: string;
+}
+
+export interface CrimeSudokuSceneCell {
+  room: string;
+  prop: string;
+  propLabel: string;
+}
+
+export interface CrimeSudokuSuspect {
+  num: number;
+  name: string;
+  role: string;
+  clue: string;
+}
+
+export interface CrimeSudokuLevel {
+  id: string;
+  name: string;
+  difficulty: string;
+  size: number;
+  /** 数独宫 [行高, 列宽] */
+  box: [number, number];
+  title: string;
+  story: string;
+  ruleHint: string;
+  rooms: Record<string, CrimeSudokuRoomDef>;
+  scene: CrimeSudokuSceneCell[][];
+  suspects: CrimeSudokuSuspect[];
+  killer: number;
+  clues: string[];
+  given: number[][];
+  solution: number[][];
+  /** 首次通关奖励金币 */
+  rewardCoins: number;
+  /** 本局最多提示次数 */
+  maxHints: number;
+  /** 每次提示消耗金币 */
+  hintCost: number;
+}
+
+export interface CrimeSudokuLevelMeta {
+  id: string;
+  name: string;
+  difficulty: string;
+  size: number;
+  rewardCoins: number;
+  maxHints: number;
+  hintCost: number;
+}
+
+export interface CrimeSudokuConfig {
+  levels: CrimeSudokuLevelMeta[];
+  hintCost: number;
+  maxHints: number;
+  _v: 1;
+}
+
+export interface CrimeSudokuClearRecord {
+  levelId: string;
+  clearTimeMs: number;
+  claimedAt: number;
+}
+
+export interface CrimeSudokuProgressView {
+  clears: CrimeSudokuClearRecord[];
+  _v: 1;
+}
+
 export interface LianliankanThemeItem {
   id: string;
   text: string;

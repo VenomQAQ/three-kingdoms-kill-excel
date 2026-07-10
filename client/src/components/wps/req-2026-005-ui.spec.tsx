@@ -54,7 +54,15 @@ describe('REQ-2026-005 UI acceptance', () => {
     expect(html).toContain('房间列表');
     expect(html).toContain('当前房间');
     expect(html).toContain('连连看');
+    expect(html).toContain('凶案数独');
     expect(html).toContain('区域销售');
+  });
+
+  it('adds the crime sudoku sheet entry', () => {
+    const html = htmlOf(
+      <SheetTabs active={ROOM_LIST_SHEET_ID} onSelect={vi.fn()} currentRoomDisabled />,
+    );
+    expect(html).toContain('凶案数独');
   });
 
   it('shows account level, nickname and coins in the title bar', () => {

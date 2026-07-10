@@ -10,10 +10,10 @@ const CELL_WIDTH = 88;
 const COL_HEADER_HEIGHT = 22;
 const ROW_HEADER_WIDTH = 40;
 
-function estimateFillerRows(dataRows: number): number {
+function estimateFillerRows(dataRows: number, cellHeight = CELL_HEIGHT): number {
   if (typeof window === 'undefined') return 24;
   const bodyHeight = Math.max(window.innerHeight - 220, 200);
-  const totalRows = Math.ceil(bodyHeight / CELL_HEIGHT);
+  const totalRows = Math.ceil(bodyHeight / cellHeight);
   return Math.max(0, totalRows - dataRows);
 }
 
@@ -37,8 +37,9 @@ export function useCellFiller(
   dataRows: number,
   dataCols = 0,
   cellWidth = CELL_WIDTH,
+  cellHeight = CELL_HEIGHT,
 ): FillCounts {
-  const [rows, setRows] = useState(() => estimateFillerRows(dataRows));
+  const [rows, setRows] = useState(() => estimateFillerRows(dataRows, cellHeight));
   const [cols, setCols] = useState(() => estimateFillerCols(dataCols, cellWidth));
 
   useLayoutEffect(() => {
@@ -47,7 +48,7 @@ export function useCellFiller(
 
     const recompute = () => {
       const bodyHeight = Math.max(el.clientHeight - COL_HEADER_HEIGHT, 0);
-      const totalRows = Math.max(dataRows, Math.ceil(bodyHeight / CELL_HEIGHT));
+      const totalRows = Math.max(dataRows, Math.ceil(bodyHeight / cellHeight));
       const fillerRows = Math.max(0, totalRows - dataRows);
       const bodyWidth = Math.max(el.clientWidth - ROW_HEADER_WIDTH, 0);
       const totalCols = dataCols > 0 ? Math.max(dataCols, Math.ceil(bodyWidth / cellWidth)) : dataCols;
@@ -60,7 +61,7 @@ export function useCellFiller(
     const ro = new ResizeObserver(recompute);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [containerRef, dataRows, dataCols, cellWidth]);
+  }, [containerRef, dataRows, dataCols, cellWidth, cellHeight]);
 
   return { rows, cols };
 }
