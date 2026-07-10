@@ -11,7 +11,10 @@ export const DECOY_ROWS: string[][] = [
   ['合计', '749.5', '805.1', '855.3', '910.9', '11.2%', '6.5%', ''],
 ];
 
-export const COL_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+export const COL_LABELS = [
+  'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
+  'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+];
 
 /** 与 @tk/shared SANDBOX_ROOM_CODE 保持一致 */
 export const SANDBOX_ROOM_CODE = '70755712';
@@ -19,9 +22,17 @@ export const SANDBOX_ROOM_CODE = '70755712';
 export const ROOM_LIST_SHEET_ID = 'room-list';
 export const CURRENT_ROOM_SHEET_ID = 'current-room';
 export const LIANLIANKAN_SHEET_ID = 'lianliankan';
+export const CRIME_SUDOKU_SHEET_ID = 'crime-sudoku';
+export const HIT_BOSS_SHEET_ID = 'hit-boss';
 export const SALES_SHEET_ID = 'sales';
 export const GAME_SHEET_ID = CURRENT_ROOM_SHEET_ID;
-export const DECOY_SHEET_IDS = [ROOM_LIST_SHEET_ID, LIANLIANKAN_SHEET_ID, SALES_SHEET_ID] as const;
+export const DECOY_SHEET_IDS = [
+  ROOM_LIST_SHEET_ID,
+  LIANLIANKAN_SHEET_ID,
+  CRIME_SUDOKU_SHEET_ID,
+  HIT_BOSS_SHEET_ID,
+  SALES_SHEET_ID,
+] as const;
 
 export type SheetId = (typeof DECOY_SHEET_IDS)[number] | typeof GAME_SHEET_ID;
 
@@ -29,6 +40,8 @@ export const SHEET_LABELS: Record<SheetId, string> = {
   [ROOM_LIST_SHEET_ID]: '房间列表',
   [CURRENT_ROOM_SHEET_ID]: '当前房间',
   [LIANLIANKAN_SHEET_ID]: '连连看',
+  [CRIME_SUDOKU_SHEET_ID]: '凶案数独',
+  [HIT_BOSS_SHEET_ID]: '打老板',
   [SALES_SHEET_ID]: '区域销售',
 };
 
@@ -36,6 +49,8 @@ export const DEFAULT_FILE_NAMES: Record<SheetId, string> = {
   [ROOM_LIST_SHEET_ID]: '房间列表.xlsx',
   [CURRENT_ROOM_SHEET_ID]: '当前房间.xlsx',
   [LIANLIANKAN_SHEET_ID]: '连连看挑战.xlsx',
+  [CRIME_SUDOKU_SHEET_ID]: '凶案数独.xlsx',
+  [HIT_BOSS_SHEET_ID]: '打老板.xlsx',
   [SALES_SHEET_ID]: '区域销售汇总.xlsx',
 };
 
@@ -43,9 +58,21 @@ const ALL_SHEET_IDS: SheetId[] = [
   ROOM_LIST_SHEET_ID,
   CURRENT_ROOM_SHEET_ID,
   LIANLIANKAN_SHEET_ID,
+  CRIME_SUDOKU_SHEET_ID,
+  HIT_BOSS_SHEET_ID,
   SALES_SHEET_ID,
 ];
 
 export function isSheetId(value: unknown): value is SheetId {
   return typeof value === 'string' && (ALL_SHEET_IDS as string[]).includes(value);
+}
+
+/** 可写入 localStorage 并在无房间时直接恢复（「当前房间」依赖会话，除外） */
+export function isPersistableSheet(id: SheetId): boolean {
+  return id !== CURRENT_ROOM_SHEET_ID;
+}
+
+/** 独立 Sheet（小游戏/伪装等）：进房或重连时不应被强制切到「当前房间」 */
+export function isIndependentSheet(id: SheetId): boolean {
+  return id !== CURRENT_ROOM_SHEET_ID && id !== ROOM_LIST_SHEET_ID;
 }

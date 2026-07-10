@@ -6,11 +6,11 @@ import {
   PrimaryColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import type { LianliankanSessionStatus } from '@tk/shared';
+import type { HitBossSessionStatus } from '@tk/shared';
 
-@Entity({ name: 'lianliankan_session' })
-@Index('idx_llk_session_user', ['userId'])
-export class LianliankanSessionEntity {
+@Entity({ name: 'hit_boss_session' })
+@Index('idx_hitboss_session_user', ['userId'])
+export class HitBossSessionEntity {
   @PrimaryColumn('varchar', { length: 26 })
   id!: string;
 
@@ -18,19 +18,10 @@ export class LianliankanSessionEntity {
   userId!: string;
 
   @Column('varchar', { length: 16 })
-  mode!: 'solo' | 'race';
-
-  @Column('varchar', { length: 26, nullable: true })
-  roomId!: string | null;
-
-  @Column('varchar', { length: 32 })
-  themeId!: string;
-
-  @Column('varchar', { length: 16 })
   difficultyId!: string;
 
   @Column('varchar', { length: 16 })
-  status!: LianliankanSessionStatus;
+  status!: HitBossSessionStatus;
 
   @Column('int')
   rows!: number;
@@ -42,17 +33,31 @@ export class LianliankanSessionEntity {
   timeLimitSec!: number;
 
   @Column('int')
+  bossTarget!: number;
+
+  @Column('int')
   entryFee!: number;
 
   @Column('int')
   rewardCoins!: number;
 
-  @Column('text')
-  boardJson!: string;
+  @Column('int')
+  spawnIntervalMs!: number;
 
-  /** 本局是否已使用过刷新重排 */
-  @Column('boolean', { default: false })
-  refreshUsed!: boolean;
+  @Column('float')
+  bossWeight!: number;
+
+  @Column('float')
+  distractorWeight!: number;
+
+  @Column('float')
+  workWeight!: number;
+
+  @Column('int', { default: 0 })
+  extendCount!: number;
+
+  @Column('int')
+  maxExtends!: number;
 
   @Column('datetime')
   startedAt!: Date;

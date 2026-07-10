@@ -10,12 +10,14 @@ interface LianliankanGridProps {
   session: LianliankanSession | null;
   loading: boolean;
   settling: boolean;
+  refreshing: boolean;
   selectedCell: string;
   isAuthed: boolean;
   coins?: number;
   onSelectCell: (ref: string) => void;
   onStart: (themeId: string, difficultyId: string) => Promise<LianliankanSession | null>;
   onFinish: (result: 'won' | 'lost', remainingTiles: number) => Promise<void>;
+  onRefresh: (remainingTiles: LianliankanTile[]) => Promise<LianliankanSession | null>;
   onRequireLogin: () => void;
 }
 
@@ -24,12 +26,14 @@ export function LianliankanGrid({
   session,
   loading,
   settling,
+  refreshing,
   selectedCell,
   isAuthed,
   coins,
   onSelectCell,
   onStart,
   onFinish,
+  onRefresh,
   onRequireLogin,
 }: LianliankanGridProps) {
   const [themeId, setThemeId] = useState('');
@@ -46,6 +50,15 @@ export function LianliankanGrid({
 
   const isActiveGame = session?.status === 'playing';
   const setupLocked = loading || settling || isActiveGame;
+  const refreshFee = config?.refreshFee ?? 5;
+  const canRefresh =
+    isActiveGame
+    && !!session
+    && !settling
+    && !refreshing
+    && !session.refreshUsed
+    && tiles.length > 0
+    && (coins ?? 0) >= refreshFee;
 
   useEffect(() => {
     if (!config) return;
@@ -142,8 +155,17 @@ export function LianliankanGrid({
     }
   };
 
+  const handleRefresh = async () => {
+    if (!canRefresh) return;
+    const next = await onRefresh(tiles);
+    if (next) {
+      setSelectedTileId(null);
+      setNotice('棋盘已重新排列');
+    }
+  };
+
   const handleTile = (tile: LianliankanTile) => {
-    if (!session || session.status !== 'playing' || settling) return;
+    if (!session || session.status !== 'playing' || settling || refreshing) return;
     if (!selectedTileId) {
       setSelectedTileId(tile.tileId);
       return;
@@ -201,6 +223,17 @@ export function LianliankanGrid({
         <button type="button" className={styles.llkStartBtn} onClick={handleStart} disabled={setupLocked || !config}>
           {loading ? '开局中' : settling ? '结算中' : '开始'}
         </button>
+        {isActiveGame ? (
+          <button
+            type="button"
+            className={styles.llkRefreshBtn}
+            onClick={() => void handleRefresh()}
+            disabled={!canRefresh}
+            title={session?.refreshUsed ? '本局已刷新过' : `消耗 ${refreshFee} 金币重新排列剩余格子`}
+          >
+            {refreshing ? '刷新中' : session?.refreshUsed ? '已刷新' : `刷新 · ${refreshFee}金币`}
+          </button>
+        ) : null}
         <div className={styles.llkSegmented} aria-label="展示模式">
           <button
             type="button"

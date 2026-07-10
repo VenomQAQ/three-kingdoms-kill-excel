@@ -704,6 +704,24 @@
   cursor: not-allowed;
 }
 
+.llkRefreshBtn {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid #cfcfcf;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #444444;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.llkRefreshBtn:disabled {
+  color: #999999;
+  background: #f5f5f5;
+  cursor: not-allowed;
+}
+
 .llkSegmented {
   display: inline-flex;
   height: 26px;
@@ -811,6 +829,43 @@
   font-size: 18px;
   line-height: 1;
 }
+
+.hbCell {
+  min-width: 72px;
+  width: 72px;
+  min-height: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  text-align: center;
+  position: relative;
+}
+
+.hbColHeader {
+  min-width: 72px;
+  width: 72px;
+}
+
+.hbFillerCell {
+  min-width: 72px;
+  width: 72px;
+}
+
+.hbNumber {
+  color: #666666;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.hbSpawnText {
+  font-weight: 500;
+  font-size: 13px;
+  color: #222222;
+  line-height: 1;
+}
+
 
 .monopolyWrap {
   --monopoly-board-cell-size: 96px;
@@ -1337,5 +1392,795 @@
     min-width: 0;
     max-width: none;
     flex-basis: auto;
+  }
+}
+
+/* —— 凶案数独 Sheet —— */
+.csLayout {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+
+.csLayout .sidePane {
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  grid-template-rows: none;
+}
+
+.csLayout .csPanel {
+  flex: 1;
+  min-height: 0;
+}
+
+.csToolBtn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #cfcfcf;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #333333;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.csToolBtn:hover {
+  border-color: #217346;
+  background: rgba(33, 115, 70, 0.08);
+}
+
+.csToolBtn:disabled {
+  color: #999999;
+  background: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.csToolActive {
+  border-color: #217346;
+  background: #e8f5ec;
+  color: #217346;
+  font-weight: 600;
+}
+
+.csLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid #d0d0d0;
+  background: #fafafa;
+  flex-shrink: 0;
+}
+
+.csLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border: 1px solid #e0e0e0;
+  border-radius: 3px;
+  background: #fff;
+  font-size: 11px;
+  color: #666;
+}
+
+.csLegendSwatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.csColHeader {
+  min-width: 64px;
+  width: 64px;
+}
+
+.csFillerCol {
+  min-width: 64px;
+  width: 64px;
+}
+
+.csRow {
+  min-height: 64px;
+  height: 64px;
+  overflow: hidden;
+}
+
+.csTitleRow {
+  min-height: 26px;
+  height: 26px;
+  overflow: hidden;
+}
+
+.csRowHeader {
+  line-height: 64px !important;
+  height: 64px;
+}
+
+.csTitleRowHeader {
+  line-height: 26px !important;
+  height: 26px;
+  min-height: 26px;
+}
+
+.csFillerCell {
+  min-width: 64px;
+  width: 64px;
+  min-height: 64px;
+  height: 64px;
+  box-sizing: border-box;
+}
+
+.csTitleFiller {
+  min-width: 64px;
+  width: 64px;
+  min-height: 26px;
+  height: 26px;
+  box-sizing: border-box;
+}
+
+.csEmptyCell {
+  min-width: 64px !important;
+  width: 64px;
+  min-height: 64px !important;
+  height: 64px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.csTitleEmpty {
+  min-width: 64px !important;
+  width: 64px;
+  min-height: 26px !important;
+  height: 26px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.csTitleCell {
+  min-width: 64px !important;
+  min-height: 26px !important;
+  height: 26px;
+  justify-content: flex-start;
+  padding: 0 10px;
+  font-weight: 700;
+  color: #6b7075;
+  font-size: 12px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 26px;
+}
+
+.csHintCell {
+  min-width: 64px !important;
+  min-height: 26px !important;
+  height: 26px;
+  justify-content: flex-start;
+  padding: 0 8px;
+  color: #666;
+  font-size: 11px;
+  background: #f7f7f7;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 26px;
+}
+
+.csPlayCell {
+  min-width: 64px !important;
+  width: 64px;
+  min-height: 64px !important;
+  height: 64px;
+  padding: 3px 2px 2px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  cursor: pointer;
+  /* 与空白格同一套细线，保证行列对齐 */
+  border: none;
+  border-right: 1px solid #e5e5e5;
+  border-bottom: 1px solid #e5e5e5;
+  overflow: hidden;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  line-height: 1.1;
+  white-space: normal;
+  position: relative;
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  color: inherit;
+}
+
+.csTextMode {
+  /* 很浅的灰，几乎接近白，只作轻微区分 */
+  background: #fafafa;
+}
+
+.csIconMode {
+  background: #fff;
+}
+
+/*
+ * 隔墙用 inset box-shadow（1px），不占布局宽度，视觉上能分出房间即可。
+ */
+.csWallL { box-shadow: inset 1px 0 0 #666666; }
+.csWallR { box-shadow: inset -1px 0 0 #666666; }
+.csWallT { box-shadow: inset 0 1px 0 #666666; }
+.csWallB { box-shadow: inset 0 -1px 0 #666666; }
+
+.csWallL.csWallT { box-shadow: inset 1px 0 0 #666666, inset 0 1px 0 #666666; }
+.csWallL.csWallB { box-shadow: inset 1px 0 0 #666666, inset 0 -1px 0 #666666; }
+.csWallR.csWallT { box-shadow: inset -1px 0 0 #666666, inset 0 1px 0 #666666; }
+.csWallR.csWallB { box-shadow: inset -1px 0 0 #666666, inset 0 -1px 0 #666666; }
+.csWallL.csWallR { box-shadow: inset 1px 0 0 #666666, inset -1px 0 0 #666666; }
+.csWallT.csWallB { box-shadow: inset 0 1px 0 #666666, inset 0 -1px 0 #666666; }
+
+.csWallL.csWallR.csWallT {
+  box-shadow: inset 1px 0 0 #666666, inset -1px 0 0 #666666, inset 0 1px 0 #666666;
+}
+.csWallL.csWallR.csWallB {
+  box-shadow: inset 1px 0 0 #666666, inset -1px 0 0 #666666, inset 0 -1px 0 #666666;
+}
+.csWallL.csWallT.csWallB {
+  box-shadow: inset 1px 0 0 #666666, inset 0 1px 0 #666666, inset 0 -1px 0 #666666;
+}
+.csWallR.csWallT.csWallB {
+  box-shadow: inset -1px 0 0 #666666, inset 0 1px 0 #666666, inset 0 -1px 0 #666666;
+}
+.csWallL.csWallR.csWallT.csWallB {
+  box-shadow:
+    inset 1px 0 0 #666666,
+    inset -1px 0 0 #666666,
+    inset 0 1px 0 #666666,
+    inset 0 -1px 0 #666666;
+}
+
+.csSceneTop {
+  width: 100%;
+  display: flex;
+  min-height: 12px;
+  pointer-events: none;
+}
+
+.csRoomTag {
+  font-size: 9px;
+  line-height: 1.1;
+  color: rgba(0, 0, 0, 0.42);
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.csTextLabel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #b0b0b0;
+  line-height: 1.15;
+  text-align: center;
+  padding: 0 2px;
+  pointer-events: none;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+.csTextPlaceholder {
+  visibility: hidden;
+  font-size: 1px;
+}
+
+.csPropIcon {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  line-height: 1;
+  min-height: 24px;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.55));
+}
+
+.csPropEmpty {
+  font-size: 12px;
+  opacity: 0.35;
+}
+
+.csNumRow {
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-height: 16px;
+  pointer-events: none;
+}
+
+.csNum {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.csGiven .csNum { color: #a7abb0; }
+.csUser .csNum { color: #41454d; }
+
+.csError {
+  outline: 2px solid rgba(198, 40, 40, 0.55);
+  outline-offset: -2px;
+  z-index: 2;
+}
+.csError .csNum { color: #c62828; }
+
+.csHlSoft { filter: brightness(0.97); }
+.csSameNum {
+  outline: 2px solid rgba(33, 115, 70, 0.4);
+  outline-offset: -2px;
+  z-index: 2;
+}
+.csSelected {
+  outline: 2px solid #217346;
+  outline-offset: -2px;
+  z-index: 3;
+}
+
+.csNotes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  width: 100%;
+  font-size: 8px;
+  color: #777;
+  line-height: 1.1;
+}
+
+.csNotes span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 9px;
+}
+
+.csNoteOn {
+  color: #333 !important;
+  font-weight: 700;
+}
+
+.csSuspectHeader {
+  min-width: 64px !important;
+  width: 64px;
+  min-height: 26px !important;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  margin: 0;
+  color: #666;
+  font-size: 11px;
+  font-family: inherit;
+  background: #f7f7f7;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  border: none;
+  border-right: 1px solid #e5e5e5;
+  border-bottom: 1px solid #e5e5e5;
+  line-height: 26px;
+  white-space: nowrap;
+}
+
+.csSuspectCell {
+  min-width: 64px !important;
+  width: 64px;
+  min-height: 64px !important;
+  height: 64px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  margin: 0;
+  gap: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  line-height: 1.2;
+  color: #333;
+  background: #fff;
+  cursor: pointer;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  border: none;
+  border-right: 1px solid #e5e5e5;
+  border-bottom: 1px solid #e5e5e5;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.csSuspectHot {
+  background: #ececec;
+}
+
+.csBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: #eee;
+  font-weight: 700;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.csPanel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-bottom: 1px solid #d0d0d0;
+  overflow: hidden;
+}
+
+.csPanel:last-child {
+  border-bottom: none;
+}
+
+.csPanelTitle {
+  height: 28px;
+  line-height: 28px;
+  padding: 0 12px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #c00000;
+  background: #fafafa;
+  border-bottom: 1px solid #d0d0d0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.csPanelTitle span {
+  font-weight: 500;
+  color: #888;
+  font-size: 11px;
+}
+
+.csPanelBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px;
+}
+
+.csCaseCard {
+  background: #fffdf5;
+  border: 1px solid #efe6c8;
+  border-radius: 4px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.csCaseCard h3 {
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+
+.csCaseCard p {
+  color: #555;
+  line-height: 1.55;
+  margin: 0 0 4px;
+  font-size: 12px;
+}
+
+.csCaseMeta {
+  margin-top: 6px;
+  color: #888;
+  font-size: 11px;
+}
+
+.csClueList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.csClueList li {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 3px;
+  background: #fff;
+  line-height: 1.45;
+  color: #444;
+  font-size: 12px;
+}
+
+.csClueUsed {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.csClueN {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(33, 115, 70, 0.12);
+  color: #217346;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 10px;
+}
+
+.csClueList button {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #217346;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.csSuspectGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.csSuspect {
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.csSuspect:hover:not(:disabled) {
+  border-color: #217346;
+}
+
+.csSuspect:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.csSuspectPicked {
+  background: #ececec;
+  border-color: #c8c8c8;
+  outline: 1px solid #999999;
+  outline-offset: -1px;
+}
+
+.csSuspectName {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.csSuspectRole {
+  color: #888;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.csSuspectClue {
+  color: #555;
+  font-size: 11px;
+  line-height: 1.4;
+  background: #fafafa;
+  border-radius: 3px;
+  padding: 4px 6px;
+  border: 1px dashed #e0e0e0;
+}
+
+.csSuspectStatus {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+}
+
+.csNumpad {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.csNumpad button {
+  height: 32px;
+  border: 1px solid #cfcfcf;
+  border-radius: 3px;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.csNumpad button:hover:not(:disabled) {
+  border-color: #217346;
+  background: rgba(33, 115, 70, 0.08);
+}
+
+.csNumpad button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.csNumpadWide {
+  grid-column: span 2;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+
+.csProgressMeta {
+  margin-top: 8px;
+  color: #888;
+  font-size: 11px;
+}
+
+.csModalMask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.csModal {
+  width: min(560px, 100%);
+  max-height: min(80vh, 720px);
+  overflow: hidden;
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #d0d0d0;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #333;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.csModalHeader {
+  flex-shrink: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px 0 16px;
+  border-bottom: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+
+.csModalTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #c00000;
+  line-height: 1.2;
+}
+
+.csModalBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 18px 18px;
+}
+
+.csModalBody h4 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  color: #217346;
+}
+
+.csModalBody h4:first-child {
+  margin-top: 0;
+}
+
+.csModalBody ul,
+.csModalBody ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.csModalBody p {
+  margin: 0 0 8px;
+}
+
+.csModalCloseIcon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #666;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.csModalCloseIcon:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.csConfirmModal {
+  width: min(360px, 100%);
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #d0d0d0;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.csConfirmBody {
+  padding: 16px 18px 18px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #333;
+}
+
+.csConfirmBody p {
+  margin: 0 0 8px;
+}
+
+.csConfirmMeta {
+  color: #888;
+  font-size: 12px;
+}
+
+.csConfirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+@media (max-width: 1100px) {
+  .csLayout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(280px, 40%);
   }
 }

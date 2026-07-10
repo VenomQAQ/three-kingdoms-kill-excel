@@ -15,8 +15,8 @@ import { SANDBOX_ROOM_CODE } from '../data/decoy';
 import { translateError } from '../data/errorMessages';
 import { sanitizeRoom } from '../utils/display';
 import { AuthApi, AuthUser, CapabilitiesApi, Capabilities, HttpError } from '../api';
-import { LianliankanApi } from '../api';
-import type { LianliankanConfig, LianliankanSession } from '@tk/shared';
+import { LianliankanApi, HitBossApi } from '../api';
+import type { HitBossConfig, HitBossSession, LianliankanConfig, LianliankanSession } from '@tk/shared';
 import {
   appendLobbyMessage,
   ChatChannel,
@@ -63,7 +63,14 @@ interface AppState {
   lianliankanSession: LianliankanSession | null;
   lianliankanLoading: boolean;
   lianliankanSettling: boolean;
+  lianliankanRefreshing: boolean;
   lianliankanLastStartAt: number;
+  hitBossConfig: HitBossConfig | null;
+  hitBossSession: HitBossSession | null;
+  hitBossLoading: boolean;
+  hitBossSettling: boolean;
+  hitBossExtending: boolean;
+  hitBossLastStartAt: number;
 
   setNickname: (nickname: string) => Promise<void>;
   connect: () => void;
@@ -121,6 +128,11 @@ interface AppState {
   loadLianliankanConfig: () => Promise<void>;
   startLianliankan: (themeId: string, difficultyId: string) => Promise<LianliankanSession | null>;
   finishLianliankan: (result: 'won' | 'lost', remainingTiles: number) => Promise<void>;
+  refreshLianliankan: (remainingTiles: LianliankanSession['board']) => Promise<LianliankanSession | null>;
+  loadHitBossConfig: () => Promise<void>;
+  startHitBoss: (difficultyId: string) => Promise<HitBossSession | null>;
+  extendHitBoss: () => Promise<HitBossSession | null>;
+  finishHitBoss: (result: 'won' | 'lost', bossesHit: number, missHits: number) => Promise<void>;
   setCurrentVersion: (versionId: string) => void;
   markUnauthenticated: (reason?: string) => void;
 }
@@ -197,7 +209,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   lianliankanSession: null,
   lianliankanLoading: false,
   lianliankanSettling: false,
+  lianliankanRefreshing: false,
   lianliankanLastStartAt: 0,
+  hitBossConfig: null,
+  hitBossSession: null,
+  hitBossLoading: false,
+  hitBossSettling: false,
+  hitBossExtending: false,
+  hitBossLastStartAt: 0,
 
   setNickname: async (nickname) => {
     const trimmed = nickname.trim();
@@ -876,6 +895,154 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showError(code, err instanceof Error ? err.message : fallback);
     } finally {
       set({ lianliankanSettling: false });
+    }
+  },
+
+  refreshLianliankan: async (remainingTiles) => {
+    const session = get().lianliankanSession;
+    if (
+      !session
+      || session.status !== 'playing'
+      || session.refreshUsed
+      || get().lianliankanSettling
+      || get().lianliankanRefreshing
+      || get().lianliankanLoading
+    ) {
+      return null;
+    }
+    set({ lianliankanRefreshing: true });
+    try {
+      const result = await LianliankanApi.refreshSession(session.sessionId, { remainingTiles });
+      set((s) => ({
+        lianliankanSession: result.session,
+        user: s.user ? { ...s.user, ...result.wallet } : s.user,
+      }));
+      useToastStore.getState().show(`棋盘已刷新：金币 -${result.refreshFee}`);
+      return result.session;
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      get().showError(code, err instanceof Error ? err.message : '刷新失败');
+      return null;
+    } finally {
+      set({ lianliankanRefreshing: false });
+    }
+  },
+
+  loadHitBossConfig: async () => {
+    const config = await HitBossApi.getConfig();
+    set({ hitBossConfig: config });
+  },
+
+  startHitBoss: async (difficultyId) => {
+    const state = get();
+    if (state.authStatus !== 'authed') {
+      set({ lastError: '请先登录' });
+      return null;
+    }
+    if (state.hitBossLoading) return null;
+
+    const current = state.hitBossSession;
+    if (current?.status === 'playing') {
+      if (Date.now() > current.deadlineAt) {
+        await get().finishHitBoss('lost', 0, 0);
+      } else {
+        return current;
+      }
+    }
+
+    const now = Date.now();
+    if (now - get().hitBossLastStartAt < 1000) return null;
+    set({ hitBossLoading: true, hitBossLastStartAt: now });
+    try {
+      const result = await HitBossApi.createSession({ difficultyId });
+      let session = result.session;
+      if (session.status === 'playing' && Date.now() > session.deadlineAt) {
+        set({ hitBossSession: session, user: get().user ? { ...get().user!, ...result.wallet } : get().user });
+        set({ hitBossLoading: false });
+        await get().finishHitBoss('lost', 0, 0);
+        set({ hitBossLoading: true, hitBossLastStartAt: Date.now() });
+        const retry = await HitBossApi.createSession({ difficultyId });
+        session = retry.session;
+        set((s) => ({
+          hitBossSession: session,
+          user: s.user ? { ...s.user, ...retry.wallet } : s.user,
+        }));
+        return session;
+      }
+      set((s) => ({
+        hitBossSession: session,
+        user: s.user ? { ...s.user, ...result.wallet } : s.user,
+      }));
+      return session;
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      get().showError(code, err instanceof Error ? err.message : '开局失败');
+      return null;
+    } finally {
+      set({ hitBossLoading: false });
+    }
+  },
+
+  extendHitBoss: async () => {
+    const session = get().hitBossSession;
+    if (
+      !session
+      || session.status !== 'playing'
+      || session.extendCount >= session.maxExtends
+      || get().hitBossSettling
+      || get().hitBossExtending
+      || get().hitBossLoading
+    ) {
+      return null;
+    }
+    set({ hitBossExtending: true });
+    try {
+      const result = await HitBossApi.extendSession(session.sessionId);
+      set((s) => ({
+        hitBossSession: result.session,
+        user: s.user ? { ...s.user, ...result.wallet } : s.user,
+      }));
+      useToastStore.getState().show(`延长 ${result.extendSec} 秒：金币 -${result.extendFee}`);
+      return result.session;
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      get().showError(code, err instanceof Error ? err.message : '延长失败');
+      return null;
+    } finally {
+      set({ hitBossExtending: false });
+    }
+  },
+
+  finishHitBoss: async (result, bossesHit, missHits) => {
+    const session = get().hitBossSession;
+    if (!session || session.status !== 'playing' || get().hitBossSettling) return;
+
+    const sessionId = session.sessionId;
+    set({ hitBossSettling: true });
+    try {
+      const settled = await HitBossApi.finishSession(sessionId, {
+        result,
+        bossesHit,
+        missHits,
+      });
+      set((s) => ({
+        hitBossSession: s.hitBossSession?.sessionId === sessionId
+          ? { ...s.hitBossSession, status: settled.status, finishedAt: Date.now() }
+          : s.hitBossSession,
+        user: s.user ? { ...s.user, ...settled.wallet } : s.user,
+      }));
+      if (settled.status === 'won') {
+        useToastStore.getState().show(`挑战成功：金币 +${settled.rewardCoins}`);
+      }
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      const fallback =
+        err instanceof TypeError || (err instanceof Error && /failed to fetch/i.test(err.message))
+          ? '网络连接失败，请稍后重试'
+          : '结算失败';
+      get().showError(code, err instanceof Error ? err.message : fallback);
+    } finally {
+      set({ hitBossSettling: false });
     }
   },
 
