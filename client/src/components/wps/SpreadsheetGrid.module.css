@@ -866,6 +866,87 @@
   line-height: 1;
 }
 
+/* —— 对账校验（找不同）：整表铺满，中间一列空白分隔 —— */
+.reconSheetColHeader {
+  box-sizing: border-box;
+  min-width: 48px;
+  width: 48px;
+  line-height: 22px;
+  height: 22px;
+  padding: 0;
+}
+
+.reconSheetRow {
+  min-height: 22px;
+  height: 22px;
+}
+
+.reconSheetRow .rowHeader {
+  box-sizing: border-box;
+  height: 22px;
+  min-height: 22px;
+  line-height: 22px;
+}
+
+.reconSheetCell {
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 48px;
+  width: 48px;
+  min-height: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-right: 1px solid #e5e5e5;
+  border-bottom: 1px solid #e5e5e5;
+  border-radius: 0;
+  background: #ffffff;
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.reconGapHeader,
+.reconGapCell {
+  background: #f3f3f3 !important;
+  /* 与数据列同宽，避免表头/单元格错位 */
+  min-width: 48px;
+  width: 48px;
+}
+
+.reconGlyph {
+  display: block;
+  font-size: 13px;
+  line-height: 22px;
+  height: 22px;
+  color: #222;
+  font-weight: 500;
+}
+
+.reconFound {
+  background: #e8f5ec !important;
+  box-shadow: inset 0 0 0 1px #217346;
+}
+
+.reconFound .reconGlyph {
+  color: #217346;
+  font-weight: 700;
+}
+
+.reconWrong {
+  background: #fdecea !important;
+  box-shadow: inset 0 0 0 1px #d93025;
+}
+
+.reconWrong .reconGlyph {
+  color: #d93025;
+}
+
 
 .monopolyWrap {
   --monopoly-board-cell-size: 96px;

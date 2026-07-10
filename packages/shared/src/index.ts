@@ -609,6 +609,76 @@ export interface HitBossSession {
   _v: 1;
 }
 
+/** 对账校验（找不同）：展示模式文字（默认）/ 图标（预留） */
+export type ReconCheckDisplayMode = 'text' | 'icon';
+export type ReconCheckDifficultyId = 'easy' | 'normal' | 'hard';
+export type ReconCheckSessionStatus = 'playing' | 'won' | 'lost' | 'expired';
+
+export interface ReconCheckDifficulty {
+  difficultyId: ReconCheckDifficultyId;
+  name: string;
+  rows: number;
+  cols: number;
+  /** 本局轮次数 */
+  rounds: number;
+  /** 每轮差异格数量 */
+  diffsPerRound: number;
+  timeLimitSec: number;
+  entryFee: number;
+  rewardCoins: number;
+}
+
+export interface ReconCheckConfig {
+  difficulties: ReconCheckDifficulty[];
+  defaultDifficultyId: ReconCheckDifficultyId;
+  entryFee: number;
+  /** 单局最多允许的点错次数（超过即失败） */
+  maxWrongClicks: number;
+  /** 延长器费用（金币） */
+  extendFee: number;
+  /** 每次延长增加的秒数 */
+  extendSec: number;
+  /** 单局最多可使用延长器次数 */
+  maxExtends: number;
+  _v: 1;
+}
+
+/** 下发给客户端的单轮盘面（不含答案） */
+export interface ReconCheckRoundPublic {
+  left: string[][];
+  right: string[][];
+}
+
+export interface ReconCheckSession {
+  sessionId: string;
+  difficultyId: ReconCheckDifficultyId;
+  status: ReconCheckSessionStatus;
+  rows: number;
+  cols: number;
+  rounds: number;
+  diffsPerRound: number;
+  timeLimitSec: number;
+  entryFee: number;
+  rewardCoins: number;
+  maxWrongClicks: number;
+  startedAt: number;
+  deadlineAt: number;
+  finishedAt?: number;
+  /** 本局已使用延长次数 */
+  extendCount: number;
+  maxExtends: number;
+  /** 各轮左右盘面（无 diffKeys） */
+  boards: ReconCheckRoundPublic[];
+  _v: 1;
+}
+
+export interface ReconCheckFinishInput {
+  result?: 'won' | 'lost';
+  /** 每轮玩家点中的格子 key，格式 `row,col`（0-based） */
+  foundByRound?: string[][];
+  wrongClicks?: number;
+}
+
 export type RoomCreateAck =
   | { ok: true; room: Room; playerId: string }
   | { ok: false; error: string; code?: string };

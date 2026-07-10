@@ -21,8 +21,11 @@ describe('REQ-2026-004 UI acceptance', () => {
     expect(html).toContain('当前房间');
     expect(html).toContain('连连看');
     expect(html).toContain('凶案数独');
+    expect(html).toContain('打老板');
+    expect(html).toContain('对账校验');
     expect(html).toContain('区域销售');
-    expect((html.match(/<button/g) ?? []).length).toBe(6);
+    // sheet tabs + trailing「+」
+    expect((html.match(/<button/g) ?? []).length).toBe(8);
   });
 
   it('keeps lobby Ribbon actions separate from current-room actions', () => {

@@ -15,8 +15,15 @@ import { SANDBOX_ROOM_CODE } from '../data/decoy';
 import { translateError } from '../data/errorMessages';
 import { sanitizeRoom } from '../utils/display';
 import { AuthApi, AuthUser, CapabilitiesApi, Capabilities, HttpError } from '../api';
-import { LianliankanApi, HitBossApi } from '../api';
-import type { HitBossConfig, HitBossSession, LianliankanConfig, LianliankanSession } from '@tk/shared';
+import { LianliankanApi, HitBossApi, ReconCheckApi } from '../api';
+import type {
+  HitBossConfig,
+  HitBossSession,
+  LianliankanConfig,
+  LianliankanSession,
+  ReconCheckConfig,
+  ReconCheckSession,
+} from '@tk/shared';
 import {
   appendLobbyMessage,
   ChatChannel,
@@ -71,6 +78,12 @@ interface AppState {
   hitBossSettling: boolean;
   hitBossExtending: boolean;
   hitBossLastStartAt: number;
+  reconCheckConfig: ReconCheckConfig | null;
+  reconCheckSession: ReconCheckSession | null;
+  reconCheckLoading: boolean;
+  reconCheckSettling: boolean;
+  reconCheckExtending: boolean;
+  reconCheckLastStartAt: number;
 
   setNickname: (nickname: string) => Promise<void>;
   connect: () => void;
@@ -133,6 +146,14 @@ interface AppState {
   startHitBoss: (difficultyId: string) => Promise<HitBossSession | null>;
   extendHitBoss: () => Promise<HitBossSession | null>;
   finishHitBoss: (result: 'won' | 'lost', bossesHit: number, missHits: number) => Promise<void>;
+  loadReconCheckConfig: () => Promise<void>;
+  startReconCheck: (difficultyId: string) => Promise<ReconCheckSession | null>;
+  extendReconCheck: () => Promise<ReconCheckSession | null>;
+  finishReconCheck: (
+    result: 'won' | 'lost',
+    foundByRound: string[][],
+    wrongClicks: number,
+  ) => Promise<void>;
   setCurrentVersion: (versionId: string) => void;
   markUnauthenticated: (reason?: string) => void;
 }
@@ -217,6 +238,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   hitBossSettling: false,
   hitBossExtending: false,
   hitBossLastStartAt: 0,
+  reconCheckConfig: null,
+  reconCheckSession: null,
+  reconCheckLoading: false,
+  reconCheckSettling: false,
+  reconCheckExtending: false,
+  reconCheckLastStartAt: 0,
 
   setNickname: async (nickname) => {
     const trimmed = nickname.trim();
@@ -1043,6 +1070,127 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showError(code, err instanceof Error ? err.message : fallback);
     } finally {
       set({ hitBossSettling: false });
+    }
+  },
+
+  loadReconCheckConfig: async () => {
+    const config = await ReconCheckApi.getConfig();
+    set({ reconCheckConfig: config });
+  },
+
+  startReconCheck: async (difficultyId) => {
+    const state = get();
+    if (state.authStatus !== 'authed') {
+      set({ lastError: '请先登录' });
+      return null;
+    }
+    if (state.reconCheckLoading) return null;
+
+    const current = state.reconCheckSession;
+    if (current?.status === 'playing') {
+      if (Date.now() > current.deadlineAt) {
+        await get().finishReconCheck('lost', [], 0);
+      } else {
+        return current;
+      }
+    }
+
+    const now = Date.now();
+    if (now - get().reconCheckLastStartAt < 1000) return null;
+    set({ reconCheckLoading: true, reconCheckLastStartAt: now });
+    try {
+      const result = await ReconCheckApi.createSession({ difficultyId });
+      let session = result.session;
+      if (session.status === 'playing' && Date.now() > session.deadlineAt) {
+        set({
+          reconCheckSession: session,
+          user: get().user ? { ...get().user!, ...result.wallet } : get().user,
+        });
+        set({ reconCheckLoading: false });
+        await get().finishReconCheck('lost', [], 0);
+        set({ reconCheckLoading: true, reconCheckLastStartAt: Date.now() });
+        const retry = await ReconCheckApi.createSession({ difficultyId });
+        session = retry.session;
+        set((s) => ({
+          reconCheckSession: session,
+          user: s.user ? { ...s.user, ...retry.wallet } : s.user,
+        }));
+        return session;
+      }
+      set((s) => ({
+        reconCheckSession: session,
+        user: s.user ? { ...s.user, ...result.wallet } : s.user,
+      }));
+      return session;
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      get().showError(code, err instanceof Error ? err.message : '开局失败');
+      return null;
+    } finally {
+      set({ reconCheckLoading: false });
+    }
+  },
+
+  extendReconCheck: async () => {
+    const session = get().reconCheckSession;
+    if (
+      !session
+      || session.status !== 'playing'
+      || session.extendCount >= session.maxExtends
+      || get().reconCheckSettling
+      || get().reconCheckExtending
+      || get().reconCheckLoading
+    ) {
+      return null;
+    }
+    set({ reconCheckExtending: true });
+    try {
+      const result = await ReconCheckApi.extendSession(session.sessionId);
+      set((s) => ({
+        reconCheckSession: result.session,
+        user: s.user ? { ...s.user, ...result.wallet } : s.user,
+      }));
+      useToastStore.getState().show(`延长 ${result.extendSec} 秒：金币 -${result.extendFee}`);
+      return result.session;
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      get().showError(code, err instanceof Error ? err.message : '延长失败');
+      return null;
+    } finally {
+      set({ reconCheckExtending: false });
+    }
+  },
+
+  finishReconCheck: async (result, foundByRound, wrongClicks) => {
+    const session = get().reconCheckSession;
+    if (!session || session.status !== 'playing' || get().reconCheckSettling) return;
+
+    const sessionId = session.sessionId;
+    set({ reconCheckSettling: true });
+    try {
+      const settled = await ReconCheckApi.finishSession(sessionId, {
+        result,
+        foundByRound,
+        wrongClicks,
+      });
+      set((s) => ({
+        reconCheckSession: s.reconCheckSession?.sessionId === sessionId
+          ? { ...s.reconCheckSession, status: settled.status, finishedAt: Date.now() }
+          : s.reconCheckSession,
+        user: s.user ? { ...s.user, ...settled.wallet } : s.user,
+      }));
+      if (settled.status === 'won') {
+        useToastStore.getState().show(`核对通过：金币 +${settled.rewardCoins}`);
+      }
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      const fallback =
+        err instanceof TypeError || (err instanceof Error && /failed to fetch/i.test(err.message))
+          ? '网络连接失败，请稍后重试'
+          : '结算失败';
+      get().showError(code, err instanceof Error ? err.message : fallback);
+    } finally {
+      set({ reconCheckSettling: false });
     }
   },
 

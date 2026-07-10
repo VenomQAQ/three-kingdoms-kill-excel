@@ -5,3 +5,4 @@ export * from './profile';
 export * from './lianliankan';
 export * from './crimeSudoku';
 export * from './hitBoss';
+export * from './reconCheck';
