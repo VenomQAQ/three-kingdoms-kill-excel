@@ -204,7 +204,7 @@ export const CRIME_SUDOKU_RULES_HTML = `
 
 <h4>6. 工具栏功能</h4>
 <ul>
-  <li><strong>关卡</strong>：配置化关卡，免费游玩；每关有独立奖励与提示额度。</li>
+  <li><strong>关卡</strong>：配置化关卡，免费游玩；每关有独立奖励与提示额度。关卡名后的 <strong>✅</strong> 表示该关已通关。切换关卡前会弹出确认；确认后将<strong>丢失当前关卡进度</strong>。</li>
   <li><strong>图标 / 文字</strong>：默认文字模式——极浅灰底 + 文字标注；图标模式展示家具图标与房间底色。</li>
   <li><strong>笔记模式</strong>：见上方「笔记模式怎么用」。</li>
   <li><strong>提示</strong>：每次消耗 5 金币，每局最多 3 次；会填入当前选中空格的正确答案。</li>
@@ -215,13 +215,14 @@ export const CRIME_SUDOKU_RULES_HTML = `
 <h4>7. 奖励与重玩</h4>
 <ul>
   <li>游玩本身免费，不扣入场费。</li>
-  <li>每关<strong>首次通关</strong>发放配置的奖励金币，并记录通关时长。</li>
+  <li>每关<strong>首次通关</strong>发放配置的奖励金币，并记录通关时长；关卡下拉里该关名称后会出现 <strong>✅</strong>。</li>
   <li>已通关关卡可再玩，但<strong>不再发奖励</strong>，提示仍扣费，也<strong>不更新</strong>通关时长记录。</li>
 </ul>
 
 <h4>8. 进度保存</h4>
 <ul>
   <li>未通关时，切换 Sheet、刷新或关闭页面都会把当前盘面、笔记、指认、用时等保存在本机。</li>
+  <li>在关卡下拉里<strong>切换到其他关卡</strong>会先确认，确认后清空当前关进度（目标关若有进行中存档仍会载入）。</li>
   <li>通关后进度标记为已完成；再玩会开新局（仍可本地保存新一局的进行中进度）。</li>
 </ul>
 `.trim();

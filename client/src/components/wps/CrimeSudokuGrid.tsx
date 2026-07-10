@@ -89,6 +89,7 @@ export function CrimeSudokuGrid({
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [selected, setSelected] = useState<{ r: number; c: number } | null>({ r: 0, c: 0 });
+  const [levelSelectKey, setLevelSelectKey] = useState(0);
 
   const [progress, setProgress] = useState<CrimeSudokuLocalProgress>(() => {
     const map = loadCrimeSudokuProgressMap();
@@ -233,11 +234,14 @@ export function CrimeSudokuGrid({
   }, [selected, progress.board, progress.notes, updateFormula]);
 
   const switchLevel = (nextId: string) => {
-    setProgress((prev) => {
-      const frozen = freezeTimer(prev);
-      persist(frozen);
-      return frozen;
-    });
+    if (nextId === levelId) return;
+    const ok = window.confirm('切换关卡将丢失当前关卡的进度，确定切换吗？');
+    if (!ok) {
+      // 受控 select 在取消后 DOM 可能仍停在新选项，强制 remount 回弹
+      setLevelSelectKey((k) => k + 1);
+      return;
+    }
+    clearCrimeSudokuProgress(level.id);
     setLevelId(nextId);
     const map = loadCrimeSudokuProgressMap();
     const notesMap = loadCrimeSudokuNotesMap();
@@ -444,7 +448,7 @@ export function CrimeSudokuGrid({
       persist(next);
       const s = level.suspects.find((item) => item.num === num);
       if (accused == null) {
-        setNoticeMsg('info', '已取消指认');
+        setNoticeMsg('info', '');
       } else {
         setNoticeMsg('info', `已指认真凶：${s?.name ?? num}（只能选一人）`);
       }
@@ -593,6 +597,7 @@ export function CrimeSudokuGrid({
           <label>
             关卡
             <select
+              key={levelSelectKey}
               value={levelId}
               onChange={(e) => switchLevel(e.target.value)}
               disabled={busy}
@@ -600,7 +605,7 @@ export function CrimeSudokuGrid({
               {CRIME_SUDOKU_LEVELS.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
-                  {clears.some((c) => c.levelId === item.id) ? ' ✓' : ''}
+                  {clears.some((c) => c.levelId === item.id) ? ' ✅' : ''}
                 </option>
               ))}
             </select>
