@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { LianliankanConfig, LianliankanSession, LianliankanTile, Room, RoomListItem } from '@tk/shared';
 import { formatChatTime } from '../../utils/chatTime';
 import { canConnect, buildDemoBoard } from '../../utils/lianliankan';
-import { LIANLIANKAN_SHEET_ID, ROOM_LIST_SHEET_ID } from '../../data/decoy';
+import { LIANLIANKAN_SHEET_ID, ROOM_LIST_SHEET_ID, isSheetId } from '../../data/decoy';
 import { BattleGrid } from './BattleGrid';
 import { PlayerProfileModal } from './PlayerProfileModal';
 import { LianliankanGrid } from './LianliankanGrid';
@@ -250,5 +250,11 @@ describe('REQ-2026-005 UI acceptance', () => {
     const demo = buildDemoBoard(['apple', 'pear'], 2, 2, 2);
     expect(demo).toHaveLength(4);
     expect(demo.map((tile) => tile.itemId)).toEqual(['apple', 'pear', 'apple', 'pear']);
+  });
+
+  it('restores non-room sheets from localStorage helpers', () => {
+    expect(isSheetId('lianliankan')).toBe(true);
+    expect(isSheetId('current-room')).toBe(true);
+    expect(isSheetId('not-a-sheet')).toBe(false);
   });
 });

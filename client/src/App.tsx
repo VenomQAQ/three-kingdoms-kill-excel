@@ -33,6 +33,7 @@ import { Toast } from './components/wps/Toast';
 import {
   CURRENT_ROOM_SHEET_ID,
   DEFAULT_FILE_NAMES,
+  isSheetId,
   LIANLIANKAN_SHEET_ID,
   ROOM_LIST_SHEET_ID,
   SANDBOX_ROOM_CODE,
@@ -95,7 +96,17 @@ function App() {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('tk_monopoly_cell_colors') === '1';
   });
-  const [activeSheet, setActiveSheet] = useState<SheetId>(ROOM_LIST_SHEET_ID);
+  const [activeSheet, setActiveSheet] = useState<SheetId>(() => {
+    if (typeof window === 'undefined') return ROOM_LIST_SHEET_ID;
+    try {
+      const raw = window.localStorage.getItem('tk_active_sheet');
+      // 「当前房间」依赖房间会话，单独从 localStorage 恢复会空壳；由 roomContext 重连后再切
+      if (isSheetId(raw) && raw !== CURRENT_ROOM_SHEET_ID) return raw;
+    } catch {
+      /* ignore */
+    }
+    return ROOM_LIST_SHEET_ID;
+  });
   const [bossKeyShortcut, setBossKeyShortcut] = useState<BossKeyShortcut>(() => loadBossKeyShortcut());
   const [bossKeyAction, setBossKeyAction] = useState<BossKeyAction>(() => loadBossKeyAction());
   const [bossMode, setBossMode] = useState(false);
@@ -228,6 +239,14 @@ function App() {
   }, [bgColorToken]);
 
   useEffect(() => {
+    if (typeof window === 'undefined' || bossMode) return;
+    // 刷新后恢复到离开前的 Sheet（当前房间若不可用则回退房间列表）
+    const sheetToStore =
+      activeSheet === CURRENT_ROOM_SHEET_ID && !room ? ROOM_LIST_SHEET_ID : activeSheet;
+    window.localStorage.setItem('tk_active_sheet', sheetToStore);
+  }, [activeSheet, bossMode, room]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('tk_monopoly_cell_colors', showMonopolyCellColors ? '1' : '0');
   }, [showMonopolyCellColors]);
@@ -265,7 +284,13 @@ function App() {
         return;
       }
       void joinRoom(context.roomCode)
-        .then(() => setActiveSheet(CURRENT_ROOM_SHEET_ID))
+        .then(() => {
+          const preferred = isSheetId(context.activeSheet) ? context.activeSheet : CURRENT_ROOM_SHEET_ID;
+          // 刷新时若已从 localStorage 恢复到连连看等单人 Sheet，不要被房间重连强行切走
+          setActiveSheet((prev) =>
+            prev === LIANLIANKAN_SHEET_ID || prev === SALES_SHEET_ID ? prev : preferred,
+          );
+        })
         .catch(() => window.sessionStorage.removeItem('roomContext'));
     } catch {
       window.sessionStorage.removeItem('roomContext');

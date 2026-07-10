@@ -38,3 +38,14 @@ export const DEFAULT_FILE_NAMES: Record<SheetId, string> = {
   [LIANLIANKAN_SHEET_ID]: '连连看挑战.xlsx',
   [SALES_SHEET_ID]: '区域销售汇总.xlsx',
 };
+
+const ALL_SHEET_IDS: SheetId[] = [
+  ROOM_LIST_SHEET_ID,
+  CURRENT_ROOM_SHEET_ID,
+  LIANLIANKAN_SHEET_ID,
+  SALES_SHEET_ID,
+];
+
+export function isSheetId(value: unknown): value is SheetId {
+  return typeof value === 'string' && (ALL_SHEET_IDS as string[]).includes(value);
+}

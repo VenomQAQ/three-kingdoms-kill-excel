@@ -19,10 +19,6 @@ interface LianliankanGridProps {
   onRequireLogin: () => void;
 }
 
-export function mismatchNotice(isSameItem: boolean): string {
-  return isSameItem ? '这对还连不上' : '请选择相同图案';
-}
-
 export function LianliankanGrid({
   config,
   session,
@@ -157,9 +153,15 @@ export function LianliankanGrid({
       setSelectedTileId(null);
       return;
     }
+    // 不同图案：静默切换选中，不提示
+    if (first.itemId !== tile.itemId) {
+      setSelectedTileId(tile.tileId);
+      setNotice('');
+      return;
+    }
     const board = new Map(tiles.map((entry) => [entry.tileId, entry]));
     if (!canConnect(board, first, tile)) {
-      setNotice(mismatchNotice(first.itemId === tile.itemId));
+      setNotice('这对还连不上');
       setSelectedTileId(tile.tileId);
       return;
     }

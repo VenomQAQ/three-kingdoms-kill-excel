@@ -35,11 +35,18 @@ export class LianliankanService {
   async createSession(userId: string, input: { themeId?: string; difficultyId?: string; mode?: 'solo' | 'race' }) {
     const existingPlaying = await this.sessionRepo.findOne({ where: { userId, status: 'playing' } });
     if (existingPlaying) {
-      return {
-        session: this.toSession(existingPlaying),
-        wallet: await this.loadWallet(userId),
-        _v: 1 as const,
-      };
+      // 超时未结算的局会卡住「开始」：先标记过期，再允许开新局
+      if (Date.now() > existingPlaying.deadlineAt.getTime()) {
+        existingPlaying.status = 'expired';
+        existingPlaying.finishedAt = new Date();
+        await this.sessionRepo.save(existingPlaying);
+      } else {
+        return {
+          session: this.toSession(existingPlaying),
+          wallet: await this.loadWallet(userId),
+          _v: 1 as const,
+        };
+      }
     }
 
     const themeId = input.themeId || LIANLIANKAN_CONFIG.defaultThemeId;

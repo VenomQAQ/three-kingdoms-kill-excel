@@ -796,21 +796,45 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ lastError: '请先登录' });
       return null;
     }
-    if (state.lianliankanLoading || state.lianliankanSession?.status === 'playing') {
-      return state.lianliankanSession?.status === 'playing' ? state.lianliankanSession : null;
+    if (state.lianliankanLoading) {
+      return null;
+    }
+    // 本地仍挂着已超时的 playing 局时，先结算掉，避免「开始」被锁死
+    const current = state.lianliankanSession;
+    if (current?.status === 'playing') {
+      if (Date.now() > current.deadlineAt) {
+        await get().finishLianliankan('lost', current.board.length);
+      } else {
+        return current;
+      }
     }
     const now = Date.now();
-    if (now - state.lianliankanLastStartAt < 1000) {
+    if (now - get().lianliankanLastStartAt < 1000) {
       return null;
     }
     set({ lianliankanLoading: true, lianliankanLastStartAt: now });
     try {
       const result = await LianliankanApi.createSession({ themeId, difficultyId, mode: 'solo' });
+      let session = result.session;
+      // 服务端若仍返回已超时局（旧版本兼容），先结算再重试开局
+      if (session.status === 'playing' && Date.now() > session.deadlineAt) {
+        set({ lianliankanSession: session, user: get().user ? { ...get().user!, ...result.wallet } : get().user });
+        set({ lianliankanLoading: false });
+        await get().finishLianliankan('lost', session.board.length);
+        set({ lianliankanLoading: true, lianliankanLastStartAt: Date.now() });
+        const retry = await LianliankanApi.createSession({ themeId, difficultyId, mode: 'solo' });
+        session = retry.session;
+        set((s) => ({
+          lianliankanSession: session,
+          user: s.user ? { ...s.user, ...retry.wallet } : s.user,
+        }));
+        return session;
+      }
       set((s) => ({
-        lianliankanSession: result.session,
+        lianliankanSession: session,
         user: s.user ? { ...s.user, ...result.wallet } : s.user,
       }));
-      return result.session;
+      return session;
     } catch (err) {
       const code = err instanceof HttpError ? err.code : undefined;
       get().showError(code, err instanceof Error ? err.message : '开局失败');
