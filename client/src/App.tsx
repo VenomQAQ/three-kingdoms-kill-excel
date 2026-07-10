@@ -24,6 +24,7 @@ import { GameGrid } from './components/wps/GameGrid';
 import { LianliankanGrid } from './components/wps/LianliankanGrid';
 import { CrimeSudokuGrid } from './components/wps/CrimeSudokuGrid';
 import { HitBossGrid } from './components/wps/HitBossGrid';
+import { ReconCheckGrid } from './components/wps/ReconCheckGrid';
 import { ChatPanel } from './components/wps/ChatPanel';
 import { LobbyChatPanel } from './components/wps/LobbyChatPanel';
 import { LoginDialog } from './components/wps/LoginDialog';
@@ -41,6 +42,7 @@ import {
   isPersistableSheet,
   isSheetId,
   LIANLIANKAN_SHEET_ID,
+  RECON_CHECK_SHEET_ID,
   ROOM_LIST_SHEET_ID,
   SANDBOX_ROOM_CODE,
   SALES_SHEET_ID,
@@ -223,6 +225,15 @@ function App() {
     startHitBoss,
     extendHitBoss,
     finishHitBoss,
+    reconCheckConfig,
+    reconCheckSession,
+    reconCheckLoading,
+    reconCheckSettling,
+    reconCheckExtending,
+    loadReconCheckConfig,
+    startReconCheck,
+    extendReconCheck,
+    finishReconCheck,
   } = useAppStore();
 
   const handleViewChatProfile = useCallback((message: { playerId?: string; userId?: string; nickname: string }) => {
@@ -250,6 +261,7 @@ function App() {
   const onLianliankanSheet = activeSheet === LIANLIANKAN_SHEET_ID;
   const onCrimeSudokuSheet = activeSheet === CRIME_SUDOKU_SHEET_ID;
   const onHitBossSheet = activeSheet === HIT_BOSS_SHEET_ID;
+  const onReconCheckSheet = activeSheet === RECON_CHECK_SHEET_ID;
   const onSalesSheet = activeSheet === SALES_SHEET_ID;
 
   useEffect(() => {
@@ -293,6 +305,18 @@ function App() {
       });
     }
   }, [onHitBossSheet, hitBossConfig, loadHitBossConfig]);
+
+  useEffect(() => {
+    if (onReconCheckSheet && !reconCheckConfig) {
+      void loadReconCheckConfig().catch((err) => {
+        const code = err instanceof HttpError ? err.code : undefined;
+        useAppStore.getState().showError(
+          code,
+          err instanceof Error ? err.message : '对账校验配置加载失败',
+        );
+      });
+    }
+  }, [onReconCheckSheet, reconCheckConfig, loadReconCheckConfig]);
 
   useEffect(() => {
     if (!room || bossMode || typeof window === 'undefined') return;
@@ -775,7 +799,7 @@ function App() {
       ];
     }
 
-    if (onSalesSheet || onLianliankanSheet || onCrimeSudokuSheet || onHitBossSheet) {
+    if (onSalesSheet || onLianliankanSheet || onCrimeSudokuSheet || onHitBossSheet || onReconCheckSheet) {
       return [];
     }
 
@@ -887,7 +911,7 @@ function App() {
       );
     }
     return base;
-  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onCrimeSudokuSheet, onHitBossSheet, onSalesSheet, actingPlayer]);
+  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onCrimeSudokuSheet, onHitBossSheet, onReconCheckSheet, onSalesSheet, actingPlayer]);
 
   const handleFormulaSubmit = useCallback(async () => {
     const raw = formulaInput.trim();
@@ -1166,6 +1190,8 @@ function App() {
               ? '点击盘面查看：房间 / 家具 / 站位编号'
               : onHitBossSheet
                 ? '点击出现的目标：打老板通关 · 别打到打工'
+              : onReconCheckSheet
+                ? '对比左右账目：点出形近字差异格 · 对账校验'
               : onLobbySheet
                 ? isAuthed
                   ? '大厅聊天或 /create · /join 房间号'
@@ -1325,6 +1351,25 @@ function App() {
             onStart={startHitBoss}
             onExtend={extendHitBoss}
             onFinish={finishHitBoss}
+            onRequireLogin={() => {
+              showToast('请先登录');
+              setShowLoginDialog(true);
+            }}
+          />
+        ) : displaySheet === RECON_CHECK_SHEET_ID ? (
+          <ReconCheckGrid
+            config={reconCheckConfig}
+            session={reconCheckSession}
+            loading={reconCheckLoading}
+            settling={reconCheckSettling}
+            extending={reconCheckExtending}
+            selectedCell={selectedCell}
+            isAuthed={isAuthed}
+            coins={user?.coins}
+            onSelectCell={setSelectedCell}
+            onStart={startReconCheck}
+            onExtend={extendReconCheck}
+            onFinish={finishReconCheck}
             onRequireLogin={() => {
               showToast('请先登录');
               setShowLoginDialog(true);

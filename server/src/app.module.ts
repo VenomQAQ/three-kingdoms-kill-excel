@@ -14,6 +14,7 @@ import { VersionModule } from './modules/version/version.module';
 import { LianliankanModule } from './modules/lianliankan/lianliankan.module';
 import { CrimeSudokuModule } from './modules/crime-sudoku/crime-sudoku.module';
 import { HitBossModule } from './modules/hit-boss/hit-boss.module';
+import { ReconCheckModule } from './modules/recon-check/recon-check.module';
 import { GameGateway } from './gateway/game.gateway';
 import { User } from './modules/auth/entities/user.entity';
 
@@ -41,6 +42,7 @@ mkdirSync(dirname(sqlitePath), { recursive: true });
     LianliankanModule,
     CrimeSudokuModule,
     HitBossModule,
+    ReconCheckModule,
     TypeOrmModule.forFeature([User]), // gateway 用（version:switch 需更新 preferredVersion）
     ...(env.debugClockEnabled ? [DebugModule] : []),
   ],
