@@ -23,6 +23,7 @@ import { RoomListGrid } from './components/wps/RoomListGrid';
 import { GameGrid } from './components/wps/GameGrid';
 import { LianliankanGrid } from './components/wps/LianliankanGrid';
 import { CrimeSudokuGrid } from './components/wps/CrimeSudokuGrid';
+import { HitBossGrid } from './components/wps/HitBossGrid';
 import { ChatPanel } from './components/wps/ChatPanel';
 import { LobbyChatPanel } from './components/wps/LobbyChatPanel';
 import { LoginDialog } from './components/wps/LoginDialog';
@@ -35,6 +36,9 @@ import {
   CRIME_SUDOKU_SHEET_ID,
   CURRENT_ROOM_SHEET_ID,
   DEFAULT_FILE_NAMES,
+  HIT_BOSS_SHEET_ID,
+  isIndependentSheet,
+  isPersistableSheet,
   isSheetId,
   LIANLIANKAN_SHEET_ID,
   ROOM_LIST_SHEET_ID,
@@ -103,7 +107,7 @@ function App() {
     try {
       const raw = window.localStorage.getItem('tk_active_sheet');
       // 「当前房间」依赖房间会话，单独从 localStorage 恢复会空壳；由 roomContext 重连后再切
-      if (isSheetId(raw) && raw !== CURRENT_ROOM_SHEET_ID) return raw;
+      if (isSheetId(raw) && isPersistableSheet(raw)) return raw;
     } catch {
       /* ignore */
     }
@@ -210,6 +214,15 @@ function App() {
     startLianliankan,
     finishLianliankan,
     refreshLianliankan,
+    hitBossConfig,
+    hitBossSession,
+    hitBossLoading,
+    hitBossSettling,
+    hitBossExtending,
+    loadHitBossConfig,
+    startHitBoss,
+    extendHitBoss,
+    finishHitBoss,
   } = useAppStore();
 
   const handleViewChatProfile = useCallback((message: { playerId?: string; userId?: string; nickname: string }) => {
@@ -236,6 +249,7 @@ function App() {
   const onCurrentRoomSheet = activeSheet === CURRENT_ROOM_SHEET_ID;
   const onLianliankanSheet = activeSheet === LIANLIANKAN_SHEET_ID;
   const onCrimeSudokuSheet = activeSheet === CRIME_SUDOKU_SHEET_ID;
+  const onHitBossSheet = activeSheet === HIT_BOSS_SHEET_ID;
   const onSalesSheet = activeSheet === SALES_SHEET_ID;
 
   useEffect(() => {
@@ -269,6 +283,18 @@ function App() {
   }, [onLianliankanSheet, lianliankanConfig, loadLianliankanConfig]);
 
   useEffect(() => {
+    if (onHitBossSheet && !hitBossConfig) {
+      void loadHitBossConfig().catch((err) => {
+        const code = err instanceof HttpError ? err.code : undefined;
+        useAppStore.getState().showError(
+          code,
+          err instanceof Error ? err.message : '打老板配置加载失败',
+        );
+      });
+    }
+  }, [onHitBossSheet, hitBossConfig, loadHitBossConfig]);
+
+  useEffect(() => {
     if (!room || bossMode || typeof window === 'undefined') return;
     window.sessionStorage.setItem(
       'roomContext',
@@ -291,14 +317,8 @@ function App() {
       void joinRoom(context.roomCode)
         .then(() => {
           const preferred = isSheetId(context.activeSheet) ? context.activeSheet : CURRENT_ROOM_SHEET_ID;
-          // 刷新时若已从 localStorage 恢复到单人 Sheet，不要被房间重连强行切走
-          setActiveSheet((prev) =>
-            prev === LIANLIANKAN_SHEET_ID
-              || prev === CRIME_SUDOKU_SHEET_ID
-              || prev === SALES_SHEET_ID
-              ? prev
-              : preferred,
-          );
+          // 已从 localStorage 恢复的独立 Sheet，不要被房间重连冲掉
+          setActiveSheet((prev) => (isIndependentSheet(prev) ? prev : preferred));
         })
         .catch(() => window.sessionStorage.removeItem('roomContext'));
     } catch {
@@ -380,9 +400,9 @@ function App() {
   }, [bossKeyShortcut, bossKeyAction, bossImageUrl, closeBossImage]);
 
   useEffect(() => {
-    if (room && !bossMode) {
-      setActiveSheet(CURRENT_ROOM_SHEET_ID);
-    }
+    if (!room || bossMode) return;
+    // 进房时默认切到「当前房间」；但刷新恢复的独立 Sheet（打老板/连连看等）必须保留
+    setActiveSheet((prev) => (isIndependentSheet(prev) ? prev : CURRENT_ROOM_SHEET_ID));
   }, [room?.code, bossMode]);
 
   const isSandbox = room?.isSandbox || room?.code === SANDBOX_ROOM_CODE;
@@ -641,9 +661,11 @@ function App() {
       switch (id) {
         case 'create':
           await createRoom(defaultGameType);
+          setActiveSheet(CURRENT_ROOM_SHEET_ID);
           break;
         case 'joinSandbox':
           await joinSandbox();
+          setActiveSheet(CURRENT_ROOM_SHEET_ID);
           break;
         case 'leave':
           handleLeaveRoom();
@@ -753,7 +775,7 @@ function App() {
       ];
     }
 
-    if (onSalesSheet || onLianliankanSheet || onCrimeSudokuSheet) {
+    if (onSalesSheet || onLianliankanSheet || onCrimeSudokuSheet || onHitBossSheet) {
       return [];
     }
 
@@ -865,7 +887,7 @@ function App() {
       );
     }
     return base;
-  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onCrimeSudokuSheet, onSalesSheet, actingPlayer]);
+  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onCrimeSudokuSheet, onHitBossSheet, onSalesSheet, actingPlayer]);
 
   const handleFormulaSubmit = useCallback(async () => {
     const raw = formulaInput.trim();
@@ -901,6 +923,7 @@ function App() {
             break;
           }
           await createRoom(defaultGameType);
+          setActiveSheet(CURRENT_ROOM_SHEET_ID);
           break;
         case 'monopoly':
           if (!isAuthed) {
@@ -909,6 +932,7 @@ function App() {
             break;
           }
           await createRoom('monopoly');
+          setActiveSheet(CURRENT_ROOM_SHEET_ID);
           break;
         case 'join':
           if (!isAuthed) {
@@ -917,6 +941,7 @@ function App() {
             break;
           }
           await joinRoom(arg);
+          setActiveSheet(CURRENT_ROOM_SHEET_ID);
           break;
         case 'sandbox':
         case 'test':
@@ -930,6 +955,7 @@ function App() {
             break;
           }
           await joinSandbox();
+          setActiveSheet(CURRENT_ROOM_SHEET_ID);
           break;
         case 'leave':
           handleLeaveRoom();
@@ -1138,6 +1164,8 @@ function App() {
                     : `当前回合：${turnPlayer?.nickname ?? '—'}`
             : onCrimeSudokuSheet
               ? '点击盘面查看：房间 / 家具 / 站位编号'
+              : onHitBossSheet
+                ? '点击出现的目标：打老板通关 · 别打到打工'
               : onLobbySheet
                 ? isAuthed
                   ? '大厅聊天或 /create · /join 房间号'
@@ -1212,7 +1240,10 @@ function App() {
                 rooms={roomList}
                 selectedCell={selectedCell}
                 onSelectCell={setSelectedCell}
-                onJoinRoom={(code) => requireAuth(() => joinRoom(code))}
+                onJoinRoom={(code) => requireAuth(async () => {
+                  await joinRoom(code);
+                  setActiveSheet(CURRENT_ROOM_SHEET_ID);
+                })}
                 onViewProfile={setProfileUserId}
                 isGuest={isGuest}
                 onGuestAction={() => {
@@ -1279,6 +1310,25 @@ function App() {
               }));
             }}
             onToast={(message) => useToastStore.getState().show(message)}
+          />
+        ) : displaySheet === HIT_BOSS_SHEET_ID ? (
+          <HitBossGrid
+            config={hitBossConfig}
+            session={hitBossSession}
+            loading={hitBossLoading}
+            settling={hitBossSettling}
+            extending={hitBossExtending}
+            selectedCell={selectedCell}
+            isAuthed={isAuthed}
+            coins={user?.coins}
+            onSelectCell={setSelectedCell}
+            onStart={startHitBoss}
+            onExtend={extendHitBoss}
+            onFinish={finishHitBoss}
+            onRequireLogin={() => {
+              showToast('请先登录');
+              setShowLoginDialog(true);
+            }}
           />
         ) : (
           <DecoyGrid selectedCell={selectedCell} onSelectCell={setSelectedCell} />

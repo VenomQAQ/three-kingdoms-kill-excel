@@ -830,6 +830,43 @@
   line-height: 1;
 }
 
+.hbCell {
+  min-width: 72px;
+  width: 72px;
+  min-height: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  text-align: center;
+  position: relative;
+}
+
+.hbColHeader {
+  min-width: 72px;
+  width: 72px;
+}
+
+.hbFillerCell {
+  min-width: 72px;
+  width: 72px;
+}
+
+.hbNumber {
+  color: #666666;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.hbSpawnText {
+  font-weight: 500;
+  font-size: 13px;
+  color: #222222;
+  line-height: 1;
+}
+
+
 .monopolyWrap {
   --monopoly-board-cell-size: 96px;
   --monopoly-board-cell-min-height: 58px;

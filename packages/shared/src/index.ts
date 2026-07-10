@@ -546,6 +546,69 @@ export interface LianliankanSession {
   _v: 1;
 }
 
+/** 打老板：生成物种类 */
+export type HitBossSpawnKind = 'boss' | 'slack' | 'game' | 'snack' | 'novel' | 'work';
+export type HitBossDifficultyId = 'easy' | 'normal' | 'hard';
+export type HitBossSessionStatus = 'playing' | 'won' | 'lost' | 'expired';
+/** 打老板展示模式：文字（默认）/ 图标 */
+export type HitBossDisplayMode = 'text' | 'icon';
+
+export interface HitBossDifficulty {
+  difficultyId: HitBossDifficultyId;
+  name: string;
+  rows: number;
+  cols: number;
+  timeLimitSec: number;
+  /** 通关需打到的老板数 */
+  bossTarget: number;
+  entryFee: number;
+  rewardCoins: number;
+  /** 生成间隔（毫秒） */
+  spawnIntervalMs: number;
+  /** 老板权重（与 distractorWeight、workWeight 归一化） */
+  bossWeight: number;
+  /** 干扰项（摸鱼/玩游戏/偷吃/看小说）总权重 */
+  distractorWeight: number;
+  /** 打工权重（打到立刻失败） */
+  workWeight: number;
+}
+
+export interface HitBossConfig {
+  difficulties: HitBossDifficulty[];
+  defaultDifficultyId: HitBossDifficultyId;
+  entryFee: number;
+  extendFee: number;
+  extendSec: number;
+  maxExtends: number;
+  maxMissHits: number;
+  bossMaxLifetimeMs: number;
+  bossMinLifetimeMs: number;
+  _v: 1;
+}
+
+export interface HitBossSession {
+  sessionId: string;
+  difficultyId: HitBossDifficultyId;
+  status: HitBossSessionStatus;
+  rows: number;
+  cols: number;
+  timeLimitSec: number;
+  bossTarget: number;
+  entryFee: number;
+  rewardCoins: number;
+  spawnIntervalMs: number;
+  bossWeight: number;
+  distractorWeight: number;
+  workWeight: number;
+  startedAt: number;
+  deadlineAt: number;
+  finishedAt?: number;
+  /** 本局已使用延长次数 */
+  extendCount: number;
+  maxExtends: number;
+  _v: 1;
+}
+
 export type RoomCreateAck =
   | { ok: true; room: Room; playerId: string }
   | { ok: false; error: string; code?: string };

@@ -4,3 +4,4 @@ export * from './capabilities';
 export * from './profile';
 export * from './lianliankan';
 export * from './crimeSudoku';
+export * from './hitBoss';

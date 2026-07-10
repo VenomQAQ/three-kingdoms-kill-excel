@@ -23,12 +23,14 @@ export const ROOM_LIST_SHEET_ID = 'room-list';
 export const CURRENT_ROOM_SHEET_ID = 'current-room';
 export const LIANLIANKAN_SHEET_ID = 'lianliankan';
 export const CRIME_SUDOKU_SHEET_ID = 'crime-sudoku';
+export const HIT_BOSS_SHEET_ID = 'hit-boss';
 export const SALES_SHEET_ID = 'sales';
 export const GAME_SHEET_ID = CURRENT_ROOM_SHEET_ID;
 export const DECOY_SHEET_IDS = [
   ROOM_LIST_SHEET_ID,
   LIANLIANKAN_SHEET_ID,
   CRIME_SUDOKU_SHEET_ID,
+  HIT_BOSS_SHEET_ID,
   SALES_SHEET_ID,
 ] as const;
 
@@ -39,6 +41,7 @@ export const SHEET_LABELS: Record<SheetId, string> = {
   [CURRENT_ROOM_SHEET_ID]: '当前房间',
   [LIANLIANKAN_SHEET_ID]: '连连看',
   [CRIME_SUDOKU_SHEET_ID]: '凶案数独',
+  [HIT_BOSS_SHEET_ID]: '打老板',
   [SALES_SHEET_ID]: '区域销售',
 };
 
@@ -47,6 +50,7 @@ export const DEFAULT_FILE_NAMES: Record<SheetId, string> = {
   [CURRENT_ROOM_SHEET_ID]: '当前房间.xlsx',
   [LIANLIANKAN_SHEET_ID]: '连连看挑战.xlsx',
   [CRIME_SUDOKU_SHEET_ID]: '凶案数独.xlsx',
+  [HIT_BOSS_SHEET_ID]: '打老板.xlsx',
   [SALES_SHEET_ID]: '区域销售汇总.xlsx',
 };
 
@@ -55,9 +59,20 @@ const ALL_SHEET_IDS: SheetId[] = [
   CURRENT_ROOM_SHEET_ID,
   LIANLIANKAN_SHEET_ID,
   CRIME_SUDOKU_SHEET_ID,
+  HIT_BOSS_SHEET_ID,
   SALES_SHEET_ID,
 ];
 
 export function isSheetId(value: unknown): value is SheetId {
   return typeof value === 'string' && (ALL_SHEET_IDS as string[]).includes(value);
+}
+
+/** 可写入 localStorage 并在无房间时直接恢复（「当前房间」依赖会话，除外） */
+export function isPersistableSheet(id: SheetId): boolean {
+  return id !== CURRENT_ROOM_SHEET_ID;
+}
+
+/** 独立 Sheet（小游戏/伪装等）：进房或重连时不应被强制切到「当前房间」 */
+export function isIndependentSheet(id: SheetId): boolean {
+  return id !== CURRENT_ROOM_SHEET_ID && id !== ROOM_LIST_SHEET_ID;
 }

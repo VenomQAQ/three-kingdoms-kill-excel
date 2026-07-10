@@ -36,6 +36,11 @@ export const ERROR_MESSAGES: Record<string, string> = {
   E_LLK_INVALID_CONFIG: '连连看配置不存在',
   E_LLK_REFRESH_USED: '本局已刷新过一次',
   E_LLK_REFRESH_INVALID_BOARD: '棋盘状态异常，无法刷新',
+  E_HITBOSS_SESSION_NOT_FOUND: '本局已失效',
+  E_HITBOSS_SESSION_SETTLED: '本局已结束',
+  E_HITBOSS_SESSION_EXPIRED: '已超时',
+  E_HITBOSS_INVALID_CONFIG: '打老板配置不存在',
+  E_HITBOSS_EXTEND_LIMIT: '本局延长次数已用完',
   E_INTERNAL: '服务开小差了，请稍后再试',
 };
 
