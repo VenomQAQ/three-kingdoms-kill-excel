@@ -24,7 +24,7 @@ export const HIT_BOSS_CONFIG: HitBossConfig = {
       rows: 8,
       cols: 8,
       timeLimitSec: 60,
-      bossTarget: 18,
+      bossTarget: 15,
       entryFee: 5,
       rewardCoins: 10,
       spawnIntervalMs: 700,

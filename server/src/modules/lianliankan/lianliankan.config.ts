@@ -67,7 +67,7 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
         { id: 'clip', text: '回形针', emoji: '📎', similarGroup: 'small' },
         { id: 'staple', text: '书本', emoji: '📚', similarGroup: 'small' },
         { id: 'calendar', text: '日历', emoji: '🗓' },
-        { id: 'printer', text: '打印机', emoji: '🖨' },
+        { id: 'phone', text: '手机', emoji: '📱' },
       ],
       similarGroups: [
         { groupId: 'file', itemIds: ['sheet', 'doc', 'slide'] },
