@@ -1,7 +1,8 @@
-import type { CrimeSudokuDisplayMode } from '@tk/shared';
+import type { CrimeSudokuDisplayMode, CrimeSudokuLevel } from '@tk/shared';
 
-const PROGRESS_KEY = 'tk_crime_sudoku_progress';
-const NOTES_KEY = 'tk_crime_sudoku_notes';
+/** v2：校验盘面尺寸/取值，避免旧脏进度（如 9×9 串进 6×6） */
+const PROGRESS_KEY = 'tk_crime_sudoku_progress_v2';
+const NOTES_KEY = 'tk_crime_sudoku_notes_v2';
 const DISPLAY_MODE_KEY = 'tk_crime_sudoku_display_mode';
 
 export interface CrimeSudokuLocalProgress {
@@ -32,6 +33,37 @@ function safeParse<T>(raw: string | null, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+/** 本地进度是否与关卡配置兼容（尺寸、取值范围、题面给定格） */
+export function isCrimeSudokuProgressValid(
+  level: CrimeSudokuLevel,
+  progress: CrimeSudokuLocalProgress | null | undefined,
+): progress is CrimeSudokuLocalProgress {
+  if (!progress || progress.levelId !== level.id) return false;
+  if (!Array.isArray(progress.board) || progress.board.length !== level.size) return false;
+  if (!Array.isArray(progress.notes) || progress.notes.length !== level.size) return false;
+  for (let r = 0; r < level.size; r += 1) {
+    const row = progress.board[r];
+    const noteRow = progress.notes[r];
+    if (!Array.isArray(row) || row.length !== level.size) return false;
+    if (!Array.isArray(noteRow) || noteRow.length !== level.size) return false;
+    for (let c = 0; c < level.size; c += 1) {
+      const v = row[c] ?? 0;
+      if (!Number.isInteger(v) || v < 0 || v > level.size) return false;
+      const g = level.given[r]![c]!;
+      if (g !== 0 && v !== g) return false;
+      const notes = noteRow[c];
+      if (!Array.isArray(notes)) return false;
+      if (notes.some((n) => !Number.isInteger(n) || n < 1 || n > level.size)) return false;
+    }
+  }
+  if (progress.accused != null) {
+    if (!Number.isInteger(progress.accused) || progress.accused < 1 || progress.accused > level.size) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function loadCrimeSudokuProgressMap(): CrimeSudokuProgressMap {

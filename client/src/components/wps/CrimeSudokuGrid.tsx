@@ -19,6 +19,7 @@ import {
   clearCrimeSudokuProgress,
   computeElapsedMs,
   formatCrimeSudokuTime,
+  isCrimeSudokuProgressValid,
   loadCrimeSudokuDisplayMode,
   loadCrimeSudokuNotesMap,
   loadCrimeSudokuProgressMap,
@@ -95,15 +96,26 @@ export function CrimeSudokuGrid({
     const map = loadCrimeSudokuProgressMap();
     const level = CRIME_SUDOKU_LEVELS[0]!;
     const saved = map[level.id];
-    if (saved && saved.status === 'playing') {
+    if (saved && saved.status === 'playing' && isCrimeSudokuProgressValid(level, saved)) {
       return {
         ...saved,
         timerStartedAt: Date.now(),
       };
     }
+    if (saved && !isCrimeSudokuProgressValid(level, saved)) {
+      clearCrimeSudokuProgress(level.id);
+    }
     const notesMap = loadCrimeSudokuNotesMap();
     const fresh = createFreshProgress(level);
-    if (notesMap[level.id]) fresh.notes = notesMap[level.id]!;
+    const savedNotes = notesMap[level.id];
+    if (
+      savedNotes &&
+      Array.isArray(savedNotes) &&
+      savedNotes.length === level.size &&
+      savedNotes.every((row) => Array.isArray(row) && row.length === level.size)
+    ) {
+      fresh.notes = savedNotes;
+    }
     return fresh;
   });
 
@@ -165,7 +177,10 @@ export function CrimeSudokuGrid({
     const flush = () => {
       setProgress((prev) => {
         const frozen = freezeTimer(prev);
-        persist(frozen);
+        const lv = getCrimeSudokuLevel(frozen.levelId);
+        if (lv && isCrimeSudokuProgressValid(lv, frozen)) {
+          persist(frozen);
+        }
         return frozen;
       });
     };
@@ -175,7 +190,10 @@ export function CrimeSudokuGrid({
         setProgress((prev) => {
           if (prev.status !== 'playing') return prev;
           const resumed = resumeTimer(prev);
-          persist(resumed);
+          const lv = getCrimeSudokuLevel(resumed.levelId);
+          if (lv && isCrimeSudokuProgressValid(lv, resumed)) {
+            persist(resumed);
+          }
           return resumed;
         });
       }
@@ -188,6 +206,20 @@ export function CrimeSudokuGrid({
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [freezeTimer, persist, resumeTimer]);
+
+  // 关卡与盘面不同步时（脏进度 / HMR）自动重置
+  const progressValid = isCrimeSudokuProgressValid(level, progress);
+  useEffect(() => {
+    if (progressValid) return;
+    clearCrimeSudokuProgress(progress.levelId);
+    if (progress.levelId !== level.id) clearCrimeSudokuProgress(level.id);
+    const next = createFreshProgress(level);
+    setProgress(next);
+    persist(next);
+    setSelected({ r: 0, c: 0 });
+    setNoticeType('info');
+    setNotice('检测到无效进度，已按当前关卡重新开局');
+  }, [level, persist, progress.levelId, progressValid]);
 
   useEffect(() => {
     if (!isPlaying) return undefined;
@@ -248,11 +280,20 @@ export function CrimeSudokuGrid({
     const lv = getCrimeSudokuLevel(nextId) ?? CRIME_SUDOKU_LEVELS[0]!;
     const saved = map[nextId];
     let next: CrimeSudokuLocalProgress;
-    if (saved && saved.status === 'playing') {
+    if (saved && saved.status === 'playing' && isCrimeSudokuProgressValid(lv, saved)) {
       next = resumeTimer(saved);
     } else {
+      if (saved) clearCrimeSudokuProgress(nextId);
       next = createFreshProgress(lv);
-      if (notesMap[nextId]) next.notes = notesMap[nextId]!;
+      const savedNotes = notesMap[nextId];
+      if (
+        savedNotes &&
+        Array.isArray(savedNotes) &&
+        savedNotes.length === lv.size &&
+        savedNotes.every((row) => Array.isArray(row) && row.length === lv.size)
+      ) {
+        next.notes = savedNotes;
+      }
     }
     setProgress(next);
     persist(next);
