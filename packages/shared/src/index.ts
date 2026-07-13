@@ -836,6 +836,59 @@ export interface TypingMazeFinishInput {
   clearedCount?: number;
 }
 
+/** 合10：难度（普通 / 困难） */
+export type SumTo10DifficultyId = 'normal' | 'hard';
+export type SumTo10SessionStatus = 'playing' | 'won' | 'lost' | 'expired';
+
+export interface SumTo10Difficulty {
+  difficultyId: SumTo10DifficultyId;
+  name: string;
+  rows: number;
+  cols: number;
+  /** 通关所需积分 */
+  targetScore: number;
+  timeLimitSec: number;
+  entryFee: number;
+  rewardCoins: number;
+}
+
+export interface SumTo10Config {
+  difficulties: SumTo10Difficulty[];
+  defaultDifficultyId: SumTo10DifficultyId;
+  entryFee: number;
+  _v: 1;
+}
+
+export interface SumTo10Cell {
+  cellId: string;
+  value: number;
+  row: number;
+  col: number;
+}
+
+export interface SumTo10Session {
+  sessionId: string;
+  difficultyId: SumTo10DifficultyId;
+  status: SumTo10SessionStatus;
+  rows: number;
+  cols: number;
+  targetScore: number;
+  timeLimitSec: number;
+  entryFee: number;
+  rewardCoins: number;
+  startedAt: number;
+  deadlineAt: number;
+  finishedAt?: number;
+  board: SumTo10Cell[];
+  _v: 1;
+}
+
+export interface SumTo10FinishInput {
+  result?: 'won' | 'lost';
+  /** 本局累计积分 */
+  score?: number;
+}
+
 export type RoomCreateAck =
   | { ok: true; room: Room; playerId: string }
   | { ok: false; error: string; code?: string };
