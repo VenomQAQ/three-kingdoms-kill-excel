@@ -1,4 +1,94 @@
-import type { LianliankanTile } from '@tk/shared';
+import type {
+  LianliankanConfig,
+  LianliankanDifficulty,
+  LianliankanTheme,
+  LianliankanThemeItem,
+  LianliankanTile,
+} from '@tk/shared';
+
+export function buildLianliankanItemCatalog(config: LianliankanConfig | null | undefined): Map<string, LianliankanThemeItem> {
+  const map = new Map<string, LianliankanThemeItem>();
+  if (!config) return map;
+  for (const theme of config.themes) {
+    for (const item of theme.items) {
+      map.set(item.id, item);
+    }
+  }
+  for (const item of config.extraItems ?? []) {
+    map.set(item.id, item);
+  }
+  return map;
+}
+
+/** 检测是否为 Windows（用于 emojiWin） */
+export function isWindowsPlatform(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Win/i.test(navigator.platform) || /Windows/i.test(navigator.userAgent);
+}
+
+/** 按平台解析展示图标：Win 优先 emojiWin，否则 emoji */
+export function resolveLianliankanEmoji(item: Pick<LianliankanThemeItem, 'emoji' | 'emojiWin'>, windows = isWindowsPlatform()): string {
+  return windows && item.emojiWin ? item.emojiWin : item.emoji;
+}
+
+/** 预览用：与服务端类似的相似权重 / 极难池抽样（非权威，仅 UI） */
+export function selectPreviewKindIds(
+  config: LianliankanConfig,
+  theme: LianliankanTheme,
+  difficulty: LianliankanDifficulty,
+): string[] {
+  const kindCount = Math.max(1, difficulty.kindCount);
+  if (difficulty.difficultyId === 'extreme') {
+    const catalog = buildLianliankanItemCatalog(config);
+    const pools = (config.similarPools ?? [])
+      .map((pool) => ({
+        ...pool,
+        itemIds: pool.itemIds.filter((id) => catalog.has(id)),
+      }))
+      .filter((pool) => pool.itemIds.length >= 2);
+    if (pools.length === 0) return theme.items.map((item) => item.id).slice(0, kindCount);
+    // 预览稳定：取第一个够大的池
+    const pool = pools.find((entry) => entry.itemIds.length >= Math.min(kindCount, 4)) ?? pools[0]!;
+    return pool.itemIds.slice(0, Math.min(kindCount, pool.itemIds.length));
+  }
+
+  const allIds = theme.items.map((item) => item.id);
+  const target = Math.min(kindCount, allIds.length);
+  const weight = Math.min(1, Math.max(0, difficulty.similarGroupWeight));
+  if (weight <= 0 || theme.similarGroups.length === 0) {
+    return allIds.slice(0, target);
+  }
+
+  const selected: string[] = [];
+  const used = new Set<string>();
+  const similarTarget = weight >= 1 ? target : Math.min(target, Math.round(target * weight));
+  for (const group of theme.similarGroups) {
+    if (selected.length >= similarTarget) break;
+    for (const id of group.itemIds) {
+      if (!allIds.includes(id) || used.has(id)) continue;
+      selected.push(id);
+      used.add(id);
+      if (selected.length >= similarTarget) break;
+    }
+  }
+  if (weight < 1) {
+    for (const id of allIds) {
+      if (selected.length >= target) break;
+      if (used.has(id)) continue;
+      selected.push(id);
+      used.add(id);
+    }
+  }
+  if (selected.length < target) {
+    for (const id of allIds) {
+      if (selected.length >= target) break;
+      if (used.has(id)) continue;
+      selected.push(id);
+      used.add(id);
+    }
+  }
+  return selected;
+}
 
 export function buildDemoBoard(
   itemIds: string[],

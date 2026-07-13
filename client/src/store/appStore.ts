@@ -15,8 +15,10 @@ import { SANDBOX_ROOM_CODE } from '../data/decoy';
 import { translateError } from '../data/errorMessages';
 import { sanitizeRoom } from '../utils/display';
 import { AuthApi, AuthUser, CapabilitiesApi, Capabilities, HttpError } from '../api';
-import { LianliankanApi, HitBossApi, ReconCheckApi } from '../api';
+import { LianliankanApi, HitBossApi, ReconCheckApi, CardFlipApi } from '../api';
 import type {
+  CardFlipConfig,
+  CardFlipSession,
   HitBossConfig,
   HitBossSession,
   LianliankanConfig,
@@ -84,6 +86,11 @@ interface AppState {
   reconCheckSettling: boolean;
   reconCheckExtending: boolean;
   reconCheckLastStartAt: number;
+  cardFlipConfig: CardFlipConfig | null;
+  cardFlipSession: CardFlipSession | null;
+  cardFlipLoading: boolean;
+  cardFlipSettling: boolean;
+  cardFlipLastStartAt: number;
 
   setNickname: (nickname: string) => Promise<void>;
   connect: () => void;
@@ -154,6 +161,9 @@ interface AppState {
     foundByRound: string[][],
     wrongClicks: number,
   ) => Promise<void>;
+  loadCardFlipConfig: () => Promise<void>;
+  startCardFlip: (themeId: string, difficultyId: string) => Promise<CardFlipSession | null>;
+  finishCardFlip: (result: 'won' | 'lost', remainingTiles: number) => Promise<void>;
   setCurrentVersion: (versionId: string) => void;
   markUnauthenticated: (reason?: string) => void;
 }
@@ -244,6 +254,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   reconCheckSettling: false,
   reconCheckExtending: false,
   reconCheckLastStartAt: 0,
+  cardFlipConfig: null,
+  cardFlipSession: null,
+  cardFlipLoading: false,
+  cardFlipSettling: false,
+  cardFlipLastStartAt: 0,
 
   setNickname: async (nickname) => {
     const trimmed = nickname.trim();
@@ -1191,6 +1206,98 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showError(code, err instanceof Error ? err.message : fallback);
     } finally {
       set({ reconCheckSettling: false });
+    }
+  },
+
+  loadCardFlipConfig: async () => {
+    const config = await CardFlipApi.getConfig();
+    set({ cardFlipConfig: config });
+  },
+
+  startCardFlip: async (themeId, difficultyId) => {
+    const state = get();
+    if (state.authStatus !== 'authed') {
+      set({ lastError: '请先登录' });
+      return null;
+    }
+    if (state.cardFlipLoading) {
+      return null;
+    }
+    const current = state.cardFlipSession;
+    if (current?.status === 'playing') {
+      if (Date.now() > current.deadlineAt) {
+        await get().finishCardFlip('lost', current.board.length);
+      } else {
+        return current;
+      }
+    }
+    const now = Date.now();
+    if (now - get().cardFlipLastStartAt < 1000) {
+      return null;
+    }
+    set({ cardFlipLoading: true, cardFlipLastStartAt: now });
+    try {
+      const result = await CardFlipApi.createSession({ themeId, difficultyId });
+      let session = result.session;
+      if (session.status === 'playing' && Date.now() > session.deadlineAt) {
+        set({ cardFlipSession: session, user: get().user ? { ...get().user!, ...result.wallet } : get().user });
+        set({ cardFlipLoading: false });
+        await get().finishCardFlip('lost', session.board.length);
+        set({ cardFlipLoading: true, cardFlipLastStartAt: Date.now() });
+        const retry = await CardFlipApi.createSession({ themeId, difficultyId });
+        session = retry.session;
+        set((s) => ({
+          cardFlipSession: session,
+          user: s.user ? { ...s.user, ...retry.wallet } : s.user,
+        }));
+        return session;
+      }
+      set((s) => ({
+        cardFlipSession: session,
+        user: s.user ? { ...s.user, ...result.wallet } : s.user,
+      }));
+      return session;
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      get().showError(code, err instanceof Error ? err.message : '开局失败');
+      return null;
+    } finally {
+      set({ cardFlipLoading: false });
+    }
+  },
+
+  finishCardFlip: async (result, remainingTiles) => {
+    const session = get().cardFlipSession;
+    if (!session || session.status !== 'playing' || get().cardFlipSettling) return;
+
+    const sessionId = session.sessionId;
+    const payload = {
+      result,
+      clientFinishedAt: Date.now(),
+      remainingTiles,
+    } as const;
+    set({ cardFlipSettling: true });
+    try {
+      const settled = await CardFlipApi.finishSession(sessionId, payload);
+
+      set((s) => ({
+        cardFlipSession: s.cardFlipSession?.sessionId === sessionId
+          ? { ...s.cardFlipSession, status: settled.status, finishedAt: Date.now() }
+          : s.cardFlipSession,
+        user: s.user ? { ...s.user, ...settled.wallet } : s.user,
+      }));
+      if (settled.status === 'won') {
+        useToastStore.getState().show(`挑战成功：金币 +${settled.rewardCoins}`);
+      }
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      const fallback =
+        err instanceof TypeError || (err instanceof Error && /failed to fetch/i.test(err.message))
+          ? '网络连接失败，请稍后重试'
+          : '结算失败';
+      get().showError(code, err instanceof Error ? err.message : fallback);
+    } finally {
+      set({ cardFlipSettling: false });
     }
   },
 

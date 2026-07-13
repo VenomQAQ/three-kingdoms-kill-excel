@@ -395,7 +395,7 @@ export interface PlayerPublicProfile {
 }
 
 export type LianliankanDisplayMode = 'emoji' | 'text';
-export type LianliankanDifficultyId = 'easy' | 'normal' | 'hard';
+export type LianliankanDifficultyId = 'easy' | 'normal' | 'hard' | 'extreme';
 export type LianliankanSessionStatus = 'playing' | 'won' | 'lost' | 'expired';
 
 /** 凶案数独展示模式：文字（默认）/ 图标 */
@@ -486,6 +486,11 @@ export interface LianliankanThemeItem {
   id: string;
   text: string;
   emoji: string;
+  /**
+   * Windows 专用图标。当 Apple / Microsoft 字形差异过大、
+   * 会破坏「相似组内彼此相近」时使用，使 Win 上同组仍易混淆。
+   */
+  emojiWin?: string;
   similarGroup?: string;
 }
 
@@ -494,6 +499,13 @@ export interface LianliankanTheme {
   name: string;
   items: LianliankanThemeItem[];
   similarGroups: Array<{ groupId: string; itemIds: string[] }>;
+}
+
+/** 极难跨主题相似池：只从同一池抽题，池内物品外形/色系相近 */
+export interface LianliankanSimilarPool {
+  poolId: string;
+  name: string;
+  itemIds: string[];
 }
 
 export interface LianliankanDifficulty {
@@ -505,6 +517,10 @@ export interface LianliankanDifficulty {
   timeLimitSec: number;
   entryFee: number;
   rewardCoins: number;
+  /**
+   * 0~1：从相似组抽样的权重。
+   * extreme 固定为 1，并改用顶层 similarPools（跨主题）。
+   */
   similarGroupWeight: number;
 }
 
@@ -513,6 +529,10 @@ export interface LianliankanConfig {
   difficulties: LianliankanDifficulty[];
   defaultThemeId: string;
   defaultDifficultyId: LianliankanDifficultyId;
+  /** 极难：跨主题相似池（开局随机选一池） */
+  similarPools: LianliankanSimilarPool[];
+  /** 仅挂在相似池、不必属于任一主题的补充物品 */
+  extraItems: LianliankanThemeItem[];
   /** 局内刷新棋盘费用（金币）；一局仅一次 */
   refreshFee: number;
   _v: 1;
@@ -543,6 +563,68 @@ export interface LianliankanSession {
   /** 本局是否已使用过刷新 */
   refreshUsed: boolean;
   board: LianliankanTile[];
+  _v: 1;
+}
+
+/** 翻牌游戏 */
+export type CardFlipDifficultyId = 'easy' | 'normal' | 'hard';
+export type CardFlipSessionStatus = 'playing' | 'won' | 'lost' | 'expired';
+/** 翻牌展示模式：文字（默认）/ 图标 */
+export type CardFlipDisplayMode = 'text' | 'icon';
+
+export interface CardFlipThemeItem {
+  id: string;
+  text: string;
+  emoji: string;
+}
+
+export interface CardFlipTheme {
+  themeId: string;
+  name: string;
+  items: CardFlipThemeItem[];
+}
+
+export interface CardFlipDifficulty {
+  difficultyId: CardFlipDifficultyId;
+  name: string;
+  rows: number;
+  cols: number;
+  /** 本局使用的物品种类数；格子总数须为偶数，实际配对数 = rows * cols / 2 */
+  kindCount: number;
+  timeLimitSec: number;
+  entryFee: number;
+  rewardCoins: number;
+}
+
+export interface CardFlipConfig {
+  themes: CardFlipTheme[];
+  difficulties: CardFlipDifficulty[];
+  defaultThemeId: string;
+  defaultDifficultyId: CardFlipDifficultyId;
+  _v: 1;
+}
+
+export interface CardFlipTile {
+  tileId: string;
+  itemId: string;
+  row: number;
+  col: number;
+}
+
+export interface CardFlipSession {
+  sessionId: string;
+  themeId: string;
+  difficultyId: CardFlipDifficultyId;
+  status: CardFlipSessionStatus;
+  rows: number;
+  cols: number;
+  timeLimitSec: number;
+  entryFee: number;
+  rewardCoins: number;
+  startedAt: number;
+  deadlineAt: number;
+  finishedAt?: number;
+  board: CardFlipTile[];
   _v: 1;
 }
 

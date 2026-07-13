@@ -1,6 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import type { LianliankanSession, LianliankanTile } from '@tk/shared';
+import type {
+  LianliankanDifficulty,
+  LianliankanSession,
+  LianliankanTheme,
+  LianliankanThemeItem,
+  LianliankanTile,
+} from '@tk/shared';
 import { Repository } from 'typeorm';
 import { ulid } from 'ulid';
 import { ErrorCodes } from '../../common/error-codes';
@@ -17,6 +23,14 @@ export interface WalletView {
 
 function codedBad(code: string, message: string): never {
   throw new BadRequestException({ ok: false, code, message, _v: 1 });
+}
+
+function shuffleInPlace<T>(list: T[]): T[] {
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [list[i], list[j]] = [list[j]!, list[i]!];
+  }
+  return list;
 }
 
 @Injectable()
@@ -65,7 +79,8 @@ export class LianliankanService {
 
     const now = new Date();
     const deadlineAt = new Date(now.getTime() + difficulty.timeLimitSec * 1000);
-    const board = this.buildBoard(theme.items.map((item) => item.id), difficulty.rows, difficulty.cols, difficulty.kindCount);
+    const selectedIds = this.selectKindIds(theme, difficulty);
+    const board = this.buildBoard(selectedIds, difficulty.rows, difficulty.cols);
     user.coins -= difficulty.entryFee;
     await this.userRepo.save(user);
 
@@ -243,10 +258,7 @@ export class LianliankanService {
   /** 保留剩余图案，打乱后重新铺到网格前 N 个位置（紧凑重排，便于继续连） */
   private reshuffleRemaining(tiles: LianliankanTile[], rows: number, cols: number): LianliankanTile[] {
     const itemIds = tiles.map((tile) => tile.itemId);
-    for (let i = itemIds.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [itemIds[i], itemIds[j]] = [itemIds[j]!, itemIds[i]!];
-    }
+    shuffleInPlace(itemIds);
     const capacity = rows * cols;
     if (itemIds.length > capacity) {
       codedBad(ErrorCodes.LLK_REFRESH_INVALID_BOARD, '剩余棋盘无效');
@@ -259,19 +271,112 @@ export class LianliankanService {
     }));
   }
 
-  private buildBoard(itemIds: string[], rows: number, cols: number, kindCount: number): LianliankanTile[] {
+  /**
+   * 按难度抽取本局物品 id：
+   * - extreme：随机选一个跨主题 similarPool，只从该池取
+   * - 其它：按 similarGroupWeight 提高同组易混物品占比（权重为 1 时只从相似组取）
+   */
+  private selectKindIds(theme: LianliankanTheme, difficulty: LianliankanDifficulty): string[] {
+    const kindCount = Math.max(1, difficulty.kindCount);
+    if (difficulty.difficultyId === 'extreme') {
+      return this.selectFromSimilarPools(kindCount);
+    }
+    return this.selectWithSimilarWeight(theme, kindCount, difficulty.similarGroupWeight);
+  }
+
+  private selectFromSimilarPools(kindCount: number): string[] {
+    const catalog = this.collectItemCatalog();
+    const pools = LIANLIANKAN_CONFIG.similarPools
+      .map((pool) => ({
+        ...pool,
+        itemIds: pool.itemIds.filter((id) => catalog.has(id)),
+      }))
+      .filter((pool) => pool.itemIds.length >= 2);
+    if (pools.length === 0) {
+      codedBad(ErrorCodes.LLK_INVALID_CONFIG, '极难相似池未配置');
+    }
+    const eligible = pools.filter((pool) => pool.itemIds.length >= Math.min(kindCount, 4));
+    const candidates = eligible.length > 0 ? eligible : pools;
+    const pool = candidates[Math.floor(Math.random() * candidates.length)]!;
+    const ids = shuffleInPlace([...pool.itemIds]);
+    return ids.slice(0, Math.min(kindCount, ids.length));
+  }
+
+  private selectWithSimilarWeight(theme: LianliankanTheme, kindCount: number, weight: number): string[] {
+    const allIds = theme.items.map((item) => item.id);
+    const target = Math.min(kindCount, allIds.length);
+    if (target <= 0) codedBad(ErrorCodes.LLK_INVALID_CONFIG, '主题物品为空');
+    const clamped = Math.min(1, Math.max(0, weight));
+    if (clamped <= 0 || theme.similarGroups.length === 0) {
+      return shuffleInPlace([...allIds]).slice(0, target);
+    }
+
+    const selected: string[] = [];
+    const used = new Set<string>();
+    const similarTarget = clamped >= 1 ? target : Math.min(target, Math.round(target * clamped));
+    const groups = shuffleInPlace(
+      theme.similarGroups
+        .map((group) => ({
+          groupId: group.groupId,
+          itemIds: group.itemIds.filter((id) => allIds.includes(id)),
+        }))
+        .filter((group) => group.itemIds.length >= 2),
+    );
+
+    for (const group of groups) {
+      if (selected.length >= similarTarget) break;
+      for (const id of shuffleInPlace([...group.itemIds])) {
+        if (used.has(id)) continue;
+        selected.push(id);
+        used.add(id);
+        if (selected.length >= similarTarget) break;
+      }
+    }
+
+    // 权重未满 1 时，剩余名额从主题其它物品补齐
+    if (clamped < 1) {
+      for (const id of shuffleInPlace(allIds.filter((itemId) => !used.has(itemId)))) {
+        if (selected.length >= target) break;
+        selected.push(id);
+        used.add(id);
+      }
+    }
+
+    // 相似组物品不够时兜底补齐，避免棋盘种类过少
+    if (selected.length < target) {
+      for (const id of shuffleInPlace(allIds.filter((itemId) => !used.has(itemId)))) {
+        if (selected.length >= target) break;
+        selected.push(id);
+        used.add(id);
+      }
+    }
+
+    return selected.slice(0, target);
+  }
+
+  private collectItemCatalog(): Map<string, LianliankanThemeItem> {
+    const map = new Map<string, LianliankanThemeItem>();
+    for (const theme of LIANLIANKAN_CONFIG.themes) {
+      for (const item of theme.items) {
+        map.set(item.id, item);
+      }
+    }
+    for (const item of LIANLIANKAN_CONFIG.extraItems) {
+      map.set(item.id, item);
+    }
+    return map;
+  }
+
+  private buildBoard(selectedIds: string[], rows: number, cols: number): LianliankanTile[] {
     const total = rows * cols;
     const pairCount = total / 2;
-    const selected = itemIds.slice(0, Math.max(1, Math.min(kindCount, itemIds.length)));
+    const selected = selectedIds.length > 0 ? selectedIds : ['fallback'];
     const ids: string[] = [];
     for (let pair = 0; pair < pairCount; pair += 1) {
       const itemId = selected[pair % selected.length]!;
       ids.push(itemId, itemId);
     }
-    for (let i = ids.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [ids[i], ids[j]] = [ids[j]!, ids[i]!];
-    }
+    shuffleInPlace(ids);
     return ids.map((itemId, index) => ({
       tileId: ulid(),
       itemId,

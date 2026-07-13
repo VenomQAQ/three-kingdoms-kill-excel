@@ -1,9 +1,42 @@
 import type { LianliankanConfig } from '@tk/shared';
 
+/**
+ * 连连看 · 主题 / 难度与经济配置（经 GET /api/lianliankan/config 下发）
+ *
+ * 顶层字段：
+ * - defaultThemeId / defaultDifficultyId：未指定时的默认主题与难度
+ * - themes：可选主题池；每项含 themeId、展示名 name、物品列表 items、相似组 similarGroups
+ *   · items[].id：物品唯一标识（写入棋盘 tile.itemId）
+ *   · items[].text / emoji：文字 / 图标展示（由客户端 displayMode 切换）
+ *   · items[].emojiWin：可选；Windows 上与 Mac 字形差异过大时的替代图标
+ *   · items[].similarGroup：可选；归属的相似组 id，用于局内「相似干扰」抽样
+ *   · similarGroups：相似组定义（groupId + itemIds）；与 items[].similarGroup 对应
+ *   · 主题物品数须 ≥ 所选难度的 kindCount（extreme 除外，改用 similarPools）
+ * - similarPools：极难跨主题相似池；开局随机选一池，只抽池内物品
+ * - extraItems：仅挂在相似池的补充物品；emoji 须互不相同，图标模式要能分辨
+ * - difficulties：难度档位
+ * - refreshFee：局内刷新棋盘费用（金币）；一局仅一次
+ * - _v：配置协议版本
+ *
+ * 难度项说明：
+ * - difficultyId / name：档位 id 与展示名
+ * - rows / cols：棋盘行数、列数（格子总数须为偶数，配对数 = rows * cols / 2）
+ * - kindCount：本局抽取的物品种类数（每种生成若干对）
+ * - timeLimitSec：本局时限（秒）
+ * - entryFee：入场费（金币）
+ * - rewardCoins：通关奖励金币
+ * - similarGroupWeight：0~1；从相似组抽样的权重（越高同组易混物品越多）
+ *   · extreme 固定为 1，且忽略主题，改用 similarPools
+ *
+ * Win / Mac 图标：
+ * - 相似池只收录两平台字形仍「同色系/同外形」且彼此可区分的码点；禁止多个物品共用同一 emoji
+ * - 人脸类等平台差异大的不进极难池；若某物品在 Win 上破坏组内相似性，配置 emojiWin
+ */
 export const LIANLIANKAN_CONFIG: LianliankanConfig = {
   defaultThemeId: 'fruits',
   defaultDifficultyId: 'easy',
   themes: [
+    // —— 果蔬 ——
     {
       themeId: 'fruits',
       name: '果蔬',
@@ -21,6 +54,7 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
         { id: 'peach', text: '桃子', emoji: '🍑' },
         { id: 'watermelon', text: '西瓜', emoji: '🍉' },
       ],
+      // 相似组：同色系果蔬，用于干扰抽样
       similarGroups: [
         { groupId: 'red', itemIds: ['apple', 'cherry', 'strawberry'] },
         { groupId: 'yellow', itemIds: ['banana', 'lemon', 'corn'] },
@@ -28,6 +62,7 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
         { groupId: 'purple', itemIds: ['grape', 'eggplant'] },
       ],
     },
+    // —— 三国武将（按势力分组）——
     {
       themeId: 'generals',
       name: '三国武将',
@@ -52,6 +87,7 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
         { groupId: 'qun', itemIds: ['lvbu', 'diaochan', 'huatuo'] },
       ],
     },
+    // —— 办公用品 ——
     {
       themeId: 'office',
       name: '办公用品',
@@ -76,6 +112,7 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
         { groupId: 'small', itemIds: ['clip', 'staple'] },
       ],
     },
+    // —— 颜文字（纯文本，Win/Mac 无字形差）——
     {
       themeId: 'kaomoji',
       name: '颜文字',
@@ -102,6 +139,7 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
         { groupId: 'action', itemIds: ['table', 'shrug'] },
       ],
     },
+    // —— Emoji 表情（人脸类 Win/Mac 差异大，不进极难池）——
     {
       themeId: 'emoji-faces',
       name: 'Emoji表情',
@@ -128,6 +166,7 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
         { groupId: 'weather', itemIds: ['cold', 'hot'] },
       ],
     },
+    // —— 动物 ——
     {
       themeId: 'animals',
       name: '动物',
@@ -159,6 +198,7 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
         { groupId: 'mythical', itemIds: ['dragon'] },
       ],
     },
+    // —— 职业 ——
     {
       themeId: 'characters',
       name: '职业',
@@ -185,6 +225,7 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
         { groupId: 'work', itemIds: ['chef', 'farmer'] },
       ],
     },
+    // —— 物品 ——
     {
       themeId: 'objects',
       name: '物品',
@@ -211,6 +252,7 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
         { groupId: 'tool', itemIds: ['scissors', 'hammer'] },
       ],
     },
+    // —— 食物 ——
     {
       themeId: 'food',
       name: '食物',
@@ -237,13 +279,15 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
         { groupId: 'dessert', itemIds: ['cake', 'icecream'] },
       ],
     },
+    // —— 蔬菜 ——
     {
       themeId: 'vegetables',
       name: '蔬菜',
       items: [
+        // 绿叶/绿色系：图标须可区分，只保持色系相近
         { id: 'cabbage', text: '白菜', emoji: '🥬', similarGroup: 'leafy' },
-        { id: 'lettuce', text: '生菜', emoji: '🥬', similarGroup: 'leafy' },
-        { id: 'spinach', text: '菠菜', emoji: '🥬', similarGroup: 'leafy' },
+        { id: 'lettuce', text: '生菜', emoji: '🥗', similarGroup: 'leafy' },
+        { id: 'spinach', text: '菠菜', emoji: '🌿', similarGroup: 'leafy' },
         { id: 'carrot', text: '胡萝卜', emoji: '🥕', similarGroup: 'root' },
         { id: 'potato', text: '土豆', emoji: '🥔', similarGroup: 'root' },
         { id: 'onion', text: '洋葱', emoji: '🧅', similarGroup: 'root' },
@@ -264,11 +308,93 @@ export const LIANLIANKAN_CONFIG: LianliankanConfig = {
       ],
     },
   ],
-  difficulties: [
-    { difficultyId: 'easy', name: '简单', rows: 8, cols: 8, kindCount: 12, timeLimitSec: 210, entryFee: 5, rewardCoins: 10, similarGroupWeight: 0.16 },
-    { difficultyId: 'normal', name: '普通', rows: 10, cols: 10, kindCount: 20, timeLimitSec: 180, entryFee: 5, rewardCoins: 18, similarGroupWeight: 0.38 },
-    { difficultyId: 'hard', name: '困难', rows: 12, cols: 12, kindCount: 30, timeLimitSec: 190, entryFee: 5, rewardCoins: 32, similarGroupWeight: 0.62 },
+  // 极难补充物：外形/色系相近，但 emoji 必须互不相同（图标模式要能分辨）
+  extraItems: [
+    { id: 'avocado', text: '牛油果', emoji: '🥑' },
+    { id: 'melon', text: '甜瓜', emoji: '🍈' },
+    { id: 'greenapple', text: '青苹果', emoji: '🍏' },
+    { id: 'seedling', text: '豆芽', emoji: '🌱' },
+    // 红色系补充（跨品类，只求色相近且图标可区分）
+    { id: 'rose', text: '玫瑰', emoji: '🌹' },
+    { id: 'hibiscus', text: '芙蓉', emoji: '🌺' },
+    { id: 'maple', text: '枫叶', emoji: '🍁' },
+    { id: 'ladybug', text: '瓢虫', emoji: '🐞' },
+    { id: 'lobster', text: '龙虾', emoji: '🦞' },
+    { id: 'crab', text: '螃蟹', emoji: '🦀' },
+    { id: 'redcircle', text: '红点', emoji: '🔴' },
+    { id: 'fire', text: '火焰', emoji: '🔥' },
+    // 黄色系补充
+    { id: 'mango', text: '芒果', emoji: '🥭' },
+    { id: 'cheese', text: '奶酪', emoji: '🧀' },
+    { id: 'honey', text: '蜂蜜', emoji: '🍯' },
+    { id: 'sunflower', text: '向日葵', emoji: '🌻' },
+    { id: 'chick', text: '小鸡', emoji: '🐤' },
+    { id: 'star', text: '星星', emoji: '⭐' },
+    { id: 'bell', text: '铃铛', emoji: '🔔' },
+    { id: 'yellowcircle', text: '黄点', emoji: '🟡' },
+    { id: 'croissant', text: '可颂', emoji: '🥐' },
+    { id: 'pancake', text: '松饼', emoji: '🥞' },
   ],
+  // 跨主题相似池（极难专用）；池内同色系/同外形，且图标两两不同
+  similarPools: [
+    {
+      poolId: 'red-produce',
+      name: '红色系',
+      itemIds: [
+        'apple', 'cherry', 'strawberry', 'peach', 'tomato', 'watermelon', 'pepper',
+        'rose', 'hibiscus', 'maple', 'ladybug', 'lobster', 'crab', 'redcircle', 'fire', 'mushroom',
+      ],
+    },
+    {
+      poolId: 'yellow-produce',
+      name: '黄色系',
+      itemIds: [
+        'banana', 'lemon', 'corn', 'onion', 'potato', 'melon', 'carrot',
+        'mango', 'cheese', 'honey', 'sunflower', 'chick', 'star', 'bell', 'yellowcircle', 'croissant', 'pancake', 'fries', 'beer',
+      ],
+    },
+    {
+      poolId: 'green-produce',
+      name: '绿色蔬果',
+      itemIds: ['cabbage', 'lettuce', 'spinach', 'broccoli', 'cucumber', 'pear', 'kiwi', 'avocado', 'greenapple', 'seedling'],
+    },
+    {
+      poolId: 'kaomoji-happy',
+      name: '开心颜文字',
+      itemIds: ['smile', 'laugh', 'wink', 'spark', 'hide', 'blank', 'shock', 'shrug'],
+    },
+    {
+      poolId: 'kaomoji-sad',
+      name: '难过颜文字',
+      itemIds: ['sad', 'cry', 'angry', 'sleep', 'table', 'run', 'blank', 'shock'],
+    },
+    {
+      poolId: 'desk-tools',
+      name: '桌面文具',
+      itemIds: ['pen', 'pencil', 'ruler', 'clip', 'scissors', 'hammer', 'folder', 'bulb'],
+    },
+    {
+      poolId: 'gadgets',
+      name: '数码设备',
+      itemIds: ['phone', 'laptop', 'camera', 'doc', 'slide', 'watch'],
+    },
+    {
+      poolId: 'fast-food',
+      name: '快餐拼盘',
+      itemIds: ['burger', 'fries', 'pizza', 'hotdog', 'friedchicken', 'noodles', 'dumpling', 'sushi'],
+    },
+  ],
+  difficulties: [
+    // 简单：8×8 / 12 种 / 210s / 入场 5 · 奖励 10 · 相似权重 0.16
+    { difficultyId: 'easy', name: '简单', rows: 8, cols: 8, kindCount: 12, timeLimitSec: 210, entryFee: 5, rewardCoins: 10, similarGroupWeight: 0.16 },
+    // 普通：10×10 / 20 种 / 180s / 入场 5 · 奖励 15 · 相似权重 0.45
+    { difficultyId: 'normal', name: '普通', rows: 10, cols: 10, kindCount: 20, timeLimitSec: 180, entryFee: 5, rewardCoins: 15, similarGroupWeight: 0.45 },
+    // 困难：12×12 / 30 种 / 190s / 入场 5 · 奖励 24 · 相似权重 0.62
+    { difficultyId: 'hard', name: '困难', rows: 12, cols: 12, kindCount: 30, timeLimitSec: 190, entryFee: 5, rewardCoins: 24, similarGroupWeight: 0.62 },
+    // 极难：12×12 / 10 种 / 160s / 入场 5 · 奖励 35 · 权重 1（跨主题相似池，只抽同池）
+    { difficultyId: 'extreme', name: '极难', rows: 12, cols: 12, kindCount: 10, timeLimitSec: 190, entryFee: 5, rewardCoins: 35, similarGroupWeight: 1 },
+  ],
+  // 局内刷新棋盘费用（金币）；一局仅一次
   refreshFee: 5,
   _v: 1,
 };
