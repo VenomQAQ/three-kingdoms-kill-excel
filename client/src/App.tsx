@@ -26,6 +26,7 @@ import { CrimeSudokuGrid } from './components/wps/CrimeSudokuGrid';
 import { HitBossGrid } from './components/wps/HitBossGrid';
 import { ReconCheckGrid } from './components/wps/ReconCheckGrid';
 import { CardFlipGrid } from './components/wps/CardFlipGrid';
+import { TypingMazeGrid } from './components/wps/TypingMazeGrid';
 import { ChatPanel } from './components/wps/ChatPanel';
 import { LobbyChatPanel } from './components/wps/LobbyChatPanel';
 import { LoginDialog } from './components/wps/LoginDialog';
@@ -45,6 +46,7 @@ import {
   LIANLIANKAN_SHEET_ID,
   RECON_CHECK_SHEET_ID,
   CARD_FLIP_SHEET_ID,
+  TYPING_MAZE_SHEET_ID,
   ROOM_LIST_SHEET_ID,
   SANDBOX_ROOM_CODE,
   SALES_SHEET_ID,
@@ -243,6 +245,15 @@ function App() {
     loadCardFlipConfig,
     startCardFlip,
     finishCardFlip,
+    typingMazeConfig,
+    typingMazeSession,
+    typingMazeLoading,
+    typingMazeSettling,
+    typingMazeExtending,
+    loadTypingMazeConfig,
+    startTypingMaze,
+    extendTypingMaze,
+    finishTypingMaze,
   } = useAppStore();
 
   const handleViewChatProfile = useCallback((message: { playerId?: string; userId?: string; nickname: string }) => {
@@ -272,6 +283,7 @@ function App() {
   const onHitBossSheet = activeSheet === HIT_BOSS_SHEET_ID;
   const onReconCheckSheet = activeSheet === RECON_CHECK_SHEET_ID;
   const onCardFlipSheet = activeSheet === CARD_FLIP_SHEET_ID;
+  const onTypingMazeSheet = activeSheet === TYPING_MAZE_SHEET_ID;
   const onSalesSheet = activeSheet === SALES_SHEET_ID;
 
   useEffect(() => {
@@ -322,7 +334,7 @@ function App() {
         const code = err instanceof HttpError ? err.code : undefined;
         useAppStore.getState().showError(
           code,
-          err instanceof Error ? err.message : '对账校验配置加载失败',
+          err instanceof Error ? err.message : '找不同配置加载失败',
         );
       });
     }
@@ -339,6 +351,18 @@ function App() {
       });
     }
   }, [onCardFlipSheet, cardFlipConfig, loadCardFlipConfig]);
+
+  useEffect(() => {
+    if (onTypingMazeSheet && !typingMazeConfig) {
+      void loadTypingMazeConfig().catch((err) => {
+        const code = err instanceof HttpError ? err.code : undefined;
+        useAppStore.getState().showError(
+          code,
+          err instanceof Error ? err.message : '打字迷宫配置加载失败',
+        );
+      });
+    }
+  }, [onTypingMazeSheet, typingMazeConfig, loadTypingMazeConfig]);
 
   useEffect(() => {
     if (!room || bossMode || typeof window === 'undefined') return;
@@ -821,7 +845,7 @@ function App() {
       ];
     }
 
-    if (onSalesSheet || onLianliankanSheet || onCrimeSudokuSheet || onHitBossSheet || onReconCheckSheet || onCardFlipSheet) {
+    if (onSalesSheet || onLianliankanSheet || onCrimeSudokuSheet || onHitBossSheet || onReconCheckSheet || onCardFlipSheet || onTypingMazeSheet) {
       return [];
     }
 
@@ -933,7 +957,7 @@ function App() {
       );
     }
     return base;
-  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onCrimeSudokuSheet, onHitBossSheet, onReconCheckSheet, onCardFlipSheet, onSalesSheet, actingPlayer]);
+  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onCrimeSudokuSheet, onHitBossSheet, onReconCheckSheet, onCardFlipSheet, onTypingMazeSheet, onSalesSheet, actingPlayer]);
 
   const handleFormulaSubmit = useCallback(async () => {
     const raw = formulaInput.trim();
@@ -1213,7 +1237,9 @@ function App() {
               : onHitBossSheet
                 ? '点击出现的目标：打老板通关 · 别打到打工'
               : onReconCheckSheet
-                ? '对比左右账目：点出形近字差异格 · 对账校验'
+                ? '对比左右账目：点出形近字差异格 · 找不同'
+              : onTypingMazeSheet
+                ? '输入格子中的词或算式答案，Enter 确认'
               : onLobbySheet
                 ? isAuthed
                   ? '大厅聊天或 /create · /join 房间号'
@@ -1409,6 +1435,25 @@ function App() {
             onSelectCell={setSelectedCell}
             onStart={startCardFlip}
             onFinish={finishCardFlip}
+            onRequireLogin={() => {
+              showToast('请先登录');
+              setShowLoginDialog(true);
+            }}
+          />
+        ) : displaySheet === TYPING_MAZE_SHEET_ID ? (
+          <TypingMazeGrid
+            config={typingMazeConfig}
+            session={typingMazeSession}
+            loading={typingMazeLoading}
+            settling={typingMazeSettling}
+            extending={typingMazeExtending}
+            selectedCell={selectedCell}
+            isAuthed={isAuthed}
+            coins={user?.coins}
+            onSelectCell={setSelectedCell}
+            onStart={startTypingMaze}
+            onExtend={extendTypingMaze}
+            onFinish={finishTypingMaze}
             onRequireLogin={() => {
               showToast('请先登录');
               setShowLoginDialog(true);

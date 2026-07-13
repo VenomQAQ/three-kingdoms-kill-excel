@@ -761,6 +761,81 @@ export interface ReconCheckFinishInput {
   wrongClicks?: number;
 }
 
+/** 打字迷宫：模式 */
+export type TypingMazeModeId = 'pure' | 'maze';
+export type TypingMazeSessionStatus = 'playing' | 'won' | 'lost' | 'expired';
+export type TypingMazeCellKind = 'zh' | 'en' | 'math';
+
+export interface TypingMazeCell {
+  r: number;
+  c: number;
+  kind: TypingMazeCellKind;
+  /** 格子显示内容（算式显示表达式） */
+  display: string;
+  /** 玩家需输入的内容（算式为数字答案） */
+  answer: string;
+}
+
+export interface TypingMazePos {
+  r: number;
+  c: number;
+}
+
+export interface TypingMazeMode {
+  modeId: TypingMazeModeId;
+  name: string;
+  rows: number;
+  cols: number;
+  timeLimitSec: number;
+  entryFee: number;
+  rewardCoins: number;
+}
+
+export interface TypingMazeConfig {
+  modes: TypingMazeMode[];
+  defaultModeId: TypingMazeModeId;
+  entryFee: number;
+  /** 延长器费用（金币） */
+  extendFee: number;
+  /** 每次延长增加的秒数 */
+  extendSec: number;
+  /** 单局最多可使用延长器次数 */
+  maxExtends: number;
+  _v: 1;
+}
+
+export interface TypingMazeSession {
+  sessionId: string;
+  modeId: TypingMazeModeId;
+  status: TypingMazeSessionStatus;
+  rows: number;
+  cols: number;
+  timeLimitSec: number;
+  entryFee: number;
+  rewardCoins: number;
+  startedAt: number;
+  deadlineAt: number;
+  finishedAt?: number;
+  extendCount: number;
+  maxExtends: number;
+  /** 起点（迷宫模式；纯打字亦为第一格） */
+  start: TypingMazePos;
+  /** 终点（迷宫模式；纯打字为最后一格） */
+  end: TypingMazePos;
+  /**
+   * 棋盘：纯打字每格有内容；迷宫仅路径格有内容，墙格为 null（前端以浅灰数字装饰）。
+   * 行优先：board[r][c]
+   */
+  board: Array<Array<TypingMazeCell | null>>;
+  _v: 1;
+}
+
+export interface TypingMazeFinishInput {
+  result?: 'won' | 'lost';
+  /** 通关时走过/打完的格子数（用于轻量校验） */
+  clearedCount?: number;
+}
+
 export type RoomCreateAck =
   | { ok: true; room: Room; playerId: string }
   | { ok: false; error: string; code?: string };

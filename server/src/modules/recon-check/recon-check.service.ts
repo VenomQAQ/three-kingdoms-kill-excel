@@ -56,7 +56,7 @@ export class ReconCheckService {
 
     const difficultyId = input.difficultyId || RECON_CHECK_CONFIG.defaultDifficultyId;
     const difficulty = RECON_CHECK_CONFIG.difficulties.find((item) => item.difficultyId === difficultyId);
-    if (!difficulty) codedBad(ErrorCodes.RECON_INVALID_CONFIG, '对账校验配置不存在');
+    if (!difficulty) codedBad(ErrorCodes.RECON_INVALID_CONFIG, '找不同配置不存在');
 
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) {

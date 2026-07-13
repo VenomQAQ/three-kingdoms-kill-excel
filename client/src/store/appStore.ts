@@ -15,7 +15,7 @@ import { SANDBOX_ROOM_CODE } from '../data/decoy';
 import { translateError } from '../data/errorMessages';
 import { sanitizeRoom } from '../utils/display';
 import { AuthApi, AuthUser, CapabilitiesApi, Capabilities, HttpError } from '../api';
-import { LianliankanApi, HitBossApi, ReconCheckApi, CardFlipApi } from '../api';
+import { LianliankanApi, HitBossApi, ReconCheckApi, CardFlipApi, TypingMazeApi } from '../api';
 import type {
   CardFlipConfig,
   CardFlipSession,
@@ -25,6 +25,8 @@ import type {
   LianliankanSession,
   ReconCheckConfig,
   ReconCheckSession,
+  TypingMazeConfig,
+  TypingMazeSession,
 } from '@tk/shared';
 import {
   appendLobbyMessage,
@@ -91,6 +93,12 @@ interface AppState {
   cardFlipLoading: boolean;
   cardFlipSettling: boolean;
   cardFlipLastStartAt: number;
+  typingMazeConfig: TypingMazeConfig | null;
+  typingMazeSession: TypingMazeSession | null;
+  typingMazeLoading: boolean;
+  typingMazeSettling: boolean;
+  typingMazeExtending: boolean;
+  typingMazeLastStartAt: number;
 
   setNickname: (nickname: string) => Promise<void>;
   connect: () => void;
@@ -164,6 +172,10 @@ interface AppState {
   loadCardFlipConfig: () => Promise<void>;
   startCardFlip: (themeId: string, difficultyId: string) => Promise<CardFlipSession | null>;
   finishCardFlip: (result: 'won' | 'lost', remainingTiles: number) => Promise<void>;
+  loadTypingMazeConfig: () => Promise<void>;
+  startTypingMaze: (modeId: string) => Promise<TypingMazeSession | null>;
+  extendTypingMaze: () => Promise<TypingMazeSession | null>;
+  finishTypingMaze: (result: 'won' | 'lost', clearedCount: number) => Promise<void>;
   setCurrentVersion: (versionId: string) => void;
   markUnauthenticated: (reason?: string) => void;
 }
@@ -259,6 +271,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   cardFlipLoading: false,
   cardFlipSettling: false,
   cardFlipLastStartAt: 0,
+  typingMazeConfig: null,
+  typingMazeSession: null,
+  typingMazeLoading: false,
+  typingMazeSettling: false,
+  typingMazeExtending: false,
+  typingMazeLastStartAt: 0,
 
   setNickname: async (nickname) => {
     const trimmed = nickname.trim();
@@ -1298,6 +1316,125 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showError(code, err instanceof Error ? err.message : fallback);
     } finally {
       set({ cardFlipSettling: false });
+    }
+  },
+
+  loadTypingMazeConfig: async () => {
+    const config = await TypingMazeApi.getConfig();
+    set({ typingMazeConfig: config });
+  },
+
+  startTypingMaze: async (modeId) => {
+    const state = get();
+    if (state.authStatus !== 'authed') {
+      set({ lastError: '请先登录' });
+      return null;
+    }
+    if (state.typingMazeLoading) return null;
+
+    const current = state.typingMazeSession;
+    if (current?.status === 'playing') {
+      if (Date.now() > current.deadlineAt) {
+        await get().finishTypingMaze('lost', 0);
+      } else {
+        return current;
+      }
+    }
+
+    const now = Date.now();
+    if (now - get().typingMazeLastStartAt < 1000) return null;
+    set({ typingMazeLoading: true, typingMazeLastStartAt: now });
+    try {
+      const result = await TypingMazeApi.createSession({ modeId });
+      let session = result.session;
+      if (session.status === 'playing' && Date.now() > session.deadlineAt) {
+        set({
+          typingMazeSession: session,
+          user: get().user ? { ...get().user!, ...result.wallet } : get().user,
+        });
+        set({ typingMazeLoading: false });
+        await get().finishTypingMaze('lost', 0);
+        set({ typingMazeLoading: true, typingMazeLastStartAt: Date.now() });
+        const retry = await TypingMazeApi.createSession({ modeId });
+        session = retry.session;
+        set((s) => ({
+          typingMazeSession: session,
+          user: s.user ? { ...s.user, ...retry.wallet } : s.user,
+        }));
+        return session;
+      }
+      set((s) => ({
+        typingMazeSession: session,
+        user: s.user ? { ...s.user, ...result.wallet } : s.user,
+      }));
+      return session;
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      get().showError(code, err instanceof Error ? err.message : '开局失败');
+      return null;
+    } finally {
+      set({ typingMazeLoading: false });
+    }
+  },
+
+  extendTypingMaze: async () => {
+    const session = get().typingMazeSession;
+    if (
+      !session
+      || session.status !== 'playing'
+      || get().typingMazeSettling
+      || get().typingMazeExtending
+      || get().typingMazeLoading
+    ) {
+      return null;
+    }
+    set({ typingMazeExtending: true });
+    try {
+      const result = await TypingMazeApi.extendSession(session.sessionId);
+      set((s) => ({
+        typingMazeSession: result.session,
+        user: s.user ? { ...s.user, ...result.wallet } : s.user,
+      }));
+      useToastStore.getState().show(`已延长 ${result.extendSec} 秒`);
+      return result.session;
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      get().showError(code, err instanceof Error ? err.message : '延长失败');
+      return null;
+    } finally {
+      set({ typingMazeExtending: false });
+    }
+  },
+
+  finishTypingMaze: async (result, clearedCount) => {
+    const session = get().typingMazeSession;
+    if (!session || session.status !== 'playing' || get().typingMazeSettling) return;
+
+    const sessionId = session.sessionId;
+    set({ typingMazeSettling: true });
+    try {
+      const settled = await TypingMazeApi.finishSession(sessionId, {
+        result,
+        clearedCount,
+      });
+      set((s) => ({
+        typingMazeSession: s.typingMazeSession?.sessionId === sessionId
+          ? { ...s.typingMazeSession, status: settled.status, finishedAt: Date.now() }
+          : s.typingMazeSession,
+        user: s.user ? { ...s.user, ...settled.wallet } : s.user,
+      }));
+      if (settled.status === 'won') {
+        useToastStore.getState().show(`挑战成功：金币 +${settled.rewardCoins}`);
+      }
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      const fallback =
+        err instanceof TypeError || (err instanceof Error && /failed to fetch/i.test(err.message))
+          ? '网络连接失败，请稍后重试'
+          : '结算失败';
+      get().showError(code, err instanceof Error ? err.message : fallback);
+    } finally {
+      set({ typingMazeSettling: false });
     }
   },
 

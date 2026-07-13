@@ -208,12 +208,12 @@ export function CardFlipGrid({
   };
 
   const renderFace = (tile: CardFlipTile | undefined, revealed: boolean) => {
-    if (!tile) return '';
+    if (!tile) return null;
     if (!revealed) {
       return <span className={styles.cardFlipBack}>?</span>;
     }
     const item = itemMap.get(tile.itemId);
-    if (!item) return '';
+    if (!item) return null;
     return displayMode === 'icon'
       ? <span className={styles.llkEmoji}>{item.emoji}</span>
       : <span>{item.text}</span>;
@@ -323,7 +323,7 @@ export function CardFlipGrid({
                     disabled={!tile || isFillerCol || (isActiveGame && isMatched)}
                     title={revealed ? item?.text : '未翻开'}
                   >
-                    {renderFace(tile, revealed)}
+                    <span className={styles.cardFlipFace}>{renderFace(tile, revealed)}</span>
                   </button>
                 );
               })}
