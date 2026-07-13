@@ -546,6 +546,68 @@ export interface LianliankanSession {
   _v: 1;
 }
 
+/** 翻牌游戏 */
+export type CardFlipDifficultyId = 'easy' | 'normal' | 'hard';
+export type CardFlipSessionStatus = 'playing' | 'won' | 'lost' | 'expired';
+/** 翻牌展示模式：文字（默认）/ 图标 */
+export type CardFlipDisplayMode = 'text' | 'icon';
+
+export interface CardFlipThemeItem {
+  id: string;
+  text: string;
+  emoji: string;
+}
+
+export interface CardFlipTheme {
+  themeId: string;
+  name: string;
+  items: CardFlipThemeItem[];
+}
+
+export interface CardFlipDifficulty {
+  difficultyId: CardFlipDifficultyId;
+  name: string;
+  rows: number;
+  cols: number;
+  /** 本局使用的物品种类数；格子总数须为偶数，实际配对数 = rows * cols / 2 */
+  kindCount: number;
+  timeLimitSec: number;
+  entryFee: number;
+  rewardCoins: number;
+}
+
+export interface CardFlipConfig {
+  themes: CardFlipTheme[];
+  difficulties: CardFlipDifficulty[];
+  defaultThemeId: string;
+  defaultDifficultyId: CardFlipDifficultyId;
+  _v: 1;
+}
+
+export interface CardFlipTile {
+  tileId: string;
+  itemId: string;
+  row: number;
+  col: number;
+}
+
+export interface CardFlipSession {
+  sessionId: string;
+  themeId: string;
+  difficultyId: CardFlipDifficultyId;
+  status: CardFlipSessionStatus;
+  rows: number;
+  cols: number;
+  timeLimitSec: number;
+  entryFee: number;
+  rewardCoins: number;
+  startedAt: number;
+  deadlineAt: number;
+  finishedAt?: number;
+  board: CardFlipTile[];
+  _v: 1;
+}
+
 /** 打老板：生成物种类 */
 export type HitBossSpawnKind = 'boss' | 'slack' | 'game' | 'snack' | 'novel' | 'work';
 export type HitBossDifficultyId = 'easy' | 'normal' | 'hard';

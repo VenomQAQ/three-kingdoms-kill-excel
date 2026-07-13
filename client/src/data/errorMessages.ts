@@ -47,6 +47,10 @@ export const ERROR_MESSAGES: Record<string, string> = {
   E_RECON_INVALID_CONFIG: '对账校验配置不存在',
   E_RECON_INVALID_RESULT: '差异核对结果无效',
   E_RECON_EXTEND_LIMIT: '本局延长次数已用完',
+  E_CARD_FLIP_SESSION_NOT_FOUND: '本局已失效',
+  E_CARD_FLIP_SESSION_SETTLED: '本局已结束',
+  E_CARD_FLIP_SESSION_EXPIRED: '已超时',
+  E_CARD_FLIP_INVALID_CONFIG: '翻牌游戏配置无效',
   E_INTERNAL: '服务开小差了，请稍后再试',
 };
 

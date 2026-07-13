@@ -25,6 +25,7 @@ export const LIANLIANKAN_SHEET_ID = 'lianliankan';
 export const CRIME_SUDOKU_SHEET_ID = 'crime-sudoku';
 export const HIT_BOSS_SHEET_ID = 'hit-boss';
 export const RECON_CHECK_SHEET_ID = 'recon-check';
+export const CARD_FLIP_SHEET_ID = 'card-flip';
 export const SALES_SHEET_ID = 'sales';
 export const GAME_SHEET_ID = CURRENT_ROOM_SHEET_ID;
 export const DECOY_SHEET_IDS = [
@@ -33,6 +34,7 @@ export const DECOY_SHEET_IDS = [
   CRIME_SUDOKU_SHEET_ID,
   HIT_BOSS_SHEET_ID,
   RECON_CHECK_SHEET_ID,
+  CARD_FLIP_SHEET_ID,
   SALES_SHEET_ID,
 ] as const;
 
@@ -45,6 +47,7 @@ export const SHEET_LABELS: Record<SheetId, string> = {
   [CRIME_SUDOKU_SHEET_ID]: '凶案数独',
   [HIT_BOSS_SHEET_ID]: '打老板',
   [RECON_CHECK_SHEET_ID]: '对账校验',
+  [CARD_FLIP_SHEET_ID]: '翻牌游戏',
   [SALES_SHEET_ID]: '区域销售',
 };
 
@@ -55,6 +58,7 @@ export const DEFAULT_FILE_NAMES: Record<SheetId, string> = {
   [CRIME_SUDOKU_SHEET_ID]: '凶案数独.xlsx',
   [HIT_BOSS_SHEET_ID]: '打老板.xlsx',
   [RECON_CHECK_SHEET_ID]: '往来账目差异核对.xlsx',
+  [CARD_FLIP_SHEET_ID]: '翻牌配对.xlsx',
   [SALES_SHEET_ID]: '区域销售汇总.xlsx',
 };
 
@@ -65,6 +69,7 @@ const ALL_SHEET_IDS: SheetId[] = [
   CRIME_SUDOKU_SHEET_ID,
   HIT_BOSS_SHEET_ID,
   RECON_CHECK_SHEET_ID,
+  CARD_FLIP_SHEET_ID,
   SALES_SHEET_ID,
 ];
 

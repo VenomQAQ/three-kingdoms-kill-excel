@@ -25,6 +25,7 @@ import { LianliankanGrid } from './components/wps/LianliankanGrid';
 import { CrimeSudokuGrid } from './components/wps/CrimeSudokuGrid';
 import { HitBossGrid } from './components/wps/HitBossGrid';
 import { ReconCheckGrid } from './components/wps/ReconCheckGrid';
+import { CardFlipGrid } from './components/wps/CardFlipGrid';
 import { ChatPanel } from './components/wps/ChatPanel';
 import { LobbyChatPanel } from './components/wps/LobbyChatPanel';
 import { LoginDialog } from './components/wps/LoginDialog';
@@ -43,6 +44,7 @@ import {
   isSheetId,
   LIANLIANKAN_SHEET_ID,
   RECON_CHECK_SHEET_ID,
+  CARD_FLIP_SHEET_ID,
   ROOM_LIST_SHEET_ID,
   SANDBOX_ROOM_CODE,
   SALES_SHEET_ID,
@@ -234,6 +236,13 @@ function App() {
     startReconCheck,
     extendReconCheck,
     finishReconCheck,
+    cardFlipConfig,
+    cardFlipSession,
+    cardFlipLoading,
+    cardFlipSettling,
+    loadCardFlipConfig,
+    startCardFlip,
+    finishCardFlip,
   } = useAppStore();
 
   const handleViewChatProfile = useCallback((message: { playerId?: string; userId?: string; nickname: string }) => {
@@ -262,6 +271,7 @@ function App() {
   const onCrimeSudokuSheet = activeSheet === CRIME_SUDOKU_SHEET_ID;
   const onHitBossSheet = activeSheet === HIT_BOSS_SHEET_ID;
   const onReconCheckSheet = activeSheet === RECON_CHECK_SHEET_ID;
+  const onCardFlipSheet = activeSheet === CARD_FLIP_SHEET_ID;
   const onSalesSheet = activeSheet === SALES_SHEET_ID;
 
   useEffect(() => {
@@ -317,6 +327,18 @@ function App() {
       });
     }
   }, [onReconCheckSheet, reconCheckConfig, loadReconCheckConfig]);
+
+  useEffect(() => {
+    if (onCardFlipSheet && !cardFlipConfig) {
+      void loadCardFlipConfig().catch((err) => {
+        const code = err instanceof HttpError ? err.code : undefined;
+        useAppStore.getState().showError(
+          code,
+          err instanceof Error ? err.message : '翻牌游戏配置加载失败',
+        );
+      });
+    }
+  }, [onCardFlipSheet, cardFlipConfig, loadCardFlipConfig]);
 
   useEffect(() => {
     if (!room || bossMode || typeof window === 'undefined') return;
@@ -799,7 +821,7 @@ function App() {
       ];
     }
 
-    if (onSalesSheet || onLianliankanSheet || onCrimeSudokuSheet || onHitBossSheet || onReconCheckSheet) {
+    if (onSalesSheet || onLianliankanSheet || onCrimeSudokuSheet || onHitBossSheet || onReconCheckSheet || onCardFlipSheet) {
       return [];
     }
 
@@ -911,7 +933,7 @@ function App() {
       );
     }
     return base;
-  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onCrimeSudokuSheet, onHitBossSheet, onReconCheckSheet, onSalesSheet, actingPlayer]);
+  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onCrimeSudokuSheet, onHitBossSheet, onReconCheckSheet, onCardFlipSheet, onSalesSheet, actingPlayer]);
 
   const handleFormulaSubmit = useCallback(async () => {
     const raw = formulaInput.trim();
@@ -1370,6 +1392,23 @@ function App() {
             onStart={startReconCheck}
             onExtend={extendReconCheck}
             onFinish={finishReconCheck}
+            onRequireLogin={() => {
+              showToast('请先登录');
+              setShowLoginDialog(true);
+            }}
+          />
+        ) : displaySheet === CARD_FLIP_SHEET_ID ? (
+          <CardFlipGrid
+            config={cardFlipConfig}
+            session={cardFlipSession}
+            loading={cardFlipLoading}
+            settling={cardFlipSettling}
+            selectedCell={selectedCell}
+            isAuthed={isAuthed}
+            coins={user?.coins}
+            onSelectCell={setSelectedCell}
+            onStart={startCardFlip}
+            onFinish={finishCardFlip}
             onRequireLogin={() => {
               showToast('请先登录');
               setShowLoginDialog(true);
