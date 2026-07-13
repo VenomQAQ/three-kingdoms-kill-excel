@@ -16,6 +16,7 @@ import { CrimeSudokuModule } from './modules/crime-sudoku/crime-sudoku.module';
 import { HitBossModule } from './modules/hit-boss/hit-boss.module';
 import { ReconCheckModule } from './modules/recon-check/recon-check.module';
 import { CardFlipModule } from './modules/card-flip/card-flip.module';
+import { TypingMazeModule } from './modules/typing-maze/typing-maze.module';
 import { GameGateway } from './gateway/game.gateway';
 import { User } from './modules/auth/entities/user.entity';
 
@@ -45,6 +46,7 @@ mkdirSync(dirname(sqlitePath), { recursive: true });
     HitBossModule,
     ReconCheckModule,
     CardFlipModule,
+    TypingMazeModule,
     TypeOrmModule.forFeature([User]), // gateway 用（version:switch 需更新 preferredVersion）
     ...(env.debugClockEnabled ? [DebugModule] : []),
   ],

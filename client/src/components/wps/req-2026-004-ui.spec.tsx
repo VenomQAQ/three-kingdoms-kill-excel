@@ -22,7 +22,7 @@ describe('REQ-2026-004 UI acceptance', () => {
     expect(html).toContain('连连看');
     expect(html).toContain('凶案数独');
     expect(html).toContain('打老板');
-    expect(html).toContain('对账校验');
+    expect(html).toContain('找不同');
     expect(html).toContain('区域销售');
     // sheet tabs + trailing「+」
     expect((html.match(/<button/g) ?? []).length).toBe(8);

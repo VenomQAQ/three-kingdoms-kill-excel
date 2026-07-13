@@ -430,7 +430,7 @@ export function ReconCheckGrid({
         <div className={styles.csModalMask} onClick={() => setShowRules(false)}>
           <div className={styles.csModal} onClick={(event) => event.stopPropagation()}>
             <div className={styles.csModalHeader}>
-              <h3 className={styles.csModalTitle}>对账校验 · 玩法说明</h3>
+              <h3 className={styles.csModalTitle}>找不同 · 玩法说明</h3>
               <button
                 type="button"
                 className={styles.csModalCloseIcon}

@@ -7,3 +7,4 @@ export * from './crimeSudoku';
 export * from './hitBoss';
 export * from './reconCheck';
 export * from './cardFlip';
+export * from './typingMaze';
