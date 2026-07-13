@@ -53,14 +53,10 @@ function makeMathCell(r: number, c: number): TypingMazeCell {
   };
 }
 
-function pickUniqueWord(
-  kind: TypingMazeCellKind,
-  used: Set<string>,
-): string {
+function pickUniqueWord(kind: TypingMazeCellKind, used: Set<string>): string {
   const pool = kind === 'zh' ? TYPING_MAZE_ZH_WORDS : TYPING_MAZE_EN_WORDS;
   const fresh = pool.filter((w) => !used.has(w.toLowerCase()));
   const source = fresh.length > 0 ? fresh : pool;
-  // 70% 偏长词，抬高输入难度
   const long = source.filter((w) => w.length >= (kind === 'zh' ? 4 : 8));
   const prefer = long.length > 0 && Math.random() < 0.7 ? long : source;
   return pick(prefer);
@@ -68,7 +64,6 @@ function pickUniqueWord(
 
 function makeWordCell(r: number, c: number, usedAnswers: Set<string>): TypingMazeCell {
   if (Math.random() < TYPING_MAZE_MATH_RATIO) {
-    // 算术答案也尽量不与相邻重复
     for (let i = 0; i < 8; i += 1) {
       const cell = makeMathCell(r, c);
       if (!usedAnswers.has(cell.answer)) {
@@ -97,178 +92,150 @@ function emptyBoard(rows: number, cols: number): Array<Array<TypingMazeCell | nu
   return Array.from({ length: rows }, () => Array.from({ length: cols }, () => null));
 }
 
-function neighbors(r: number, c: number, rows: number, cols: number): TypingMazePos[] {
-  const dirs: TypingMazePos[] = [
-    { r: r - 1, c },
-    { r: r + 1, c },
-    { r, c: c - 1 },
-    { r, c: c + 1 },
-  ];
-  return dirs.filter((p) => p.r >= 0 && p.r < rows && p.c >= 0 && p.c < cols);
-}
-
 function keyOf(p: TypingMazePos): string {
   return `${p.r},${p.c}`;
 }
 
-function parseKey(s: string): TypingMazePos {
-  const [r, c] = s.split(',').map(Number);
-  return { r: r!, c: c! };
+/** 并查集 */
+class UnionFind {
+  private readonly parent: number[];
+  private readonly rank: number[];
+
+  constructor(size: number) {
+    this.parent = Array.from({ length: size }, (_, i) => i);
+    this.rank = Array.from({ length: size }, () => 0);
+  }
+
+  find(x: number): number {
+    const p = this.parent[x]!;
+    if (p !== x) this.parent[x] = this.find(p);
+    return this.parent[x]!;
+  }
+
+  /** @returns 是否发生合并 */
+  union(a: number, b: number): boolean {
+    const ra = this.find(a);
+    const rb = this.find(b);
+    if (ra === rb) return false;
+    const rankA = this.rank[ra]!;
+    const rankB = this.rank[rb]!;
+    if (rankA < rankB) this.parent[ra] = rb;
+    else if (rankA > rankB) this.parent[rb] = ra;
+    else {
+      this.parent[rb] = ra;
+      this.rank[ra] = rankA + 1;
+    }
+    return true;
+  }
+}
+
+interface MazeWall {
+  /** 墙格物理坐标（打通后变为路径） */
+  wall: TypingMazePos;
+  /** 墙两侧房间的一维下标 */
+  a: number;
+  b: number;
+}
+
+interface CarvedMaze {
+  path: Set<string>;
+  start: TypingMazePos;
+  end: TypingMazePos;
 }
 
 /**
- * 迷宫生成（高难度）：
- * 1) 主廊道强制绕远（更长最短路径门槛），少碰终点
- * 2) 大量长死胡同制造迷惑分叉
- * 3) 极少环路，避免抄近路
- * 4) 可走密度约 48%~58%，岔路更密
+ * Kruskal 迷宫（房间/墙格映射）：
+ * - 偶数坐标为房间（各自独立集合）
+ * - 相邻房间之间的奇数墙列入候选
+ * - 随机打乱墙：若两侧不同集则打通并合并
+ * - 直至全部房间连通（最小生成树）
+ * - 再随机打通少量墙形成环，增加迷惑性
+ *
+ * 未打通的墙格保持为 null（前端灰数字），与现有「词格可走」模型兼容。
  */
-function carveMazePath(rows: number, cols: number): Set<string> {
-  const start: TypingMazePos = { r: 0, c: 0 };
-  const end: TypingMazePos = { r: rows - 1, c: cols - 1 };
-  const total = rows * cols;
-  const targetDensity = 0.48 + Math.random() * 0.1; // 约 48%~58%
-  const maxDensity = Math.min(0.6, targetDensity + 0.05);
-  const minMainLen = Math.max(
-    Math.floor((rows + cols) * 2.2),
-    Math.floor(total * 0.3),
-  );
-  const maxMainLen = Math.max(minMainLen + 12, Math.floor(total * 0.38));
-  const distToEnd = (p: TypingMazePos) => Math.abs(p.r - end.r) + Math.abs(p.c - end.c);
+function carveMazePathKruskal(rows: number, cols: number): CarvedMaze {
+  const roomRows = Math.floor((rows + 1) / 2);
+  const roomCols = Math.floor((cols + 1) / 2);
+  const roomCount = roomRows * roomCols;
+  const roomId = (ri: number, ci: number) => ri * roomCols + ci;
+  const roomPos = (ri: number, ci: number): TypingMazePos => ({ r: ri * 2, c: ci * 2 });
 
-  const path = new Set<string>([keyOf(start)]);
-  const stack: TypingMazePos[] = [start];
-  let steps = 0;
-  const maxSteps = total * 8;
+  const path = new Set<string>();
+  const start = roomPos(0, 0);
+  const end = roomPos(roomRows - 1, roomCols - 1);
 
-  while (stack.length > 0 && steps < maxSteps && path.size < maxMainLen) {
-    steps += 1;
-    const cur = stack[stack.length - 1]!;
-    const atEnd = cur.r === end.r && cur.c === end.c;
-    if (atEnd && path.size >= minMainLen) break;
+  // 所有房间先入路径
+  for (let ri = 0; ri < roomRows; ri += 1) {
+    for (let ci = 0; ci < roomCols; ci += 1) {
+      path.add(keyOf(roomPos(ri, ci)));
+    }
+  }
 
-    const nexts = shuffleInPlace(neighbors(cur.r, cur.c, rows, cols)).filter(
-      (n) => !path.has(keyOf(n)),
-    );
-    if (nexts.length === 0) {
-      stack.pop();
+  const walls: MazeWall[] = [];
+  for (let ri = 0; ri < roomRows; ri += 1) {
+    for (let ci = 0; ci < roomCols; ci += 1) {
+      // 右侧墙：连接 (ri,ci) 与 (ri,ci+1)
+      if (ci + 1 < roomCols) {
+        walls.push({
+          wall: { r: ri * 2, c: ci * 2 + 1 },
+          a: roomId(ri, ci),
+          b: roomId(ri, ci + 1),
+        });
+      }
+      // 下侧墙：连接 (ri,ci) 与 (ri+1,ci)
+      if (ri + 1 < roomRows) {
+        walls.push({
+          wall: { r: ri * 2 + 1, c: ci * 2 },
+          a: roomId(ri, ci),
+          b: roomId(ri + 1, ci),
+        });
+      }
+    }
+  }
+
+  shuffleInPlace(walls);
+  const uf = new UnionFind(roomCount);
+  let merged = 0;
+  const need = roomCount - 1;
+  const leftover: MazeWall[] = [];
+
+  for (const wall of walls) {
+    if (merged >= need) {
+      leftover.push(wall);
       continue;
     }
-
-    // 未达很长距离前严禁踏入终点；即便允许，也极少直奔终点
-    const allowEnd = path.size >= minMainLen;
-    const filtered = allowEnd
-      ? nexts
-      : nexts.filter((n) => !(n.r === end.r && n.c === end.c) && distToEnd(n) > 1);
-    const pool = filtered.length > 0 ? filtered : nexts;
-
-    const roll = Math.random();
-    let chosen: TypingMazePos;
-    if (allowEnd && roll < 0.08) {
-      chosen = pool.reduce((best, n) => (distToEnd(n) < distToEnd(best) ? n : best), pool[0]!);
-    } else if (roll < 0.55) {
-      // 多数时候故意远离终点，主路径更绕
-      chosen = pool.reduce((best, n) => (distToEnd(n) > distToEnd(best) ? n : best), pool[0]!);
+    if (uf.union(wall.a, wall.b)) {
+      // 仅打通仍在棋盘内的墙格
+      if (wall.wall.r < rows && wall.wall.c < cols) {
+        path.add(keyOf(wall.wall));
+      }
+      merged += 1;
     } else {
-      chosen = pool[Math.floor(Math.random() * pool.length)]!;
-    }
-
-    path.add(keyOf(chosen));
-    stack.push(chosen);
-  }
-
-  if (!path.has(keyOf(end))) {
-    const pathList = [...path].map(parseKey);
-    const queue: TypingMazePos[] = [...pathList];
-    const came = new Map<string, string | null>();
-    for (const p of pathList) came.set(keyOf(p), null);
-    let reached: TypingMazePos | null = null;
-    while (queue.length > 0) {
-      const cur = queue.shift()!;
-      if (cur.r === end.r && cur.c === end.c) {
-        reached = cur;
-        break;
-      }
-      for (const n of neighbors(cur.r, cur.c, rows, cols)) {
-        const k = keyOf(n);
-        if (came.has(k)) continue;
-        came.set(k, keyOf(cur));
-        queue.push(n);
-      }
-    }
-    if (reached) {
-      let walk: string | null = keyOf(reached);
-      while (walk) {
-        const alreadyOnPath = path.has(walk);
-        path.add(walk);
-        if (alreadyOnPath) break;
-        walk = came.get(walk) ?? null;
-      }
-    } else {
-      let r = start.r;
-      let c = start.c;
-      let zigzag = true;
-      while (r !== end.r || c !== end.c) {
-        if (zigzag && r !== end.r) r += r < end.r ? 1 : -1;
-        else if (c !== end.c) c += c < end.c ? 1 : -1;
-        else r += r < end.r ? 1 : -1;
-        zigzag = !zigzag;
-        path.add(`${r},${c}`);
-      }
+      leftover.push(wall);
     }
   }
 
-  // 大量长死胡同：从主廊道各处伸出，迷惑方向
-  const pathList = [...path].map(parseKey);
-  let guard = 0;
-  while (path.size / total < targetDensity && guard < total * 5) {
-    guard += 1;
-    const origin = pick(pathList);
-    let cur = origin;
-    const len = randInt(4, Math.max(6, Math.floor(Math.min(rows, cols) * 0.7)));
-    for (let step = 0; step < len; step += 1) {
-      if (path.size / total >= maxDensity) break;
-      const opts = neighbors(cur.r, cur.c, rows, cols).filter((n) => !path.has(keyOf(n)));
-      if (opts.length === 0) break;
-      // 优先伸向「路径邻居少」的格子，死胡同更细长
-      opts.sort((a, b) => {
-        const ca = neighbors(a.r, a.c, rows, cols).filter((n) => path.has(keyOf(n))).length;
-        const cb = neighbors(b.r, b.c, rows, cols).filter((n) => path.has(keyOf(n))).length;
-        return ca - cb;
-      });
-      const n = Math.random() < 0.85 ? opts[0]! : pick(opts);
-      path.add(keyOf(n));
-      pathList.push(n);
-      cur = n;
+  // 约 6%~10% 额外打通，打破「完美树」的唯一通路，增加分叉迷惑
+  const extraRatio = 0.06 + Math.random() * 0.04;
+  const extraCount = Math.max(1, Math.floor(leftover.length * extraRatio));
+  shuffleInPlace(leftover);
+  for (let i = 0; i < extraCount && i < leftover.length; i += 1) {
+    const wall = leftover[i]!;
+    if (wall.wall.r < rows && wall.wall.c < cols) {
+      path.add(keyOf(wall.wall));
     }
   }
 
-  // 极少环路：略增岔路交叉，但不给明显近路
-  const loopTries = Math.max(2, Math.floor(total * 0.03));
-  for (let i = 0; i < loopTries; i += 1) {
-    if (path.size / total >= maxDensity) break;
-    const origin = pick(pathList);
-    const opts = neighbors(origin.r, origin.c, rows, cols).filter((n) => !path.has(keyOf(n)));
-    if (opts.length === 0) continue;
-    const mid = pick(opts);
-    const reconnect = neighbors(mid.r, mid.c, rows, cols).filter(
-      (n) => path.has(keyOf(n)) && (n.r !== origin.r || n.c !== origin.c),
-    );
-    if (reconnect.length === 0) continue;
-    path.add(keyOf(mid));
-    pathList.push(mid);
-  }
-
-  return path;
+  return { path, start, end };
 }
 
 export function generateBoard(modeId: TypingMazeModeId, rows: number, cols: number): GeneratedBoard {
-  const start: TypingMazePos = { r: 0, c: 0 };
-  const end: TypingMazePos = { r: rows - 1, c: cols - 1 };
   const board = emptyBoard(rows, cols);
   const usedAnswers = new Set<string>();
 
   if (modeId === 'pure') {
+    const start: TypingMazePos = { r: 0, c: 0 };
+    const end: TypingMazePos = { r: rows - 1, c: cols - 1 };
     let count = 0;
     for (let r = 0; r < rows; r += 1) {
       for (let c = 0; c < cols; c += 1) {
@@ -279,11 +246,12 @@ export function generateBoard(modeId: TypingMazeModeId, rows: number, cols: numb
     return { board, start, end, pathCount: count };
   }
 
-  const path = carveMazePath(rows, cols);
+  const { path, start, end } = carveMazePathKruskal(rows, cols);
   for (const cellKey of path) {
     const [rStr, cStr] = cellKey.split(',');
     const r = Number(rStr);
     const c = Number(cStr);
+    if (r < 0 || c < 0 || r >= rows || c >= cols) continue;
     board[r]![c] = makeWordCell(r, c, usedAnswers);
   }
   return { board, start, end, pathCount: path.size };
