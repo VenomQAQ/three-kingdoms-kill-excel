@@ -42,6 +42,8 @@ const llkConfig: LianliankanConfig = {
       similarGroupWeight: 0,
     },
   ],
+  similarPools: [],
+  extraItems: [],
   refreshFee: 5,
   _v: 1,
 };

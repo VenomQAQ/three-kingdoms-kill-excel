@@ -136,10 +136,14 @@ describe('REQ-2026-006 UI acceptance', () => {
       ['easy', 8, 8],
       ['normal', 10, 10],
       ['hard', 12, 12],
+      ['extreme', 12, 12],
     ]);
     expect(LIANLIANKAN_CONFIG.themes.map((item) => item.name)).toEqual(
       expect.arrayContaining(['颜文字', 'Emoji表情', '动物', '职业', '物品', '食物', '蔬菜']),
     );
+    expect(LIANLIANKAN_CONFIG.similarPools.length).toBeGreaterThan(0);
+    expect(LIANLIANKAN_CONFIG.extraItems.length).toBeGreaterThan(0);
+    expect(LIANLIANKAN_CONFIG.difficulties.find((item) => item.difficultyId === 'extreme')?.similarGroupWeight).toBe(1);
     expect(LIANLIANKAN_CONFIG.refreshFee).toBe(5);
   });
 

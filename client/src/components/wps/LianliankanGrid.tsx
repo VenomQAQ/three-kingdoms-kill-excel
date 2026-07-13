@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LianliankanConfig, LianliankanDisplayMode, LianliankanSession, LianliankanTile } from '@tk/shared';
 import { COL_LABELS } from '../../data/decoy';
-import { buildDemoBoard, canConnect, formatLianliankanTime } from '../../utils/lianliankan';
+import {
+  buildDemoBoard,
+  buildLianliankanItemCatalog,
+  canConnect,
+  formatLianliankanTime,
+  resolveLianliankanEmoji,
+  selectPreviewKindIds,
+} from '../../utils/lianliankan';
 import { useCellFiller } from '../../utils/useCellFiller';
 import styles from './SpreadsheetGrid.module.css';
 
@@ -98,21 +105,21 @@ export function LianliankanGrid({
 
   const previewTheme = config?.themes.find((item) => item.themeId === themeId);
   const previewDifficulty = config?.difficulties.find((item) => item.difficultyId === difficultyId);
-  const activeThemeId = isActiveGame ? (session?.themeId ?? themeId) : themeId;
   const activeDifficultyId = isActiveGame ? (session?.difficultyId ?? difficultyId) : difficultyId;
-  const theme = config?.themes.find((item) => item.themeId === activeThemeId);
   const difficulty = config?.difficulties.find((item) => item.difficultyId === activeDifficultyId);
-  const itemMap = useMemo(() => new Map(theme?.items.map((item) => [item.id, item]) ?? []), [theme]);
+  const isExtreme = (difficulty?.difficultyId ?? difficultyId) === 'extreme';
+  const itemMap = useMemo(() => buildLianliankanItemCatalog(config), [config]);
 
   const demoTiles = useMemo(() => {
-    if (!previewTheme || !previewDifficulty) return [];
+    if (!config || !previewTheme || !previewDifficulty) return [];
+    const kindIds = selectPreviewKindIds(config, previewTheme, previewDifficulty);
     return buildDemoBoard(
-      previewTheme.items.map((item) => item.id),
+      kindIds,
       previewDifficulty.rows,
       previewDifficulty.cols,
-      previewDifficulty.kindCount,
+      kindIds.length,
     );
-  }, [previewTheme, previewDifficulty]);
+  }, [config, previewTheme, previewDifficulty]);
 
   const displayTiles = isActiveGame ? tiles : demoTiles;
   const tileMap = useMemo(
@@ -203,7 +210,12 @@ export function LianliankanGrid({
       <div className={styles.llkToolbar}>
         <label>
           主题
-          <select value={themeId} onChange={(event) => setThemeId(event.target.value)} disabled={setupLocked}>
+          <select
+            value={themeId}
+            onChange={(event) => setThemeId(event.target.value)}
+            disabled={setupLocked || isExtreme}
+            title={isExtreme ? '极难使用跨主题相似池，主题选择无效' : undefined}
+          >
             {(config?.themes ?? []).map((item) => (
               <option key={item.themeId} value={item.themeId}>{item.name}</option>
             ))}
@@ -220,6 +232,7 @@ export function LianliankanGrid({
           </select>
         </label>
         {difficulty ? <span className={styles.llkMeta}>通关奖励{difficulty.rewardCoins}金币</span> : null}
+        {isExtreme ? <span className={styles.llkMeta}>极难：跨主题相似池</span> : null}
         <button type="button" className={styles.llkStartBtn} onClick={handleStart} disabled={setupLocked || !config}>
           {loading ? '开局中' : settling ? '结算中' : '开始'}
         </button>
@@ -299,7 +312,7 @@ export function LianliankanGrid({
                   >
                     {item ? (
                       displayMode === 'emoji'
-                        ? <span className={styles.llkEmoji}>{item.emoji}</span>
+                        ? <span className={styles.llkEmoji}>{resolveLianliankanEmoji(item)}</span>
                         : <span>{item.text}</span>
                     ) : ''}
                   </button>
