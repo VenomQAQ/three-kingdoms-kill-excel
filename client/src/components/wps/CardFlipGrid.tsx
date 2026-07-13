@@ -28,7 +28,6 @@ export function CardFlipGrid({
   settling,
   selectedCell,
   isAuthed,
-  coins,
   onSelectCell,
   onStart,
   onFinish,
@@ -264,7 +263,6 @@ export function CardFlipGrid({
         <button type="button" className={styles.csToolBtn} onClick={() => setShowRules(true)}>
           玩法说明
         </button>
-        {/* <span className={styles.llkMeta}>当前余额：{coins ?? 0}</span> */}
         {session ? (
           <span className={styles.llkMeta}>
             剩余 {formatCardFlipTime(remainingMs)}
