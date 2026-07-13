@@ -13,8 +13,9 @@ export const TYPING_MAZE_CONFIG: TypingMazeConfig = {
     {
       modeId: 'maze',
       name: '打字迷宫',
-      rows: 12,
-      cols: 12,
+      // 奇数边长更贴合 Kruskal 房间映射（房间在偶数格，墙在奇数格）
+      rows: 13,
+      cols: 13,
       timeLimitSec: 220,
       entryFee: 5,
       rewardCoins: 22,

@@ -46,7 +46,7 @@ function demoWord(r: number, c: number, i: number): string {
 }
 
 /**
- * 非对局时的预览棋盘：迷宫模式生成与实战相近的路径+墙数字；纯打字整表填词。
+ * 非对局时的预览棋盘：迷宫模式用确定性 Kruskal 风格路径，接近实战。
  */
 export function buildTypingMazeDemo(
   modeId: 'pure' | 'maze',
@@ -64,46 +64,55 @@ export function buildTypingMazeDemo(
     );
   }
 
-  // 确定性蜿蜒主路径 + 支路，视觉接近真实局
+  const roomRows = Math.floor((rows + 1) / 2);
+  const roomCols = Math.floor((cols + 1) / 2);
   const path = new Set<string>();
   const key = (r: number, c: number) => `${r},${c}`;
-  let r = 0;
-  let c = 0;
-  path.add(key(r, c));
-  let phase = 0;
-  while (r < rows - 1 || c < cols - 1) {
-    const goDown = phase % 4 < 2;
-    if (goDown && r < rows - 1) {
-      r += 1;
-    } else if (c < cols - 1) {
-      c += 1;
-    } else if (r < rows - 1) {
-      r += 1;
-    } else {
-      break;
-    }
-    path.add(key(r, c));
-    // 每隔几步拐一次，并在旁侧探出短支路
-    if (path.size % 3 === 0) phase += 1;
-    if (path.size % 5 === 0) {
-      const br = Math.min(rows - 1, r + (phase % 2 === 0 ? 0 : 1));
-      const bc = Math.min(cols - 1, c + (phase % 2 === 0 ? 1 : 0));
-      if (!path.has(key(br, bc)) && (br !== r || bc !== c)) path.add(key(br, bc));
-      if (br + 1 < rows && phase % 3 === 0) path.add(key(br + 1, bc));
-      if (bc + 1 < cols && phase % 3 === 1) path.add(key(br, bc + 1));
+  const endR = (roomRows - 1) * 2;
+  const endC = (roomCols - 1) * 2;
+
+  for (let ri = 0; ri < roomRows; ri += 1) {
+    for (let ci = 0; ci < roomCols; ci += 1) {
+      path.add(key(ri * 2, ci * 2));
     }
   }
-  path.add(key(rows - 1, cols - 1));
 
-  // 额外岔路点缀
-  for (let i = 0; i < Math.floor(rows * cols * 0.08); i += 1) {
-    const pr = (i * 7 + 3) % rows;
-    const pc = (i * 11 + 5) % cols;
-    if (path.has(key(pr, pc))) {
-      const nr = Math.min(rows - 1, pr + (i % 2));
-      const nc = Math.min(cols - 1, pc + ((i + 1) % 2));
-      path.add(key(nr, nc));
+  // 确定性「打通」：按固定顺序合并，模拟 Kruskal 无偏连通
+  type DemoWall = { wr: number; wc: number; a: number; b: number };
+  const walls: DemoWall[] = [];
+  const id = (ri: number, ci: number) => ri * roomCols + ci;
+  for (let ri = 0; ri < roomRows; ri += 1) {
+    for (let ci = 0; ci < roomCols; ci += 1) {
+      if (ci + 1 < roomCols) {
+        walls.push({ wr: ri * 2, wc: ci * 2 + 1, a: id(ri, ci), b: id(ri, ci + 1) });
+      }
+      if (ri + 1 < roomRows) {
+        walls.push({ wr: ri * 2 + 1, wc: ci * 2, a: id(ri, ci), b: id(ri + 1, ci) });
+      }
     }
+  }
+  // 确定性打乱
+  walls.sort((x, y) => {
+    const kx = (x.wr * 31 + x.wc * 17 + x.a * 13) % 997;
+    const ky = (y.wr * 31 + y.wc * 17 + y.a * 13) % 997;
+    return kx - ky;
+  });
+
+  const parent = Array.from({ length: roomRows * roomCols }, (_, i) => i);
+  const find = (x: number): number => {
+    if (parent[x] !== x) parent[x] = find(parent[x]!);
+    return parent[x]!;
+  };
+  let merged = 0;
+  const need = roomRows * roomCols - 1;
+  for (const w of walls) {
+    if (merged >= need) break;
+    const ra = find(w.a);
+    const rb = find(w.b);
+    if (ra === rb) continue;
+    parent[rb] = ra;
+    if (w.wr < rows && w.wc < cols) path.add(key(w.wr, w.wc));
+    merged += 1;
   }
 
   let pathIndex = 0;
@@ -119,7 +128,7 @@ export function buildTypingMazeDemo(
         display,
         isWall: false,
         isStart: rr === 0 && cc === 0,
-        isEnd: rr === rows - 1 && cc === cols - 1,
+        isEnd: rr === endR && cc === endC,
       };
     }),
   );
