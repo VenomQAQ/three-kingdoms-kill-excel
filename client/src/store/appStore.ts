@@ -15,7 +15,7 @@ import { SANDBOX_ROOM_CODE } from '../data/decoy';
 import { translateError } from '../data/errorMessages';
 import { sanitizeRoom } from '../utils/display';
 import { AuthApi, AuthUser, CapabilitiesApi, Capabilities, HttpError } from '../api';
-import { LianliankanApi, HitBossApi, ReconCheckApi, CardFlipApi, TypingMazeApi } from '../api';
+import { LianliankanApi, HitBossApi, ReconCheckApi, CardFlipApi, TypingMazeApi, SumTo10Api } from '../api';
 import type {
   CardFlipConfig,
   CardFlipSession,
@@ -25,6 +25,8 @@ import type {
   LianliankanSession,
   ReconCheckConfig,
   ReconCheckSession,
+  SumTo10Config,
+  SumTo10Session,
   TypingMazeConfig,
   TypingMazeSession,
 } from '@tk/shared';
@@ -99,6 +101,11 @@ interface AppState {
   typingMazeSettling: boolean;
   typingMazeExtending: boolean;
   typingMazeLastStartAt: number;
+  sumTo10Config: SumTo10Config | null;
+  sumTo10Session: SumTo10Session | null;
+  sumTo10Loading: boolean;
+  sumTo10Settling: boolean;
+  sumTo10LastStartAt: number;
 
   setNickname: (nickname: string) => Promise<void>;
   connect: () => void;
@@ -176,6 +183,9 @@ interface AppState {
   startTypingMaze: (modeId: string) => Promise<TypingMazeSession | null>;
   extendTypingMaze: () => Promise<TypingMazeSession | null>;
   finishTypingMaze: (result: 'won' | 'lost', clearedCount: number) => Promise<void>;
+  loadSumTo10Config: () => Promise<void>;
+  startSumTo10: (difficultyId: string) => Promise<SumTo10Session | null>;
+  finishSumTo10: (result: 'won' | 'lost', score: number) => Promise<void>;
   setCurrentVersion: (versionId: string) => void;
   markUnauthenticated: (reason?: string) => void;
 }
@@ -277,6 +287,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   typingMazeSettling: false,
   typingMazeExtending: false,
   typingMazeLastStartAt: 0,
+  sumTo10Config: null,
+  sumTo10Session: null,
+  sumTo10Loading: false,
+  sumTo10Settling: false,
+  sumTo10LastStartAt: 0,
 
   setNickname: async (nickname) => {
     const trimmed = nickname.trim();
@@ -1435,6 +1450,98 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showError(code, err instanceof Error ? err.message : fallback);
     } finally {
       set({ typingMazeSettling: false });
+    }
+  },
+
+  loadSumTo10Config: async () => {
+    const config = await SumTo10Api.getConfig();
+    set({ sumTo10Config: config });
+  },
+
+  startSumTo10: async (difficultyId) => {
+    const state = get();
+    if (state.authStatus !== 'authed') {
+      set({ lastError: '请先登录' });
+      return null;
+    }
+    if (state.sumTo10Loading) return null;
+
+    const current = state.sumTo10Session;
+    if (current?.status === 'playing' && Date.now() > current.deadlineAt) {
+      try {
+        await get().finishSumTo10('lost', 0);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const now = Date.now();
+    if (now - get().sumTo10LastStartAt < 1000) return null;
+    set({ sumTo10Loading: true, sumTo10LastStartAt: now });
+    try {
+      const result = await SumTo10Api.createSession({ difficultyId });
+      const { session } = result;
+      if (Date.now() > session.deadlineAt) {
+        set({
+          sumTo10Session: session,
+          user: get().user ? { ...get().user!, ...result.wallet } : get().user,
+        });
+        set({ sumTo10Loading: false });
+        await get().finishSumTo10('lost', 0);
+        set({ sumTo10Loading: true, sumTo10LastStartAt: Date.now() });
+        const retry = await SumTo10Api.createSession({ difficultyId });
+        set({
+          sumTo10Session: retry.session,
+          user: get().user ? { ...get().user!, ...retry.wallet } : get().user,
+        });
+        return retry.session;
+      }
+      set({
+        sumTo10Session: session,
+        user: get().user ? { ...get().user!, ...result.wallet } : get().user,
+      });
+      return session;
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      get().showError(code, err instanceof Error ? err.message : '开局失败');
+      return null;
+    } finally {
+      set({ sumTo10Loading: false });
+    }
+  },
+
+  finishSumTo10: async (result, score) => {
+    const session = get().sumTo10Session;
+    if (!session || session.status !== 'playing' || get().sumTo10Settling) return;
+
+    const sessionId = session.sessionId;
+    const payload = {
+      result,
+      clientFinishedAt: Date.now(),
+      score,
+    } as const;
+    set({ sumTo10Settling: true });
+    try {
+      const settled = await SumTo10Api.finishSession(sessionId, payload);
+
+      set((s) => ({
+        sumTo10Session: s.sumTo10Session?.sessionId === sessionId
+          ? { ...s.sumTo10Session, status: settled.status, finishedAt: Date.now() }
+          : s.sumTo10Session,
+        user: s.user ? { ...s.user, ...settled.wallet } : s.user,
+      }));
+      if (settled.status === 'won') {
+        useToastStore.getState().show(`挑战成功：金币 +${settled.rewardCoins}`);
+      }
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      const fallback =
+        err instanceof TypeError || (err instanceof Error && /failed to fetch/i.test(err.message))
+          ? '网络连接失败，请稍后重试'
+          : '结算失败';
+      get().showError(code, err instanceof Error ? err.message : fallback);
+    } finally {
+      set({ sumTo10Settling: false });
     }
   },
 

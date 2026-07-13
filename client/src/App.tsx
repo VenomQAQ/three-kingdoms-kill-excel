@@ -27,6 +27,7 @@ import { HitBossGrid } from './components/wps/HitBossGrid';
 import { ReconCheckGrid } from './components/wps/ReconCheckGrid';
 import { CardFlipGrid } from './components/wps/CardFlipGrid';
 import { TypingMazeGrid } from './components/wps/TypingMazeGrid';
+import { SumTo10Grid } from './components/wps/SumTo10Grid';
 import { ChatPanel } from './components/wps/ChatPanel';
 import { LobbyChatPanel } from './components/wps/LobbyChatPanel';
 import { LoginDialog } from './components/wps/LoginDialog';
@@ -47,6 +48,7 @@ import {
   RECON_CHECK_SHEET_ID,
   CARD_FLIP_SHEET_ID,
   TYPING_MAZE_SHEET_ID,
+  SUM_TO_10_SHEET_ID,
   ROOM_LIST_SHEET_ID,
   SANDBOX_ROOM_CODE,
   SALES_SHEET_ID,
@@ -254,6 +256,13 @@ function App() {
     startTypingMaze,
     extendTypingMaze,
     finishTypingMaze,
+    sumTo10Config,
+    sumTo10Session,
+    sumTo10Loading,
+    sumTo10Settling,
+    loadSumTo10Config,
+    startSumTo10,
+    finishSumTo10,
   } = useAppStore();
 
   const handleViewChatProfile = useCallback((message: { playerId?: string; userId?: string; nickname: string }) => {
@@ -284,6 +293,7 @@ function App() {
   const onReconCheckSheet = activeSheet === RECON_CHECK_SHEET_ID;
   const onCardFlipSheet = activeSheet === CARD_FLIP_SHEET_ID;
   const onTypingMazeSheet = activeSheet === TYPING_MAZE_SHEET_ID;
+  const onSumTo10Sheet = activeSheet === SUM_TO_10_SHEET_ID;
   const onSalesSheet = activeSheet === SALES_SHEET_ID;
 
   useEffect(() => {
@@ -363,6 +373,18 @@ function App() {
       });
     }
   }, [onTypingMazeSheet, typingMazeConfig, loadTypingMazeConfig]);
+
+  useEffect(() => {
+    if (onSumTo10Sheet && !sumTo10Config) {
+      void loadSumTo10Config().catch((err) => {
+        const code = err instanceof HttpError ? err.code : undefined;
+        useAppStore.getState().showError(
+          code,
+          err instanceof Error ? err.message : '合10配置加载失败',
+        );
+      });
+    }
+  }, [onSumTo10Sheet, sumTo10Config, loadSumTo10Config]);
 
   useEffect(() => {
     if (!room || bossMode || typeof window === 'undefined') return;
@@ -845,7 +867,7 @@ function App() {
       ];
     }
 
-    if (onSalesSheet || onLianliankanSheet || onCrimeSudokuSheet || onHitBossSheet || onReconCheckSheet || onCardFlipSheet || onTypingMazeSheet) {
+    if (onSalesSheet || onLianliankanSheet || onCrimeSudokuSheet || onHitBossSheet || onReconCheckSheet || onCardFlipSheet || onTypingMazeSheet || onSumTo10Sheet) {
       return [];
     }
 
@@ -957,7 +979,7 @@ function App() {
       );
     }
     return base;
-  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onCrimeSudokuSheet, onHitBossSheet, onReconCheckSheet, onCardFlipSheet, onTypingMazeSheet, onSalesSheet, actingPlayer]);
+  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onCrimeSudokuSheet, onHitBossSheet, onReconCheckSheet, onCardFlipSheet, onTypingMazeSheet, onSumTo10Sheet, onSalesSheet, actingPlayer]);
 
   const handleFormulaSubmit = useCallback(async () => {
     const raw = formulaInput.trim();
@@ -1240,6 +1262,8 @@ function App() {
                 ? '对比左右账目：点出形近字差异格 · 找不同'
               : onTypingMazeSheet
                 ? '输入格子中的词或算式答案，Enter 确认'
+              : onSumTo10Sheet
+                ? '拖拽框选数字，选区和为 10 即可消除得分'
               : onLobbySheet
                 ? isAuthed
                   ? '大厅聊天或 /create · /join 房间号'
@@ -1454,6 +1478,23 @@ function App() {
             onStart={startTypingMaze}
             onExtend={extendTypingMaze}
             onFinish={finishTypingMaze}
+            onRequireLogin={() => {
+              showToast('请先登录');
+              setShowLoginDialog(true);
+            }}
+          />
+        ) : displaySheet === SUM_TO_10_SHEET_ID ? (
+          <SumTo10Grid
+            config={sumTo10Config}
+            session={sumTo10Session}
+            loading={sumTo10Loading}
+            settling={sumTo10Settling}
+            selectedCell={selectedCell}
+            isAuthed={isAuthed}
+            coins={user?.coins}
+            onSelectCell={setSelectedCell}
+            onStart={startSumTo10}
+            onFinish={finishSumTo10}
             onRequireLogin={() => {
               showToast('请先登录');
               setShowLoginDialog(true);

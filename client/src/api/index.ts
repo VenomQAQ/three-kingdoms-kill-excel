@@ -8,3 +8,4 @@ export * from './hitBoss';
 export * from './reconCheck';
 export * from './cardFlip';
 export * from './typingMaze';
+export * from './sumTo10';

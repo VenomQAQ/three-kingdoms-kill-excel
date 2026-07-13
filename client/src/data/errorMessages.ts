@@ -56,6 +56,11 @@ export const ERROR_MESSAGES: Record<string, string> = {
   E_TYPING_MAZE_SESSION_EXPIRED: '已超时',
   E_TYPING_MAZE_INVALID_CONFIG: '打字迷宫配置不存在',
   E_TYPING_MAZE_EXTEND_LIMIT: '本局延长次数已用完',
+  E_SUM_TO_10_SESSION_NOT_FOUND: '本局已失效',
+  E_SUM_TO_10_SESSION_SETTLED: '本局已结束',
+  E_SUM_TO_10_SESSION_EXPIRED: '已超时',
+  E_SUM_TO_10_INVALID_CONFIG: '合10游戏配置无效',
+  E_SUM_TO_10_INVALID_RESULT: '积分未达标',
   E_INTERNAL: '服务开小差了，请稍后再试',
 };
 

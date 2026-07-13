@@ -912,6 +912,91 @@
   line-height: 1;
 }
 
+/* —— 合10：数字格铺满，拖拽框选 —— */
+.stWrap {
+  grid-template-rows: 36px 1fr;
+}
+
+.stColHeader {
+  box-sizing: border-box;
+  min-width: 56px;
+  width: 56px;
+  height: 36px;
+  line-height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stFillerColHeader {
+  min-width: 56px;
+  width: 56px;
+}
+
+.stRow {
+  min-height: 36px;
+  height: 36px;
+}
+
+.stRowHeader {
+  box-sizing: border-box;
+  height: 36px;
+  min-height: 36px;
+  line-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stCell {
+  box-sizing: border-box;
+  min-width: 56px;
+  width: 56px;
+  min-height: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.stFillerCell {
+  min-width: 56px;
+  width: 56px;
+  min-height: 36px;
+  height: 36px;
+}
+
+.stNumber {
+  font-weight: 500;
+  font-size: 16px;
+  color: #888888;
+  line-height: 1;
+}
+
+.stSelected {
+  background: #e8e8e8;
+  box-shadow: inset 0 0 0 1px #b0b0b0;
+}
+
+.stEliminating {
+  background: #f0f0f0;
+  box-shadow: inset 0 0 0 1px #c0c0c0;
+  animation: stPop 0.28s ease;
+}
+
+.stEmpty {
+  cursor: default;
+}
+
+@keyframes stPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
 /* —— 对账校验（找不同）：整表铺满，中间一列空白分隔 —— */
 .reconSheetColHeader {
   box-sizing: border-box;
