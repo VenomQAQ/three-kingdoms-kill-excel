@@ -110,10 +110,10 @@ export function SumTo10Grid({
     const passed = score >= session.targetScore;
     setWinAt(Date.now());
     if (passed) {
-      setNotice('时间到，挑战成功');
+      setNotice(`时间到，挑战成功（本局分数：${score}）`);
       void onFinish('won', score);
     } else {
-      setNotice('时间到，挑战失败');
+      setNotice(`时间到，挑战失败（本局分数：${score}）`);
       void onFinish('lost', score);
     }
   }, [now, onFinish, score, session, winAt]);
