@@ -28,6 +28,7 @@ import { ReconCheckGrid } from './components/wps/ReconCheckGrid';
 import { CardFlipGrid } from './components/wps/CardFlipGrid';
 import { TypingMazeGrid } from './components/wps/TypingMazeGrid';
 import { SumTo10Grid } from './components/wps/SumTo10Grid';
+import { NonogramGrid } from './components/wps/NonogramGrid';
 import { ChatPanel } from './components/wps/ChatPanel';
 import { LobbyChatPanel } from './components/wps/LobbyChatPanel';
 import { LoginDialog } from './components/wps/LoginDialog';
@@ -49,6 +50,7 @@ import {
   CARD_FLIP_SHEET_ID,
   TYPING_MAZE_SHEET_ID,
   SUM_TO_10_SHEET_ID,
+  NONOGRAM_SHEET_ID,
   ROOM_LIST_SHEET_ID,
   SANDBOX_ROOM_CODE,
   SALES_SHEET_ID,
@@ -263,6 +265,13 @@ function App() {
     loadSumTo10Config,
     startSumTo10,
     finishSumTo10,
+    nonogramConfig,
+    nonogramSession,
+    nonogramLoading,
+    nonogramSettling,
+    loadNonogramConfig,
+    startNonogram,
+    finishNonogram,
   } = useAppStore();
 
   const handleViewChatProfile = useCallback((message: { playerId?: string; userId?: string; nickname: string }) => {
@@ -294,6 +303,7 @@ function App() {
   const onCardFlipSheet = activeSheet === CARD_FLIP_SHEET_ID;
   const onTypingMazeSheet = activeSheet === TYPING_MAZE_SHEET_ID;
   const onSumTo10Sheet = activeSheet === SUM_TO_10_SHEET_ID;
+  const onNonogramSheet = activeSheet === NONOGRAM_SHEET_ID;
   const onSalesSheet = activeSheet === SALES_SHEET_ID;
 
   useEffect(() => {
@@ -385,6 +395,18 @@ function App() {
       });
     }
   }, [onSumTo10Sheet, sumTo10Config, loadSumTo10Config]);
+
+  useEffect(() => {
+    if (onNonogramSheet && !nonogramConfig) {
+      void loadNonogramConfig().catch((err) => {
+        const code = err instanceof HttpError ? err.code : undefined;
+        useAppStore.getState().showError(
+          code,
+          err instanceof Error ? err.message : '数织配置加载失败',
+        );
+      });
+    }
+  }, [onNonogramSheet, nonogramConfig, loadNonogramConfig]);
 
   useEffect(() => {
     if (!room || bossMode || typeof window === 'undefined') return;
@@ -867,7 +889,7 @@ function App() {
       ];
     }
 
-    if (onSalesSheet || onLianliankanSheet || onCrimeSudokuSheet || onHitBossSheet || onReconCheckSheet || onCardFlipSheet || onTypingMazeSheet || onSumTo10Sheet) {
+    if (onSalesSheet || onLianliankanSheet || onCrimeSudokuSheet || onHitBossSheet || onReconCheckSheet || onCardFlipSheet || onTypingMazeSheet || onSumTo10Sheet || onNonogramSheet) {
       return [];
     }
 
@@ -979,7 +1001,7 @@ function App() {
       );
     }
     return base;
-  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onCrimeSudokuSheet, onHitBossSheet, onReconCheckSheet, onCardFlipSheet, onTypingMazeSheet, onSumTo10Sheet, onSalesSheet, actingPlayer]);
+  }, [room, isSandbox, isHost, isPlaying, canPlayCards, canOperateTurn, gamePrompt, selectedHand, isGuest, sandboxEnabled, onLobbySheet, onCurrentRoomSheet, onLianliankanSheet, onCrimeSudokuSheet, onHitBossSheet, onReconCheckSheet, onCardFlipSheet, onTypingMazeSheet, onSumTo10Sheet, onNonogramSheet, onSalesSheet, actingPlayer]);
 
   const handleFormulaSubmit = useCallback(async () => {
     const raw = formulaInput.trim();
@@ -1264,6 +1286,8 @@ function App() {
                 ? '输入格子中的词或算式答案，Enter 确认'
               : onSumTo10Sheet
                 ? '拖拽框选数字，选区和为 10 即可消除得分'
+              : onNonogramSheet
+                ? '根据行列线索勾选格子 · 数织'
               : onLobbySheet
                 ? isAuthed
                   ? '大厅聊天或 /create · /join 房间号'
@@ -1495,6 +1519,23 @@ function App() {
             onSelectCell={setSelectedCell}
             onStart={startSumTo10}
             onFinish={finishSumTo10}
+            onRequireLogin={() => {
+              showToast('请先登录');
+              setShowLoginDialog(true);
+            }}
+          />
+        ) : displaySheet === NONOGRAM_SHEET_ID ? (
+          <NonogramGrid
+            config={nonogramConfig}
+            session={nonogramSession}
+            loading={nonogramLoading}
+            settling={nonogramSettling}
+            selectedCell={selectedCell}
+            isAuthed={isAuthed}
+            coins={user?.coins}
+            onSelectCell={setSelectedCell}
+            onStart={startNonogram}
+            onFinish={finishNonogram}
             onRequireLogin={() => {
               showToast('请先登录');
               setShowLoginDialog(true);

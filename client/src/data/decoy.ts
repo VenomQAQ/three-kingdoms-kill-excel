@@ -28,6 +28,7 @@ export const RECON_CHECK_SHEET_ID = 'recon-check';
 export const CARD_FLIP_SHEET_ID = 'card-flip';
 export const TYPING_MAZE_SHEET_ID = 'typing-maze';
 export const SUM_TO_10_SHEET_ID = 'sum-to-10';
+export const NONOGRAM_SHEET_ID = 'nonogram';
 export const SALES_SHEET_ID = 'sales';
 export const GAME_SHEET_ID = CURRENT_ROOM_SHEET_ID;
 export const DECOY_SHEET_IDS = [
@@ -39,6 +40,7 @@ export const DECOY_SHEET_IDS = [
   CARD_FLIP_SHEET_ID,
   TYPING_MAZE_SHEET_ID,
   SUM_TO_10_SHEET_ID,
+  NONOGRAM_SHEET_ID,
   SALES_SHEET_ID,
 ] as const;
 
@@ -54,6 +56,7 @@ export const SHEET_LABELS: Record<SheetId, string> = {
   [CARD_FLIP_SHEET_ID]: '翻牌游戏',
   [TYPING_MAZE_SHEET_ID]: '打字迷宫',
   [SUM_TO_10_SHEET_ID]: '合10',
+  [NONOGRAM_SHEET_ID]: '数织',
   [SALES_SHEET_ID]: '区域销售',
 };
 
@@ -67,6 +70,7 @@ export const DEFAULT_FILE_NAMES: Record<SheetId, string> = {
   [CARD_FLIP_SHEET_ID]: '翻牌配对.xlsx',
   [TYPING_MAZE_SHEET_ID]: '打字迷宫.xlsx',
   [SUM_TO_10_SHEET_ID]: '数字合10.xlsx',
+  [NONOGRAM_SHEET_ID]: '逻辑数织.xlsx',
   [SALES_SHEET_ID]: '区域销售汇总.xlsx',
 };
 
@@ -80,6 +84,7 @@ const ALL_SHEET_IDS: SheetId[] = [
   CARD_FLIP_SHEET_ID,
   TYPING_MAZE_SHEET_ID,
   SUM_TO_10_SHEET_ID,
+  NONOGRAM_SHEET_ID,
   SALES_SHEET_ID,
 ];
 

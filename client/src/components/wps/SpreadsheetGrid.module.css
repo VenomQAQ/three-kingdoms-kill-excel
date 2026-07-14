@@ -2185,7 +2185,7 @@
 
 .csSuspectPicked {
   background: #ececec;
-  border-color: #c8c8c8;
+  border-color: #e6e8ea;
   outline: 1px solid #999999;
   outline-offset: -1px;
 }
@@ -2470,3 +2470,125 @@
 .tmEnd {
   box-shadow: inset 0 0 0 2px #c62828;
 }
+
+/* —— 数织（Nonogram）：Excel 风格，复用合10单元格尺寸 —— */
+
+/* 游戏区外框：标出可玩边界，区别于右侧/下方填充空白 */
+.ngEdgeTop {
+  box-shadow: inset 0 1px 0 #757575;
+}
+
+.ngEdgeBottom {
+  box-shadow: inset 0 -1px 0 #757575;
+}
+
+.ngEdgeLeft {
+  box-shadow: inset 1px 0 0 #757575;
+}
+
+.ngEdgeRight {
+  box-shadow: inset -1px 0 0 #757575;
+}
+
+.ngEdgeTop.ngEdgeLeft {
+  box-shadow: inset 1px 0 0 #757575, inset 0 1px 0 #757575;
+}
+
+.ngEdgeTop.ngEdgeRight {
+  box-shadow: inset -1px 0 0 #757575, inset 0 1px 0 #757575;
+}
+
+.ngEdgeBottom.ngEdgeLeft {
+  box-shadow: inset 1px 0 0 #757575, inset 0 -1px 0 #757575;
+}
+
+.ngEdgeBottom.ngEdgeRight {
+  box-shadow: inset -1px 0 0 #757575, inset 0 -1px 0 #757575;
+}
+
+.ngClueCell {
+  background: #f7f7f7;
+  cursor: default;
+}
+
+.ngClueText {
+  font-weight: 600;
+  font-size: 13px;
+  color: #333333;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+}
+
+/* 线索完成：仅略淡，不划线、不加 ✓（摸鱼向） */
+.ngClueDone {
+  background: #f0f0f0 !important;
+}
+
+.ngClueDone .ngClueText {
+  color: #9a9a9a;
+  font-weight: 500;
+}
+
+.ngPlayable {
+  cursor: pointer;
+}
+
+.ngPlayable:hover:not(.ngFilled):not(.ngLineDone) {
+  background: #ebebeb;
+}
+
+/* 未选中数字：浅灰，让位给选中态 */
+.ngNumberIdle {
+  font-weight: 500;
+  font-size: 16px;
+  color: #b0b0b0;
+  line-height: 1;
+}
+
+/* 选中正确：淡蓝底 + 加粗深色字（接近 Excel 填充，不刺眼） */
+.ngFilled {
+  /* background: #e6e8ea !important; */
+}
+
+.ngNumberFilled {
+  font-weight: 700;
+  font-size: 16px;
+  color: #1a1a1a;
+  line-height: 1;
+}
+
+/* 整行/整列完成：淡灰底，完成态一眼可辨但不抢戏 */
+.ngLineDone {
+  background: #efefef !important;
+}
+
+.ngLineDone.ngFilled {
+  /* background: #e4e8ec !important; */
+}
+
+.ngLineDone .ngNumberIdle {
+  color: #efefef;
+}
+
+.ngLineDone .ngNumberFilled {
+  color: #7a7a7a;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.ngLocked {
+  cursor: default;
+  pointer-events: none;
+}
+
+.ngWrong {
+  background: #ffcdd2 !important;
+  animation: ngShake 0.42s ease;
+}
+
+@keyframes ngShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
+}
+

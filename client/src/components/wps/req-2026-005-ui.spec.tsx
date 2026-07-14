@@ -61,6 +61,13 @@ describe('REQ-2026-005 UI acceptance', () => {
     expect(html).toContain('区域销售');
   });
 
+  it('adds the nonogram sheet entry', () => {
+    const html = htmlOf(
+      <SheetTabs active={ROOM_LIST_SHEET_ID} onSelect={vi.fn()} currentRoomDisabled />,
+    );
+    expect(html).toContain('数织');
+  });
+
   it('adds the crime sudoku sheet entry', () => {
     const html = htmlOf(
       <SheetTabs active={ROOM_LIST_SHEET_ID} onSelect={vi.fn()} currentRoomDisabled />,

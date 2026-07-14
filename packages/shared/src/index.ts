@@ -889,6 +889,58 @@ export interface SumTo10FinishInput {
   score?: number;
 }
 
+/** 数织（Nonogram）：难度 */
+export type NonogramDifficultyId = 'easy' | 'normal' | 'hard';
+export type NonogramSessionStatus = 'playing' | 'won' | 'lost' | 'expired';
+/** 单元格：空 / 已涂黑 */
+export type NonogramCellState = 'empty' | 'filled';
+
+export interface NonogramDifficulty {
+  difficultyId: NonogramDifficultyId;
+  name: string;
+  /** 棋盘边长（正方形） */
+  size: number;
+  entryFee: number;
+  rewardCoins: number;
+}
+
+export interface NonogramConfig {
+  difficulties: NonogramDifficulty[];
+  defaultDifficultyId: NonogramDifficultyId;
+  entryFee: number;
+  /** 最大容错次数 */
+  maxMistakes: number;
+  _v: 1;
+}
+
+export interface NonogramSession {
+  sessionId: string;
+  difficultyId: NonogramDifficultyId;
+  status: NonogramSessionStatus;
+  size: number;
+  entryFee: number;
+  rewardCoins: number;
+  maxMistakes: number;
+  /** 行线索（每行从左到右的连续黑块长度） */
+  rowClues: number[][];
+  /** 列线索（每列从上到下的连续黑块长度） */
+  colClues: number[][];
+  /** 标准解：true=应涂黑 */
+  solution: boolean[][];
+  /** 盘面数字（Excel 观感，与 solution 同尺寸） */
+  digits: number[][];
+  startedAt: number;
+  finishedAt?: number;
+  _v: 1;
+}
+
+export interface NonogramFinishInput {
+  result?: 'won' | 'lost';
+  /** 玩家最终涂色盘（与 solution 同尺寸；true=已涂黑） */
+  board?: boolean[][];
+  mistakes?: number;
+}
+
 export type RoomCreateAck =
   | { ok: true; room: Room; playerId: string }
   | { ok: false; error: string; code?: string };

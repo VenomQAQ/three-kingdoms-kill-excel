@@ -15,7 +15,7 @@ import { SANDBOX_ROOM_CODE } from '../data/decoy';
 import { translateError } from '../data/errorMessages';
 import { sanitizeRoom } from '../utils/display';
 import { AuthApi, AuthUser, CapabilitiesApi, Capabilities, HttpError } from '../api';
-import { LianliankanApi, HitBossApi, ReconCheckApi, CardFlipApi, TypingMazeApi, SumTo10Api } from '../api';
+import { LianliankanApi, HitBossApi, ReconCheckApi, CardFlipApi, TypingMazeApi, SumTo10Api, NonogramApi } from '../api';
 import type {
   CardFlipConfig,
   CardFlipSession,
@@ -23,6 +23,8 @@ import type {
   HitBossSession,
   LianliankanConfig,
   LianliankanSession,
+  NonogramConfig,
+  NonogramSession,
   ReconCheckConfig,
   ReconCheckSession,
   SumTo10Config,
@@ -42,6 +44,7 @@ import {
   writeLobbyChatCache,
   writeRoomListCache,
 } from '../utils/lobbyCache';
+import { clearNonogramProgress } from '../utils/nonogramStorage';
 import { useToastStore } from './toastStore';
 
 type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -106,6 +109,11 @@ interface AppState {
   sumTo10Loading: boolean;
   sumTo10Settling: boolean;
   sumTo10LastStartAt: number;
+  nonogramConfig: NonogramConfig | null;
+  nonogramSession: NonogramSession | null;
+  nonogramLoading: boolean;
+  nonogramSettling: boolean;
+  nonogramLastStartAt: number;
 
   setNickname: (nickname: string) => Promise<void>;
   connect: () => void;
@@ -186,6 +194,9 @@ interface AppState {
   loadSumTo10Config: () => Promise<void>;
   startSumTo10: (difficultyId: string) => Promise<SumTo10Session | null>;
   finishSumTo10: (result: 'won' | 'lost', score: number) => Promise<void>;
+  loadNonogramConfig: () => Promise<void>;
+  startNonogram: (difficultyId: string) => Promise<NonogramSession | null>;
+  finishNonogram: (result: 'won' | 'lost', board: boolean[][], mistakes: number) => Promise<void>;
   setCurrentVersion: (versionId: string) => void;
   markUnauthenticated: (reason?: string) => void;
 }
@@ -292,6 +303,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   sumTo10Loading: false,
   sumTo10Settling: false,
   sumTo10LastStartAt: 0,
+  nonogramConfig: null,
+  nonogramSession: null,
+  nonogramLoading: false,
+  nonogramSettling: false,
+  nonogramLastStartAt: 0,
 
   setNickname: async (nickname) => {
     const trimmed = nickname.trim();
@@ -1542,6 +1558,77 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showError(code, err instanceof Error ? err.message : fallback);
     } finally {
       set({ sumTo10Settling: false });
+    }
+  },
+
+  loadNonogramConfig: async () => {
+    const config = await NonogramApi.getConfig();
+    set({ nonogramConfig: config });
+  },
+
+  startNonogram: async (difficultyId) => {
+    const state = get();
+    if (state.authStatus !== 'authed') {
+      set({ lastError: '请先登录' });
+      return null;
+    }
+    if (state.nonogramLoading) return null;
+
+    const now = Date.now();
+    if (now - get().nonogramLastStartAt < 1000) return null;
+    set({ nonogramLoading: true, nonogramLastStartAt: now });
+    try {
+      // 扣费开新局前清掉本地进度，避免刷新生效旧缓存
+      clearNonogramProgress();
+      const result = await NonogramApi.createSession({ difficultyId });
+      clearNonogramProgress();
+      set({
+        nonogramSession: result.session,
+        user: get().user ? { ...get().user!, ...result.wallet } : get().user,
+      });
+      return result.session;
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      get().showError(code, err instanceof Error ? err.message : '开局失败');
+      return null;
+    } finally {
+      set({ nonogramLoading: false });
+    }
+  },
+
+  finishNonogram: async (result, board, mistakes) => {
+    const session = get().nonogramSession;
+    if (!session || session.status !== 'playing' || get().nonogramSettling) return;
+
+    const sessionId = session.sessionId;
+    const payload = {
+      result,
+      board,
+      mistakes,
+      clientFinishedAt: Date.now(),
+    } as const;
+    set({ nonogramSettling: true });
+    try {
+      const settled = await NonogramApi.finishSession(sessionId, payload);
+
+      set((s) => ({
+        nonogramSession: s.nonogramSession?.sessionId === sessionId
+          ? { ...s.nonogramSession, status: settled.status, finishedAt: Date.now() }
+          : s.nonogramSession,
+        user: s.user ? { ...s.user, ...settled.wallet } : s.user,
+      }));
+      if (settled.status === 'won') {
+        useToastStore.getState().show(`挑战成功：金币 +${settled.rewardCoins}`);
+      }
+    } catch (err) {
+      const code = err instanceof HttpError ? err.code : undefined;
+      const fallback =
+        err instanceof TypeError || (err instanceof Error && /failed to fetch/i.test(err.message))
+          ? '网络连接失败，请稍后重试'
+          : '结算失败';
+      get().showError(code, err instanceof Error ? err.message : fallback);
+    } finally {
+      set({ nonogramSettling: false });
     }
   },
 

@@ -9,3 +9,4 @@ export * from './reconCheck';
 export * from './cardFlip';
 export * from './typingMaze';
 export * from './sumTo10';
+export * from './nonogram';
