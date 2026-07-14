@@ -26,7 +26,7 @@ export const SUM_TO_10_CONFIG: SumTo10Config = {
       rows: 12,
       cols: 12,
       targetScore: 80,
-      timeLimitSec: 120,
+      timeLimitSec: 150,
       entryFee: 5,
       rewardCoins: 20,
     },
